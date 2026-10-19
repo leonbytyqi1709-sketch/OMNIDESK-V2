@@ -321,3 +321,11 @@ Die Ursache ist ohne Zugriff auf die Live-Antworten noch nicht abschließend nac
 Die bestehende Kontentabelle wird weiterverwendet, keine Schema-Migration oder produktiven Datenbankoperationen. Bestehende API-Bereitstellung und Vercel-Rewrites bleiben unverändert. Konto-Detail-/Sync-Antworten verwenden eine öffentliche Projektion ohne Tokenfelder; dies schließt auch eine bisherige Token-Rückgabe bei anderen Cloud-Anbietern.
 
 Einrichtung und Testschritte: docs/ONEDRIVE-SETUP.md. Client-ID, Client-Secret und Redirect-URI sind hier noch nicht vorhanden. Der Nutzer muss die Microsoft-App registrieren, die Werte sicher in Vercel eintragen und den echten privaten beziehungsweise Organisations-Login testen. Lokale Mock- und Regressionstests ersetzen diesen Kontotest nicht. Dieser Punkt ist implementiert, aber noch nicht vollständig live abgenommen.
+
+### OneDrive pausiert; erster lesender Neon-Ausbau
+
+19. Oktober 2026: Der Nutzer pausiert OneDrive, weil die Microsoft-App im Schulverzeichnis nicht ausreichend verwaltet werden kann. Das gewünschte Schul-OneDrive (1 TB) ist nicht verbunden; Code und Anleitung bleiben vorbereitet. Keine Umgehung der Schulberechtigungen und kein behaupteter erfolgreicher Kontotest.
+
+Als nächster V2-Schritt wird Nr. 2 zunächst lesend umgesetzt: sichere serverseitige Benutzer-/Projekt-/Branchzuordnung, Neon-Übersicht im Uptime-Modul und der Projektansicht, Compute-Zustand, Branchgröße und verfügbare projektweite Verbrauchswerte. Die bestehende Datenbank braucht keine Migration. Keine SQL-Abfrage gegen die überwachte Datenbank und keine schreibenden Neon-Verwaltungsaktionen. Vorhandene Monitore, Vercel-Rewrites und der API-Ausgabepfad bleiben erhalten.
+
+Einrichtung: docs/NEON-MONITORING.md mit NEON_API_KEY und NEON_MONITOR_LINKS in Vercel. Echte Live-Abnahme erfordert die Konfiguration durch den Nutzer und steht noch aus. Historie, Alarmierung, Hintergrund-Scheduler und optionaler SQL-Funktionstest sind in diesem ersten Ausbau nicht enthalten; die gesamte Neon-Funktion bleibt daher teilweise offen.

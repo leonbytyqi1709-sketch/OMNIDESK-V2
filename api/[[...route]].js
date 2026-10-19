@@ -676,7 +676,7 @@ var init_uptime_check = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono17 } from "hono";
+import { Hono as Hono18 } from "hono";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -2544,13 +2544,190 @@ uptimeRoute.get("/:id/checks", async (c) => {
   return c.json(checks);
 });
 
+// server/routes/neon-monitor.ts
+init_client();
+init_projects();
+import { and as and17, eq as eq19 } from "drizzle-orm";
+import { Hono as Hono16 } from "hono";
+
+// server/neon-monitor.ts
+import { z as z14 } from "zod";
+var neonId = z14.string().regex(/^[a-z0-9-]{1,60}$/);
+var neonLinkSchema = z14.object({
+  userId: z14.string().min(1),
+  projectId: z14.uuid(),
+  neonProjectId: neonId,
+  branchId: neonId
+});
+function readNeonLinks() {
+  const value = process.env.NEON_MONITOR_LINKS;
+  if (!value?.trim()) return [];
+  try {
+    const links2 = z14.array(neonLinkSchema).max(100).parse(JSON.parse(value));
+    const identities = links2.map((link) => `${link.userId}:${link.projectId}`);
+    if (new Set(identities).size !== identities.length) throw new Error("duplicate");
+    return links2;
+  } catch {
+    throw new Error("Neon-Zuordnungen sind ung\xFCltig. Bitte NEON_MONITOR_LINKS pr\xFCfen.");
+  }
+}
+var metric = z14.number().finite().nonnegative().optional().nullable();
+var projectSchema = z14.object({ project: z14.object({
+  id: z14.string(),
+  name: z14.string(),
+  region_id: z14.string().optional(),
+  pg_version: z14.number().optional(),
+  synthetic_storage_size: metric,
+  compute_time_seconds: metric,
+  active_time_seconds: metric,
+  data_transfer_bytes: metric,
+  consumption_period_start: z14.string().optional(),
+  consumption_period_end: z14.string().optional()
+}) });
+var branchSchema = z14.object({ branch: z14.object({
+  id: z14.string(),
+  project_id: z14.string(),
+  name: z14.string(),
+  current_state: z14.string(),
+  logical_size: metric
+}) });
+var endpointSchema = z14.object({ endpoints: z14.array(z14.object({
+  id: z14.string(),
+  branch_id: z14.string(),
+  project_id: z14.string(),
+  current_state: z14.string(),
+  pending_state: z14.string().optional(),
+  type: z14.string(),
+  disabled: z14.boolean(),
+  last_active: z14.string().optional(),
+  autoscaling_limit_min_cu: metric,
+  autoscaling_limit_max_cu: metric
+})) });
+async function neonGet(path) {
+  const key = process.env.NEON_API_KEY?.trim();
+  if (!key) throw new Error("Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt.");
+  const response = await fetch(`https://console.neon.tech/api/v2${path}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+    redirect: "error",
+    signal: AbortSignal.timeout(12e3)
+  });
+  if (!response.ok) throw new Error(`Neon-Abfrage fehlgeschlagen (HTTP ${response.status}). Berechtigungen, Projektzuordnung oder API-Limit pr\xFCfen.`);
+  return response.json();
+}
+async function fetchNeonSnapshot(link) {
+  const root = `/projects/${encodeURIComponent(link.neonProjectId)}`;
+  const results = await Promise.allSettled([
+    neonGet(root).then((body) => projectSchema.parse(body).project),
+    neonGet(`${root}/branches/${encodeURIComponent(link.branchId)}`).then((body) => branchSchema.parse(body).branch),
+    neonGet(`${root}/endpoints`).then((body) => endpointSchema.parse(body).endpoints)
+  ]);
+  const [projectResult, branchResult, endpointsResult] = results;
+  if (projectResult.status === "fulfilled" && projectResult.value.id !== link.neonProjectId) throw new Error("Neon-Projektzuordnung stimmt nicht mit der Antwort \xFCberein.");
+  if (branchResult.status === "fulfilled" && (branchResult.value.id !== link.branchId || branchResult.value.project_id !== link.neonProjectId)) throw new Error("Neon-Branchzuordnung stimmt nicht mit der Antwort \xFCberein.");
+  if (results.every((result) => result.status === "rejected")) throw new Error("Neon ist derzeit nicht abrufbar. API-Schl\xFCssel, Freigaben und Zuordnung pr\xFCfen.");
+  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
+  const branch = branchResult.status === "fulfilled" ? branchResult.value : null;
+  const endpoints = endpointsResult.status === "fulfilled" ? endpointsResult.value.filter((endpoint) => endpoint.branch_id === link.branchId && endpoint.project_id === link.neonProjectId) : null;
+  return {
+    checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    project: project ? {
+      id: project.id,
+      name: project.name,
+      region: project.region_id ?? null,
+      postgresVersion: project.pg_version ?? null
+    } : null,
+    branch: branch ? {
+      id: branch.id,
+      name: branch.name,
+      state: branch.current_state,
+      logicalSizeBytes: branch.logical_size ?? null
+    } : null,
+    endpoints: endpoints?.map((endpoint) => ({
+      id: endpoint.id,
+      state: endpoint.current_state,
+      pendingState: endpoint.pending_state ?? null,
+      type: endpoint.type,
+      disabled: endpoint.disabled,
+      lastActive: endpoint.last_active ?? null,
+      minCu: endpoint.autoscaling_limit_min_cu ?? null,
+      maxCu: endpoint.autoscaling_limit_max_cu ?? null
+    })) ?? null,
+    consumption: project ? {
+      projectStorageBytes: project.synthetic_storage_size ?? null,
+      computeCuSeconds: project.compute_time_seconds ?? null,
+      activeSeconds: project.active_time_seconds ?? null,
+      transferBytes: project.data_transfer_bytes ?? null,
+      periodStart: project.consumption_period_start ?? null,
+      periodEnd: project.consumption_period_end ?? null
+    } : null,
+    unavailable: results.flatMap((result, index12) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index12]] : [])
+  };
+}
+
+// server/routes/neon-monitor.ts
+async function listOwnedProjects(userId) {
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq19(projects.userId, userId));
+}
+async function ownsProject(userId, projectId) {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(and17(
+    eq19(projects.id, projectId),
+    eq19(projects.userId, userId)
+  ));
+  return Boolean(project);
+}
+function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject, fetchNeonSnapshot }) {
+  const route = new Hono16();
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.get("/", async (c) => {
+    try {
+      const userId = c.get("userId");
+      const links2 = readNeonLinks().filter((link) => link.userId === userId);
+      if (!links2.length) return c.json({ configured: false, userId, links: [] });
+      const owned = await dependencies.listOwnedProjects(userId);
+      return c.json({
+        configured: Boolean(process.env.NEON_API_KEY?.trim()),
+        userId,
+        links: links2.flatMap((link) => {
+          const project = owned.find((candidate) => candidate.id === link.projectId);
+          return project ? [{
+            projectId: project.id,
+            projectName: project.name,
+            neonProjectId: link.neonProjectId,
+            branchId: link.branchId
+          }] : [];
+        })
+      });
+    } catch {
+      return c.json({ error: "Neon-Zuordnung konnte nicht geladen werden. Serverkonfiguration und Projektdatenbank pr\xFCfen." }, 503);
+    }
+  });
+  route.get("/:projectId", async (c) => {
+    try {
+      const userId = c.get("userId");
+      const projectId = c.req.param("projectId");
+      const link = readNeonLinks().find((candidate) => candidate.userId === userId && candidate.projectId === projectId);
+      if (!link || !await dependencies.ownsProject(userId, projectId)) return c.json({ error: "Keine Neon-Zuordnung f\xFCr dieses Projekt vorhanden." }, 404);
+      if (!process.env.NEON_API_KEY?.trim()) return c.json({ error: "Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt." }, 503);
+      return c.json(await dependencies.fetchNeonSnapshot(link));
+    } catch {
+      return c.json({ error: "Neon-Daten konnten nicht geladen werden. API-Zugang und Projekt-/Branchzuordnung pr\xFCfen und erneut versuchen." }, 502);
+    }
+  });
+  return route;
+}
+var neonMonitorRoute = createNeonMonitorRoute();
+
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and17, asc as asc5, desc as desc9, eq as eq19 } from "drizzle-orm";
-import { Hono as Hono16 } from "hono";
-import { z as z14 } from "zod";
-var chatRoute = new Hono16();
+import { and as and18, asc as asc5, desc as desc9, eq as eq20 } from "drizzle-orm";
+import { Hono as Hono17 } from "hono";
+import { z as z15 } from "zod";
+var chatRoute = new Hono17();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -2562,18 +2739,18 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z14.object({
-  title: z14.string().trim().max(200).optional()
+var createSessionSchema = z15.object({
+  title: z15.string().trim().max(200).optional()
 });
-var updateSessionSchema = z14.object({
-  title: z14.string().trim().min(1).max(200)
+var updateSessionSchema = z15.object({
+  title: z15.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z14.object({
-  content: z14.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z15.object({
+  content: z15.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq19(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq20(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -2592,12 +2769,12 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z14.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and17(eq19(chatSessions.id, id), eq19(chatSessions.userId, userId))).returning();
+  }).where(and18(eq20(chatSessions.id, id), eq20(chatSessions.userId, userId))).returning();
   if (!updated) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2606,7 +2783,7 @@ chatRoute.put("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(chatSessions).where(and17(eq19(chatSessions.id, id), eq19(chatSessions.userId, userId))).returning();
+  const [deleted] = await db.delete(chatSessions).where(and18(eq20(chatSessions.id, id), eq20(chatSessions.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2615,23 +2792,23 @@ chatRoute.delete("/sessions/:id", async (c) => {
 chatRoute.get("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and17(eq19(chatSessions.id, sessionId), eq19(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and18(eq20(chatSessions.id, sessionId), eq20(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
-  const messages = await db.select().from(chatMessages).where(eq19(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
+  const messages = await db.select().from(chatMessages).where(eq20(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
   return c.json(messages);
 });
 chatRoute.post("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and17(eq19(chatSessions.id, sessionId), eq19(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and18(eq20(chatSessions.id, sessionId), eq20(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z14.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -2641,11 +2818,11 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }).returning();
   if (session.title === "Neuer Chat") {
     const cleanTitle = userContent.length > 35 ? `${userContent.slice(0, 35).trim()}\u2026` : userContent;
-    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq19(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq20(chatSessions.id, sessionId));
   } else {
-    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq19(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq20(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq19(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq20(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -2762,7 +2939,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono17().basePath("/api");
+  const app = new Hono18().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -2805,6 +2982,7 @@ function createApp() {
   app.route("/integrations", integrationsRoute);
   app.route("/cloud-monitor", cloudMonitorRoute);
   app.route("/uptime", uptimeRoute);
+  app.route("/neon", neonMonitorRoute);
   app.route("/chat", chatRoute);
   return app;
 }

@@ -15,6 +15,7 @@ import { integrationsRoute } from './routes/integrations'
 import { microsoftCallbackRoute } from './routes/microsoft-callback'
 import { cloudMonitorRoute } from './routes/cloud-monitor'
 import { uptimeRoute } from './routes/uptime'
+import { neonMonitorRoute } from './routes/neon-monitor'
 import { chatRoute } from './routes/chat'
 
 /**
@@ -83,6 +84,7 @@ export function createApp() {
   app.route('/integrations', integrationsRoute)
   app.route('/cloud-monitor', cloudMonitorRoute)
   app.route('/uptime', uptimeRoute)
+  app.route('/neon', neonMonitorRoute)
   app.route('/chat', chatRoute)
 
   return app

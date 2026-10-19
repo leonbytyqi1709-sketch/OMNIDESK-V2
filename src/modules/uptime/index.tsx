@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { UptimeMonitorDto } from './api'
 import { useRefreshAllMonitors, useUptimeMonitors } from './api'
+import { NeonPanel } from '@/components/integrations/NeonPanel'
 import { MonitorCard } from './components/MonitorCard'
 import { MonitorDetailDialog } from './components/MonitorDetailDialog'
 import { MonitorFormDialog } from './components/MonitorFormDialog'
@@ -381,6 +382,8 @@ export default function UptimePage() {
           ))}
         </div>
       )}
+
+      <NeonPanel />
 
       {/* Dialoge */}
       <MonitorFormDialog

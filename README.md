@@ -20,6 +20,10 @@ Historischer V1-Entwicklungsstand: `DOKUMENTATION.txt`.
 
 OneDrive lässt sich zusätzlich zu Google Drive und MEGA verbinden (private Microsoft-Konten sowie Geschäfts-/Schulkonten, abhängig von Organisationsrichtlinien). Kontoanmeldung, Quotenanzeige, Synchronisation und Trennen sind vorbereitet. Vor dem ersten echten Kontotest müssen Microsoft-App-Registrierung und Vercel-Variablen eingerichtet werden: [OneDrive-Einrichtung](docs/ONEDRIVE-SETUP.md).
 
+## Neon-Monitoring in V2
+
+Der erste lesende Ausbau zeigt zugeordnete Neon-Branches, Compute-Status und verfügbare Projektverbrauchswerte im Uptime-Modul und in der Projektansicht. Vor dem echten Abruf sind API-Schlüssel und benutzerbezogene Projektzuordnungen einzurichten: [Neon-Einrichtung](docs/NEON-MONITORING.md). Ohne Konfiguration bleiben vorhandene Module nutzbar. Messhistorie, Alarme und SQL-Funktionstests folgen gesondert.
+
 ## Stack
 
 - **Frontend:** Vite 8 + React 19 + TypeScript (strict), React Router v7,

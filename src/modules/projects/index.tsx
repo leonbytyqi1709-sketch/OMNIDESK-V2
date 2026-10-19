@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { NeonPanel } from '@/components/integrations/NeonPanel'
 import {
   ArrowLeft,
   MoreVertical,
@@ -107,6 +108,7 @@ function ProjectDetailView({
         <ProjectBoard projectId={projectId} tasks={data.tasks} />
         <MilestonePanel projectId={projectId} milestones={data.milestones} />
       </div>
+      <div className="mt-6"><NeonPanel projectId={projectId} /></div>
     </div>
   )
 }
