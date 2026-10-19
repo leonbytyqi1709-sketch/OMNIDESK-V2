@@ -17,7 +17,6 @@ import {
   Moon,
   NotebookPen,
   Pause,
-  PenSquare,
   Play,
   RotateCcw,
   Settings,
@@ -225,20 +224,6 @@ export function CommandPalette() {
             <Activity className="size-4 text-emerald-400" />
             <span>Uptime & Service-Health öffnen</span>
             <CommandShortcut>/uptime</CommandShortcut>
-          </CommandItem>
-
-          <CommandItem
-            value="Aktion: E-Mail verfassen schreiben Gmail Mail"
-            onSelect={() =>
-              runCommand(() => {
-                navigate('/mail')
-                toast.info('E-Mail-Client geöffnet')
-              })
-            }
-          >
-            <PenSquare className="size-4 text-blue-400" />
-            <span>Neue E-Mail verfassen</span>
-            <CommandShortcut>Mail</CommandShortcut>
           </CommandItem>
 
           <CommandItem

@@ -130,7 +130,7 @@ integrationsRoute.post('/accounts', async (c) => {
       userId: c.get('userId'),
       provider,
       email,
-      label: label || (provider === 'google' ? 'Google Drive & Mail' : 'MEGA Cloud'),
+      label: label || (provider === 'google' ? 'Google Drive' : 'MEGA Cloud'),
       accessToken: finalAccessToken,
       refreshToken: refreshToken ?? null,
       storageUsedBytes: finalUsed ?? defaultUsed,

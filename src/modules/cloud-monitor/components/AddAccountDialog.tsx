@@ -116,7 +116,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
                 <SelectValue placeholder="Anbieter wählen" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="google">Google (Drive & Gmail OAuth2)</SelectItem>
+                <SelectItem value="google">Google Drive (OAuth2)</SelectItem>
                 <SelectItem value="mega">MEGA Cloud (20 GB Live & Demo)</SelectItem>
               </SelectContent>
             </Select>
@@ -133,7 +133,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
                 <span className="text-[10px] text-blue-400 font-normal">Empfohlen</span>
               </div>
               <p className="text-muted-foreground leading-relaxed">
-                Verknüpfe dein Google-Konto sicher über den offiziellen Google-Zustimmungsbildschirm. Speicherplatz & Gmail werden live synchronisiert.
+                Verknüpfe dein Google-Konto sicher über den offiziellen Google-Zustimmungsbildschirm. Die Speicherauslastung wird über Google Drive abgerufen.
               </p>
               <Button
                 type="button"

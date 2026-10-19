@@ -6,7 +6,15 @@ Kontakte, Projektmanagement (Kanban), Befehlsbibliothek, client-seitig
 verschlüsselter Passwort-Manager u.v.m. – als installierbare PWA.
 
 Vollständige fachliche Spezifikation: `omnidesk_spezifikation_v2.pdf`.
-Entwicklungsstand & Architektur: `DOKUMENTATION.txt`.
+Aktuelle V2-Planung: `docs/V2-PLANUNG.md`.
+Historischer V1-Entwicklungsstand: `DOKUMENTATION.txt`.
+
+## V2 – erster Entwicklungsschritt
+
+- Uptime-Modul mit responsiven Außenabständen (mobil 16 px, ab mittlerer Breite 24 px, auf großen Bildschirmen 32 px).
+- Mail-Modul samt API und Gmail-Berechtigungen entfernt. Google Drive und MEGA bleiben erhalten; E-Mail-Felder bei Kontakten und Buchungen bleiben nutzbar.
+- Bereits bei Google erteilte Gmail-Berechtigungen werden durch die Codeänderung nicht automatisch widerrufen. Eine erneute Autorisierung ist für die bisherigen Drive-Funktionen nicht erforderlich.
+- Für V2 eine separate Entwicklungsdatenbank verwenden. Dieser Schritt benötigt keine Datenbankmigration.
 
 ## Stack
 
@@ -57,7 +65,7 @@ npm run dev:api    # Hono-API, Port 8787
 
 ## Deployment (Vercel)
 
-Das Repo ist Vercel-ready: `api/[[...route]].ts` bedient alle `/api/*`-Routen
+Das Repo ist Vercel-ready: `server/vercel-entry.ts` wird beim Build zu `api/index.js` gebündelt und bedient alle `/api/*`-Routen
 über den `hono/vercel`-Adapter, `vercel.json` enthält die SPA-Rewrites.
 
 1. Repo bei Vercel importieren (Framework-Preset **Vite** wird erkannt,

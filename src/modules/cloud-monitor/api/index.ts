@@ -76,7 +76,6 @@ export function useConnectAccount() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['integrations-accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['mail-accounts'] })
     },
   })
 }
@@ -92,7 +91,6 @@ export function useDeleteAccount() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['integrations-accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['mail-accounts'] })
     },
   })
 }

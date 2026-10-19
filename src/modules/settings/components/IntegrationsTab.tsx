@@ -87,13 +87,13 @@ export function IntegrationsTab() {
             OAuth2 & Cloud-Schnittstellen (Phase 4)
           </CardTitle>
           <CardDescription>
-            Verwalte deine Live-Verbindungen für Gmail, Google Drive und MEGA Cloud.
+            Verwalte deine Live-Verbindungen für Google Drive und MEGA Cloud.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
             <p className="max-w-xl">
-              Verknüpfe echte Konten per sicherem Google OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring und den Gmail-Klon ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
+              Verknüpfe echte Konten per sicherem Google OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
             </p>
             <Button
               size="sm"
@@ -114,10 +114,10 @@ export function IntegrationsTab() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <HardDrive className="size-4 text-blue-400" />
-                Google (Gmail & Google Drive)
+                Google Drive
               </CardTitle>
               <CardDescription className="pt-1">
-                Verbindung zu Gmail (E-Mails senden & empfangen) sowie Google Drive Speicherkapazität.
+                Verbindung zu Google Drive zum Abrufen der Speicherkapazität.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">

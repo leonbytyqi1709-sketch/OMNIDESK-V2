@@ -12,7 +12,6 @@ import { bookingRoute } from './routes/booking'
 import { publicBookingRoute } from './routes/public-booking'
 import { googleCallbackRoute } from './routes/google-callback'
 import { integrationsRoute } from './routes/integrations'
-import { mailRoute } from './routes/mail'
 import { cloudMonitorRoute } from './routes/cloud-monitor'
 import { uptimeRoute } from './routes/uptime'
 import { chatRoute } from './routes/chat'
@@ -80,7 +79,6 @@ export function createApp() {
   app.route('/vault', vaultRoute)
   app.route('/booking', bookingRoute)
   app.route('/integrations', integrationsRoute)
-  app.route('/mail', mailRoute)
   app.route('/cloud-monitor', cloudMonitorRoute)
   app.route('/uptime', uptimeRoute)
   app.route('/chat', chatRoute)

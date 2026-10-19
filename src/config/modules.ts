@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Link2,
   ListTodo,
-  Mail,
   NotebookPen,
   Settings,
   SquareKanban,
@@ -148,16 +147,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     toggleable: true,
     category: 'it-tools',
   },
-  // 🔒 Kommunikation & Sicherheit
-  {
-    id: 'mail',
-    title: 'Mail',
-    path: '/mail',
-    icon: Mail,
-    component: lazy(() => import('@/modules/mail')),
-    toggleable: true,
-    category: 'security',
-  },
+  // 🔒 Sicherheit & Kontakte
   {
     id: 'passwords',
     title: 'Passwort-Manager',

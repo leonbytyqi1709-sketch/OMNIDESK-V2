@@ -229,7 +229,7 @@ Nach Analyse von OMNIDESK_NEUE_MODULE_PLANUNG.txt hat der Nutzer die folgenden s
 
 ## Fest ausgewählte V2-Änderungen
 
-Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte Ideen in diesem Dokument sind keine automatisch ausgewählten Anforderungen. Stand: 18. Oktober 2026. Keine dieser Änderungen ist in dieser Planungsrunde implementiert worden.
+Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte Ideen in diesem Dokument sind keine automatisch ausgewählten Anforderungen. Auswahlstand: 18. Oktober 2026. Die Umsetzung begann am 19. Oktober 2026; der aktuelle Stand wird im Entwicklungsprotokoll unten dokumentiert. Historische Statusangaben in den Planungsabschnitten beschreiben den Zeitpunkt der Auswahl.
 
 1. Mission Control.
 2. Projektbezogene Neon-Überwachung im Uptime-Modul.
@@ -295,3 +295,15 @@ Das demonstriert den Produktfortschritt besser als mehrere gleichzeitig halbfert
 ## Grenzen der Bewertung
 
 Build, Typprüfung, Lint und lokale HTTP-Smokechecks wurden im vorausgehenden Setup erfolgreich geprüft; Lint hatte sieben Warnungen. Für diese Ideenanalyse wurden keine neuen Anwendungstests behauptet. In dieser Cloud-Instanz fehlen Clerk-/Neon-Konfigurationen; authentifizierte Datenflüsse und das laufende Vercel-Deployment wurden hier nicht umfassend getestet. Der Code und die vorhandenen historischen Testberichte sind getrennte Evidenzquellen.
+
+
+## Entwicklungsprotokoll – 19. Oktober 2026
+
+Erster Umsetzungsschritt ausschließlich in OMNIDESK-V2:
+
+- Nr. 14: Uptime-Seite erhält gemeinsame responsive Außenabstände (16/24/32 px); vorhandenes Design bleibt erhalten.
+- Nr. 9: Mail-Modul, Schnellaktion, Backend-Routen und prozessglobaler Mail-Demospeicher entfernt. Neue Google-Autorisierungen fragen keine Gmail-Berechtigungen mehr an. Gemeinsame Kontenverwaltung, Google Drive, MEGA und bestehende Tokens bleiben erhalten; keine Datenbankmigration.
+- API-Build schreibt nun nach api/index.js, passend zum vorhandenen Vercel-Rewrite. Das zuvor versionierte generierte Catch-all-Bundle wurde entfernt, damit kein veralteter Mail-Code als zweiter Endpunkt bestehen bleibt.
+- Regressionstests: `npx tsx --test tests/mail-removal.test.ts` prüft Drive-/Identitäts-Scopes ohne Gmail, erhaltene Cloud-/Callback-Routen sowie Healthcheck und Auth-Schutz. Drei Tests erfolgreich.
+- Ein authentifizierter Google-Drive-Synchronisationstest und eine visuelle Browserprüfung konnten hier mangels lokaler Zugangskonfiguration nicht durchgeführt werden. Vercel-Livezugriff aus dieser Cloud ist weiterhin durch den Netzwerkproxy blockiert. Der Test des fertigen Deployments durch den Nutzer bleibt erforderlich.
+- Die übrigen 13 ausgewählten V2-Punkte sind noch nicht umgesetzt. Das Original-Repository wird nicht verändert.

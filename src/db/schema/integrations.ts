@@ -18,7 +18,7 @@ export interface AccountStorageMetadata {
   lastSyncedAt?: string
 }
 
-/** Verbundene externe Konten für Gmail, Google Drive und MEGA (Spec Phase 4). */
+/** Verbundene externe Konten für Google Drive und MEGA (Spec Phase 4). */
 export const connectedAccounts = pgTable(
   'connected_accounts',
   {
