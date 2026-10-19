@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../../src/db/client'
 import { projects } from '../../src/db/schema/projects'
-import { fetchNeonSnapshot, readNeonLinks } from '../neon-monitor'
+import { NeonConfigurationError, fetchNeonSnapshot, readNeonLinks } from '../neon-monitor'
 
 async function listOwnedProjects(userId: string) {
   return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.userId, userId))
@@ -30,8 +30,11 @@ export function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsP
           return project ? [{ projectId: project.id, projectName: project.name,
             neonProjectId: link.neonProjectId, branchId: link.branchId }] : []
         }) })
-    } catch {
-      return c.json({ error: 'Neon-Zuordnung konnte nicht geladen werden. Serverkonfiguration und Projektdatenbank prüfen.' }, 503)
+    } catch (error) {
+      if (error instanceof NeonConfigurationError) {
+        return c.json({ code: 'NEON_CONFIG_INVALID', error: error.message }, 503)
+      }
+      return c.json({ code: 'NEON_PROJECT_LOOKUP_FAILED', error: 'Die OMNIDESK-Projekte konnten für die Neon-Zuordnung nicht aus der Datenbank geladen werden. Bitte prüfen, ob Projektmanagement in V2 funktioniert und DATABASE_URL im aktuellen Vercel-Deployment gesetzt ist.' }, 503)
     }
   })
   route.get('/:projectId', async (c) => {
@@ -42,7 +45,10 @@ export function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsP
       if (!link || !(await dependencies.ownsProject(userId, projectId))) return c.json({ error: 'Keine Neon-Zuordnung für dieses Projekt vorhanden.' }, 404)
       if (!process.env.NEON_API_KEY?.trim()) return c.json({ error: 'Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt.' }, 503)
       return c.json(await dependencies.fetchNeonSnapshot(link))
-    } catch {
+    } catch (error) {
+      if (error instanceof NeonConfigurationError) {
+        return c.json({ code: 'NEON_CONFIG_INVALID', error: error.message }, 503)
+      }
       return c.json({ error: 'Neon-Daten konnten nicht geladen werden. API-Zugang und Projekt-/Branchzuordnung prüfen und erneut versuchen.' }, 502)
     }
   })

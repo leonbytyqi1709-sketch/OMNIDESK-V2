@@ -79,3 +79,9 @@ npx tsx --test tests/*.test.ts
 npm run lint
 npm run build
 ```
+
+## Fehler bei der Zuordnung eingrenzen
+
+Die Anzeige unterscheidet jetzt `NEON_CONFIG_INVALID` (ungültiges JSON, falscher Feldtyp/Identifier oder doppelte Zuordnung in NEON_MONITOR_LINKS) von `NEON_PROJECT_LOOKUP_FAILED` (OMNIDESK-Projekte konnten nicht aus der Anwendungsdatenbank geladen werden). Konfigurationsfehler nennen nur den betroffenen Feldpfad, niemals den API-Schlüssel oder vollständige Eingabewerte. Die Zuordnung wird vor einem Aufruf der Neon-Verwaltungs-API geladen; ein Fehler an dieser Stelle bedeutet nicht automatisch, dass der Neon-API-Schlüssel ungültig ist.
+
+In Vercel den JSON-Wert ohne Markdown-Zeichen oder zusätzliche äußere Anführungszeichen speichern und nach Änderungen erneut deployen. Bereits angelegte Monitore und Projekte nicht zur Fehlerbehebung löschen oder neu erstellen.

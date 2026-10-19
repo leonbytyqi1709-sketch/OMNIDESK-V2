@@ -23,6 +23,34 @@ test('read-only project-scoped Neon monitoring', async (t) => {
       }
       process.env.NEON_MONITOR_LINKS = JSON.stringify([link])
     })
+    await t.test('configuration and database lookup failures are distinguishable without exposing values', async () => {
+      let queries = 0
+      const app = new Hono()
+      app.use('*', async (c, next) => { c.set('userId', 'owner'); await next() })
+      app.route('/neon', createNeonMonitorRoute({
+        listOwnedProjects: async () => { queries++; throw new Error('sensitive database connection details') },
+        ownsProject: async () => false,
+        fetchNeonSnapshot,
+      }))
+      process.env.NEON_MONITOR_LINKS = '```json\n[]\n```'
+      const invalid = await app.request('/neon')
+      assert.equal(invalid.status, 503)
+      const invalidBody = await invalid.json()
+      assert.equal(invalidBody.code, 'NEON_CONFIG_INVALID')
+      assert.match(invalidBody.error, /ungültiges JSON/)
+      assert.equal(queries, 0)
+      process.env.NEON_MONITOR_LINKS = JSON.stringify([{ ...link, branchId: 'https://not-a-branch' }])
+      const fieldBody = await (await app.request('/neon')).json()
+      assert.equal(fieldBody.code, 'NEON_CONFIG_INVALID')
+      assert.match(fieldBody.error, /0.branchId/)
+      assert.ok(!fieldBody.error.includes('https://not-a-branch'))
+      process.env.NEON_MONITOR_LINKS = JSON.stringify([link])
+      const unavailable = await app.request('/neon')
+      assert.equal(unavailable.status, 503)
+      const databaseBody = await unavailable.json()
+      assert.equal(databaseBody.code, 'NEON_PROJECT_LOOKUP_FAILED')
+      assert.ok(!JSON.stringify(databaseBody).includes('sensitive'))
+    })
     await t.test('snapshot uses only GET, filters other branches and never returns credentials', async () => {
       let requests = 0
       globalThis.fetch = async (input, init) => {

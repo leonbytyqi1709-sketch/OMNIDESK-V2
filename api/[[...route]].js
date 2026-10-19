@@ -2559,17 +2559,32 @@ var neonLinkSchema = z14.object({
   neonProjectId: neonId,
   branchId: neonId
 });
+var NeonConfigurationError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "NeonConfigurationError";
+  }
+};
 function readNeonLinks() {
   const value = process.env.NEON_MONITOR_LINKS;
   if (!value?.trim()) return [];
+  let parsed;
   try {
-    const links2 = z14.array(neonLinkSchema).max(100).parse(JSON.parse(value));
-    const identities = links2.map((link) => `${link.userId}:${link.projectId}`);
-    if (new Set(identities).size !== identities.length) throw new Error("duplicate");
-    return links2;
+    parsed = JSON.parse(value);
   } catch {
-    throw new Error("Neon-Zuordnungen sind ung\xFCltig. Bitte NEON_MONITOR_LINKS pr\xFCfen.");
+    throw new NeonConfigurationError("NEON_MONITOR_LINKS enth\xE4lt ung\xFCltiges JSON. In Vercel die vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zus\xE4tzliche \xE4u\xDFere Anf\xFChrungszeichen eintragen und neu deployen.");
   }
+  const result = z14.array(neonLinkSchema).max(100).safeParse(parsed);
+  if (!result.success) {
+    const path = result.error.issues[0]?.path;
+    const field = path?.length ? path.join(".") : "Liste";
+    throw new NeonConfigurationError(`Neon-Zuordnung ist ung\xFCltig: Feld ${field} in NEON_MONITOR_LINKS pr\xFCfen. projectId muss eine OMNIDESK-Projekt-UUID sein; Neon-IDs d\xFCrfen nur Kleinbuchstaben, Ziffern und Bindestriche enthalten.`);
+  }
+  const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
+  if (new Set(identities).size !== identities.length) {
+    throw new NeonConfigurationError("Neon-Zuordnung ist ung\xFCltig: Mehrere Eintr\xE4ge f\xFCr denselben Benutzer und dasselbe OMNIDESK-Projekt in NEON_MONITOR_LINKS.");
+  }
+  return result.data;
 }
 var metric = z14.number().finite().nonnegative().optional().nullable();
 var projectSchema = z14.object({ project: z14.object({
@@ -2701,8 +2716,11 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject,
           }] : [];
         })
       });
-    } catch {
-      return c.json({ error: "Neon-Zuordnung konnte nicht geladen werden. Serverkonfiguration und Projektdatenbank pr\xFCfen." }, 503);
+    } catch (error) {
+      if (error instanceof NeonConfigurationError) {
+        return c.json({ code: "NEON_CONFIG_INVALID", error: error.message }, 503);
+      }
+      return c.json({ code: "NEON_PROJECT_LOOKUP_FAILED", error: "Die OMNIDESK-Projekte konnten f\xFCr die Neon-Zuordnung nicht aus der Datenbank geladen werden. Bitte pr\xFCfen, ob Projektmanagement in V2 funktioniert und DATABASE_URL im aktuellen Vercel-Deployment gesetzt ist." }, 503);
     }
   });
   route.get("/:projectId", async (c) => {
@@ -2713,7 +2731,10 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject,
       if (!link || !await dependencies.ownsProject(userId, projectId)) return c.json({ error: "Keine Neon-Zuordnung f\xFCr dieses Projekt vorhanden." }, 404);
       if (!process.env.NEON_API_KEY?.trim()) return c.json({ error: "Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt." }, 503);
       return c.json(await dependencies.fetchNeonSnapshot(link));
-    } catch {
+    } catch (error) {
+      if (error instanceof NeonConfigurationError) {
+        return c.json({ code: "NEON_CONFIG_INVALID", error: error.message }, 503);
+      }
       return c.json({ error: "Neon-Daten konnten nicht geladen werden. API-Zugang und Projekt-/Branchzuordnung pr\xFCfen und erneut versuchen." }, 502);
     }
   });

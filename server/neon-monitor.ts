@@ -5,18 +5,34 @@ export const neonLinkSchema = z.object({ userId: z.string().min(1), projectId: z
   neonProjectId: neonId, branchId: neonId })
 export type NeonLink = z.infer<typeof neonLinkSchema>
 
+export class NeonConfigurationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NeonConfigurationError'
+  }
+}
+
 /** Explicit server-owned assignments: no caller can choose another user's Neon project. */
 export function readNeonLinks(): NeonLink[] {
   const value = process.env.NEON_MONITOR_LINKS
   if (!value?.trim()) return []
+  let parsed: unknown
   try {
-    const links = z.array(neonLinkSchema).max(100).parse(JSON.parse(value))
-    const identities = links.map((link) => `${link.userId}:${link.projectId}`)
-    if (new Set(identities).size !== identities.length) throw new Error('duplicate')
-    return links
+    parsed = JSON.parse(value)
   } catch {
-    throw new Error('Neon-Zuordnungen sind ungültig. Bitte NEON_MONITOR_LINKS prüfen.')
+    throw new NeonConfigurationError('NEON_MONITOR_LINKS enthält ungültiges JSON. In Vercel die vollständige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zusätzliche äußere Anführungszeichen eintragen und neu deployen.')
   }
+  const result = z.array(neonLinkSchema).max(100).safeParse(parsed)
+  if (!result.success) {
+    const path = result.error.issues[0]?.path
+    const field = path?.length ? path.join('.') : 'Liste'
+    throw new NeonConfigurationError(`Neon-Zuordnung ist ungültig: Feld ${field} in NEON_MONITOR_LINKS prüfen. projectId muss eine OMNIDESK-Projekt-UUID sein; Neon-IDs dürfen nur Kleinbuchstaben, Ziffern und Bindestriche enthalten.`)
+  }
+  const identities = result.data.map((link) => `${link.userId}:${link.projectId}`)
+  if (new Set(identities).size !== identities.length) {
+    throw new NeonConfigurationError('Neon-Zuordnung ist ungültig: Mehrere Einträge für denselben Benutzer und dasselbe OMNIDESK-Projekt in NEON_MONITOR_LINKS.')
+  }
+  return result.data
 }
 
 const metric = z.number().finite().nonnegative().optional().nullable()
