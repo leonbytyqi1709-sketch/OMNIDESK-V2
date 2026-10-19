@@ -329,3 +329,11 @@ Einrichtung und Testschritte: docs/ONEDRIVE-SETUP.md. Client-ID, Client-Secret u
 Als nächster V2-Schritt wird Nr. 2 zunächst lesend umgesetzt: sichere serverseitige Benutzer-/Projekt-/Branchzuordnung, Neon-Übersicht im Uptime-Modul und der Projektansicht, Compute-Zustand, Branchgröße und verfügbare projektweite Verbrauchswerte. Die bestehende Datenbank braucht keine Migration. Keine SQL-Abfrage gegen die überwachte Datenbank und keine schreibenden Neon-Verwaltungsaktionen. Vorhandene Monitore, Vercel-Rewrites und der API-Ausgabepfad bleiben erhalten.
 
 Einrichtung: docs/NEON-MONITORING.md mit NEON_API_KEY und NEON_MONITOR_LINKS in Vercel. Echte Live-Abnahme erfordert die Konfiguration durch den Nutzer und steht noch aus. Historie, Alarmierung, Hintergrund-Scheduler und optionaler SQL-Funktionstest sind in diesem ersten Ausbau nicht enthalten; die gesamte Neon-Funktion bleibt daher teilweise offen.
+
+### Neon-Live-Rückmeldung und Deployment-Zentrale
+
+19. Oktober 2026: Der Nutzer bestätigt nach Korrektur von NEON_MONITOR_LINKS, dass die Neon-Anbindung funktioniert. Die offene Arbeit an Historie, Alarmierung und optionalem SQL-Test bleibt davon unberührt.
+
+Nr. 10 ist als erste lesende Vercel-Integration im Code ergänzt: eigenes Modul Deployments und Projektkarte neben Neon, ausdrückliche Produktionszuordnung, bis zu 20 jüngste Deployments mit Commit-Angaben sowie auf Klick abrufbare endliche Build-Logs. Projekt- und Teamzuordnung erfolgt serverseitig und wird zusätzlich gegen den Besitzer des OMNIDESK-Projekts geprüft. Vor Logabruf wird die tatsächliche Projektzuordnung des Deployments geprüft. Private Providerfelder werden nicht durchgereicht; bekannte Geheimwerte und typische Zugangsdaten in Logs werden bestmöglich entfernt, ohne vollständige Redaktion zu versprechen.
+
+Einrichtung: docs/VERCEL-MONITORING.md mit DEPLOYMENT_API_TOKEN und DEPLOYMENT_PROJECT_LINKS. Es gibt keine Schema-Migration, keine schreibenden Vercel-Aufrufe und keine Änderung der bestehenden API-Dateistruktur/Rewrites. GitHub-Verknüpfung, Korrelation von Deployments mit Uptime/Neon und produktionsverändernde Aktionen sind nicht implementiert. Echter Token-/Kontotest und visuelle Live-Abnahme stehen noch aus.

@@ -676,7 +676,7 @@ var init_uptime_check = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono18 } from "hono";
+import { Hono as Hono19 } from "hono";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -2742,13 +2742,263 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject,
 }
 var neonMonitorRoute = createNeonMonitorRoute();
 
+// server/routes/deployments.ts
+init_client();
+init_projects();
+import { and as and18, eq as eq20 } from "drizzle-orm";
+import { Hono as Hono17 } from "hono";
+
+// server/vercel-monitor.ts
+import { z as z15 } from "zod";
+var identifier = z15.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z15.object({
+  userId: z15.string().min(1),
+  projectId: z15.uuid(),
+  vercelProjectId: identifier,
+  teamId: identifier.optional()
+});
+var VercelMonitorError = class extends Error {
+  code;
+  status;
+  constructor(code, message, status = 502) {
+    super(message);
+    this.name = "VercelMonitorError";
+    this.code = code;
+    this.status = status;
+  }
+};
+function readVercelLinks() {
+  const value = process.env.DEPLOYMENT_PROJECT_LINKS;
+  if (!value?.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
+  }
+  const result = z15.array(linkSchema).max(100).safeParse(parsed);
+  if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
+  const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
+  if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
+  return result.data;
+}
+async function boundedJson(response, maxBytes = 2e6) {
+  if (!response.body) throw new Error("Empty response");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new VercelMonitorError("VERCEL_RESPONSE_TOO_LARGE", "Die Vercel-Antwort ist zu gro\xDF. Bitte die Logs direkt in Vercel pr\xFCfen.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+async function vercelGet(path, link, query = {}) {
+  const token = process.env.DEPLOYMENT_API_TOKEN?.trim();
+  if (!token) throw new VercelMonitorError("VERCEL_NOT_CONFIGURED", "Vercel ist noch nicht eingerichtet: DEPLOYMENT_API_TOKEN fehlt.", 503);
+  const url = new URL(path, "https://api.vercel.com");
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+  if (link.teamId) url.searchParams.set("teamId", link.teamId);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(15e3)
+    });
+  } catch {
+    throw new VercelMonitorError("VERCEL_UNREACHABLE", "Vercel ist derzeit nicht erreichbar. Bitte sp\xE4ter erneut versuchen.");
+  }
+  if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
+  return boundedJson(response);
+}
+var deploymentSchema = z15.object({
+  id: z15.string().optional(),
+  uid: z15.string().optional(),
+  projectId: z15.string().optional(),
+  url: z15.string().optional().nullable(),
+  state: z15.string().optional(),
+  readyState: z15.string().optional(),
+  target: z15.string().optional().nullable(),
+  createdAt: z15.number().optional(),
+  created: z15.number().optional(),
+  meta: z15.record(z15.string(), z15.unknown()).optional()
+}).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
+var projectSchema2 = z15.object({
+  id: z15.string(),
+  name: z15.string(),
+  targets: z15.object({ production: deploymentSchema.nullable().optional() }).optional()
+});
+function safeDeploymentUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value.startsWith("https://") ? value : `https://${value}`);
+    return url.protocol === "https:" && !url.username && !url.password && url.hostname.endsWith(".vercel.app") ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+function publicDeployment(value) {
+  const meta = value.meta ?? {};
+  const text13 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  return {
+    id: value.id || value.uid,
+    url: safeDeploymentUrl(value.url),
+    state: value.readyState || value.state || "UNKNOWN",
+    target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
+    createdAt: value.createdAt ?? value.created ?? null,
+    commit: {
+      sha: text13("githubCommitSha") || text13("gitlabCommitSha") || text13("bitbucketCommitSha"),
+      message: text13("githubCommitMessage") || text13("gitlabCommitMessage") || text13("bitbucketCommitMessage"),
+      branch: text13("githubCommitRef") || text13("gitlabCommitRef") || text13("bitbucketCommitRef")
+    }
+  };
+}
+async function fetchVercelSnapshot(link) {
+  const [projectResult, deploymentsResult] = await Promise.allSettled([
+    vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z15.object({ deployments: z15.array(deploymentSchema) }).parse(value).deployments)
+  ]);
+  if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
+    throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
+  }
+  if (projectResult.status === "rejected" && deploymentsResult.status === "rejected") {
+    if (projectResult.reason instanceof VercelMonitorError) throw projectResult.reason;
+    throw new VercelMonitorError("VERCEL_RESPONSE_INVALID", "Die Vercel-Antwort konnte nicht ausgewertet werden.");
+  }
+  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
+  const production = project?.targets?.production;
+  if (production?.projectId && production.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Produktionszuordnung stimmt nicht mit dem Projekt \xFCberein.");
+  const deployments = deploymentsResult.status === "fulfilled" ? deploymentsResult.value : null;
+  if (deployments?.some((deployment) => deployment.projectId && deployment.projectId !== link.vercelProjectId)) throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Deployment-Liste enth\xE4lt eine fremde Projektzuordnung.");
+  return {
+    checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    project: project ? { id: project.id, name: project.name } : null,
+    production: production ? { ...publicDeployment(production), target: "production" } : null,
+    deployments: deployments?.slice(0, 20).map(publicDeployment) ?? null,
+    historyLimit: 20,
+    unavailable: [
+      projectResult.status === "rejected" ? "Projekt und Produktionszuordnung" : null,
+      deploymentsResult.status === "rejected" ? "Deployment-Verlauf" : null
+    ].filter((item) => Boolean(item))
+  };
+}
+function redactBuildLog(text13) {
+  const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
+  let result = text13.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
+  }
+  result = result.replace(/(\b(?:password|token|secret|api[_-]?key|authorization|database_url)\b\s*[=:]\s*)(?:Bearer\s+)?[^\s,;]+/gi, "$1[ENTFERNT]").replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[ENTFERNT]@").replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, "[PRIVATER SCHL\xDCSSEL ENTFERNT]");
+  return result.slice(0, 8e3);
+}
+async function fetchVercelLogs(link, deploymentId) {
+  if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
+  const detail = z15.object({ id: z15.string(), projectId: z15.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
+  const raw = await vercelGet(
+    `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
+    link,
+    { follow: "0", builds: "1", direction: "backward", limit: "100" }
+  );
+  const parsedEvents = z15.array(z15.object({
+    text: z15.string().nullable().optional(),
+    type: z15.string().optional(),
+    created: z15.number().optional(),
+    date: z15.number().optional(),
+    deploymentId: z15.string().optional()
+  }).nullable()).parse(raw);
+  const events = parsedEvents.filter((event) => event !== null);
+  if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
+  return {
+    deploymentId,
+    checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    limit: 100,
+    truncated: events.length >= 100 || events.some((event) => (event.text?.length ?? 0) > 8e3),
+    entries: events.slice(0, 100).filter((event) => event.text).map((event) => ({ text: redactBuildLog(event.text), type: event.type ?? "log", timestamp: event.created ?? event.date ?? null })).reverse()
+  };
+}
+
+// server/routes/deployments.ts
+async function listOwnedProjects2(userId) {
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq20(projects.userId, userId));
+}
+async function ownsProject2(userId, projectId) {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(and18(eq20(projects.id, projectId), eq20(projects.userId, userId)));
+  return Boolean(project);
+}
+function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject2, fetchVercelSnapshot, fetchVercelLogs }) {
+  const route = new Hono17();
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.get("/", async (c) => {
+    try {
+      const userId = c.get("userId");
+      const links2 = readVercelLinks().filter((link) => link.userId === userId);
+      if (!links2.length) return c.json({ configured: false, userId, links: [] });
+      const owned = await dependencies.listOwnedProjects(userId);
+      return c.json({
+        configured: Boolean(process.env.DEPLOYMENT_API_TOKEN?.trim()),
+        userId,
+        links: links2.flatMap((link) => {
+          const project = owned.find((candidate) => candidate.id === link.projectId);
+          return project ? [{
+            projectId: project.id,
+            projectName: project.name,
+            vercelProjectId: link.vercelProjectId,
+            teamId: link.teamId ?? null
+          }] : [];
+        })
+      });
+    } catch (error) {
+      if (error instanceof VercelMonitorError) return c.json({ code: error.code, error: error.message }, error.status);
+      return c.json({ code: "VERCEL_PROJECT_LOOKUP_FAILED", error: "OMNIDESK-Projekte konnten nicht geladen werden. Projektmanagement und Datenbankkonfiguration pr\xFCfen." }, 503);
+    }
+  });
+  route.get("/:projectId", async (c) => {
+    try {
+      const link = readVercelLinks().find((candidate) => candidate.userId === c.get("userId") && candidate.projectId === c.req.param("projectId"));
+      if (!link || !await dependencies.ownsProject(c.get("userId"), link.projectId)) return c.json({ error: "Keine Vercel-Zuordnung f\xFCr dieses Projekt vorhanden." }, 404);
+      return c.json(await dependencies.fetchVercelSnapshot(link));
+    } catch (error) {
+      if (error instanceof VercelMonitorError) return c.json({ code: error.code, error: error.message }, error.status);
+      return c.json({ error: "Deployment-Daten konnten nicht geladen werden. Bitte sp\xE4ter erneut versuchen." }, 502);
+    }
+  });
+  route.get("/:projectId/:deploymentId/logs", async (c) => {
+    try {
+      const link = readVercelLinks().find((candidate) => candidate.userId === c.get("userId") && candidate.projectId === c.req.param("projectId"));
+      if (!link || !await dependencies.ownsProject(c.get("userId"), link.projectId)) return c.json({ error: "Keine Vercel-Zuordnung f\xFCr dieses Projekt vorhanden." }, 404);
+      return c.json(await dependencies.fetchVercelLogs(link, c.req.param("deploymentId")));
+    } catch (error) {
+      if (error instanceof VercelMonitorError) return c.json({ code: error.code, error: error.message }, error.status);
+      return c.json({ error: "Build-Logs konnten nicht geladen werden. Zugriff und Verf\xFCgbarkeit bei Vercel pr\xFCfen." }, 502);
+    }
+  });
+  return route;
+}
+var deploymentsRoute = createDeploymentsRoute();
+
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and18, asc as asc5, desc as desc9, eq as eq20 } from "drizzle-orm";
-import { Hono as Hono17 } from "hono";
-import { z as z15 } from "zod";
-var chatRoute = new Hono17();
+import { and as and19, asc as asc5, desc as desc9, eq as eq21 } from "drizzle-orm";
+import { Hono as Hono18 } from "hono";
+import { z as z16 } from "zod";
+var chatRoute = new Hono18();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -2760,18 +3010,18 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z15.object({
-  title: z15.string().trim().max(200).optional()
+var createSessionSchema = z16.object({
+  title: z16.string().trim().max(200).optional()
 });
-var updateSessionSchema = z15.object({
-  title: z15.string().trim().min(1).max(200)
+var updateSessionSchema = z16.object({
+  title: z16.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z15.object({
-  content: z15.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z16.object({
+  content: z16.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq20(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq21(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -2790,12 +3040,12 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and18(eq20(chatSessions.id, id), eq20(chatSessions.userId, userId))).returning();
+  }).where(and19(eq21(chatSessions.id, id), eq21(chatSessions.userId, userId))).returning();
   if (!updated) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2804,7 +3054,7 @@ chatRoute.put("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(chatSessions).where(and18(eq20(chatSessions.id, id), eq20(chatSessions.userId, userId))).returning();
+  const [deleted] = await db.delete(chatSessions).where(and19(eq21(chatSessions.id, id), eq21(chatSessions.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2813,23 +3063,23 @@ chatRoute.delete("/sessions/:id", async (c) => {
 chatRoute.get("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and18(eq20(chatSessions.id, sessionId), eq20(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and19(eq21(chatSessions.id, sessionId), eq21(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
-  const messages = await db.select().from(chatMessages).where(eq20(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
+  const messages = await db.select().from(chatMessages).where(eq21(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
   return c.json(messages);
 });
 chatRoute.post("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and18(eq20(chatSessions.id, sessionId), eq20(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and19(eq21(chatSessions.id, sessionId), eq21(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -2839,11 +3089,11 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }).returning();
   if (session.title === "Neuer Chat") {
     const cleanTitle = userContent.length > 35 ? `${userContent.slice(0, 35).trim()}\u2026` : userContent;
-    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq20(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq21(chatSessions.id, sessionId));
   } else {
-    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq20(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq21(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq20(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq21(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -2960,7 +3210,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono18().basePath("/api");
+  const app = new Hono19().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -3004,6 +3254,7 @@ function createApp() {
   app.route("/cloud-monitor", cloudMonitorRoute);
   app.route("/uptime", uptimeRoute);
   app.route("/neon", neonMonitorRoute);
+  app.route("/deployments", deploymentsRoute);
   app.route("/chat", chatRoute);
   return app;
 }

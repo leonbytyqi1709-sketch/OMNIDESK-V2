@@ -24,6 +24,10 @@ OneDrive lässt sich zusätzlich zu Google Drive und MEGA verbinden (private Mic
 
 Der erste lesende Ausbau zeigt zugeordnete Neon-Branches, Compute-Status und verfügbare Projektverbrauchswerte im Uptime-Modul und in der Projektansicht. Vor dem echten Abruf sind API-Schlüssel und benutzerbezogene Projektzuordnungen einzurichten: [Neon-Einrichtung](docs/NEON-MONITORING.md). Ohne Konfiguration bleiben vorhandene Module nutzbar. Messhistorie, Alarme und SQL-Funktionstests folgen gesondert.
 
+## Deployment-Zentrale in V2
+
+Das Modul **Deployments** zeigt die explizite Produktionszuordnung, bis zu 20 jüngste Vercel-Deployments und verfügbare Build-Logs. Dieselbe Karte erscheint in den Projektansichten neben Neon. Vor dem echten Abruf sind ein serverseitiger Token und benutzerbezogene Projektzuordnungen nötig: [Vercel-Einrichtung](docs/VERCEL-MONITORING.md). Der Zugriff ist ausschließlich lesend; keine Deployments oder Rollbacks werden ausgelöst.
+
 ## Stack
 
 - **Frontend:** Vite 8 + React 19 + TypeScript (strict), React Router v7,
