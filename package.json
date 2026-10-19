@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build && npm run bundle:api",
     "lint": "oxlint",
     "preview": "vite preview",
-    "bundle:api": "esbuild server/vercel-entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js",
+    "bundle:api": "esbuild server/vercel-entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/[[...route]].js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

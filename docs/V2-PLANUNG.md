@@ -307,3 +307,9 @@ Erster Umsetzungsschritt ausschließlich in OMNIDESK-V2:
 - Regressionstests: `npx tsx --test tests/mail-removal.test.ts` prüft Drive-/Identitäts-Scopes ohne Gmail, erhaltene Cloud-/Callback-Routen sowie Healthcheck und Auth-Schutz. Drei Tests erfolgreich.
 - Ein authentifizierter Google-Drive-Synchronisationstest und eine visuelle Browserprüfung konnten hier mangels lokaler Zugangskonfiguration nicht durchgeführt werden. Vercel-Livezugriff aus dieser Cloud ist weiterhin durch den Netzwerkproxy blockiert. Der Test des fertigen Deployments durch den Nutzer bleibt erforderlich.
 - Die übrigen 13 ausgewählten V2-Punkte sind noch nicht umgesetzt. Das Original-Repository wird nicht verändert.
+
+### Korrektur nach Rückmeldung: Monitore in V2 nicht sichtbar
+
+Der Nutzer meldet, dass Monitore vor Commit 81199e1 in V2 sichtbar waren, nach dessen Deployment aber nicht mehr; im Original sind sie weiterhin sichtbar. Es wurden keine Monitor-Löschungen oder Migrationen ausgeführt. Als erste isolierte Korrektur wird die Änderung der API-Bereitstellung zurückgenommen: bundle:api erzeugt wieder das versionierte api/[[...route]].js wie im zuvor funktionierenden Deployment. Das Bundle wird aus den aktuellen Quellen ohne Mail-Modul neu generiert; die Vercel-Rewrites bleiben unverändert. Mail-Entfernung und Uptime-Abstände bleiben bestehen.
+
+Die Ursache ist ohne Zugriff auf die Live-Antworten noch nicht abschließend nachgewiesen. Die Wiederherstellung der Anzeige muss nach dem erneuten Deployment geprüft werden. Weitere Featureentwicklung pausiert bis zur Klärung.
