@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { requireAuth } from './auth'
 import { linksRoute } from './routes/links'
 import { notesRoute } from './routes/notes'
@@ -15,6 +16,7 @@ import { integrationsRoute } from './routes/integrations'
 import { microsoftCallbackRoute } from './routes/microsoft-callback'
 import { cloudMonitorRoute } from './routes/cloud-monitor'
 import { uptimeRoute } from './routes/uptime'
+import { neonHistoryRoute } from './routes/neon-history'
 import { neonMonitorRoute } from './routes/neon-monitor'
 import { deploymentsRoute } from './routes/deployments'
 import { chatRoute } from './routes/chat'
@@ -50,7 +52,7 @@ export function createApp() {
   app.route('/integrations/google', googleCallbackRoute)
   app.route('/integrations/microsoft', microsoftCallbackRoute)
 
-  // Vercel-Cron-Endpunkt: Uptime-Auto-Check alle 5 Minuten (vercel.json).
+  // Vercel-Cron-Endpunkt: täglicher Uptime-Auto-Check auf Hobby (vercel.json).
   // Ersetzt den 5-Minuten-Ticker aus server/index.ts, der im Serverless-
   // Betrieb nicht laufen kann. Geschützt über CRON_SECRET (Vercel sendet
   // automatisch `Authorization: Bearer $CRON_SECRET`).
@@ -72,6 +74,19 @@ export function createApp() {
     }
   })
 
+  // Public only for an authenticated scheduler; never accepts SQL/URLs from a caller.
+  app.get('/cron/neon-refresh', async (c) => {
+    c.header('Cache-Control', 'no-store')
+    const secret = process.env.CRON_SECRET
+    if (!secret || c.req.header('Authorization') !== `Bearer ${secret}`) return c.json({ error: 'Scheduler nicht autorisiert.' }, 401)
+    const projectId = c.req.query('projectId')
+    if (projectId && !z.uuid().safeParse(projectId).success) return c.json({ error: 'Ungültige Projektkennung.' }, 400)
+    try {
+      const { runNeonScheduler } = await import('./neon-runner')
+      return c.json({ ok: true, ...await runNeonScheduler(projectId) })
+    } catch { return c.json({ error: 'Neon-Hintergrundprüfung fehlgeschlagen. Speicher und Konfiguration prüfen.' }, 503) }
+  })
+
   app.use('*', requireAuth)
   app.route('/links', linksRoute)
   app.route('/notes', notesRoute)
@@ -85,6 +100,7 @@ export function createApp() {
   app.route('/integrations', integrationsRoute)
   app.route('/cloud-monitor', cloudMonitorRoute)
   app.route('/uptime', uptimeRoute)
+  app.route('/neon', neonHistoryRoute)
   app.route('/neon', neonMonitorRoute)
   app.route('/deployments', deploymentsRoute)
   app.route('/chat', chatRoute)

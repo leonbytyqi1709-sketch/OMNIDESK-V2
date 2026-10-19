@@ -341,3 +341,11 @@ Einrichtung: docs/VERCEL-MONITORING.md mit DEPLOYMENT_API_TOKEN und DEPLOYMENT_P
 ### Ergänzung Deployment-Zentrale · 19.10.2026
 
 Die eigenständige Zentrale listet Vercel-Projekte automatisch aus Konto und zugänglichen Teams auf. Einmalige Freischaltung über DEPLOYMENT_ACCOUNT_USER_ID statt JSON pro Projekt. Bestehende Projektzuordnungen bleiben für die Karten im Projektmanagement erhalten. Lokale Tests prüfen Pagination, Teamkontext, begrenzte Feldausgabe und Benutzerschutz; Prüfung mit dem echten Vercel-Token steht noch aus.
+
+### Neon-Vollausbau · 19.10.2026
+
+Auf ausdrücklichen Auftrag des Nutzers werden die offenen Neon-Bausteine umgesetzt: zusätzliche V2-Monitoring-Tabellen mit selbst einrichtbarer additiver Initialisierung, Messhistorie und fünf Diagramme, konfigurierbare Schwellen mit dedupliziertem Warnungs-/Behebungsverlauf, getrennte Datenfrische und Scheduler-Nachweis, Zuordnung von bis zu drei eigenen vorhandenen Website-/API-/TCP-Monitoren sowie ein ausdrücklich einschaltbarer READ-ONLY-SQL-Funktionstest mit separatem Intervall und serverseitigem Branch-/Endpoint-Abgleich. Historien und Warnungen bleiben benutzer-, projekt- und ressourcenbezogen. Gleichzeitige Prüfläufe werden mit Datenbank-Leases begrenzt; Messspeicherung und Warnungsänderungen erfolgen transaktional.
+
+Der Nutzer verwendet Vercel Hobby. Der tägliche Vercel-Rückfall wird deshalb um einen geschützten extern aufrufbaren Scheduler-Endpunkt ergänzt. Ein Fünf-Minuten-Job muss extern eingerichtet werden; eine Intervallvariable allein führt nichts aus. Fehlende Scheduler-Aufrufe und alte Daten werden sichtbar, ein ruhender Compute gilt nicht als Ausfall. Die Einrichtung ist in docs/NEON-MONITORING.md beschrieben. Die bestehende API-Bereitstellung und Rewrites bleiben erhalten.
+
+Lokale PostgreSQL/WASM-Integrationstests, vollständige Regressionstests sowie Desktop-/Mobil-Browserprüfung mit Beispieldaten werden ausgeführt. Neue Tabellen, echter Scheduler und optionaler SQL-Zugang sind ohne produktive Zugangsdaten in dieser Arbeitsumgebung nicht live abgenommen. Neon wird erst nach diesen Einrichtungsschritten und der dokumentierten Live-Abnahme als vollständig abgeschlossen gezählt. Es wurde kein neuer externer Scheduler-Account im Namen des Nutzers erstellt und kein Secret an einen externen Dienst übertragen.

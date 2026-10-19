@@ -1,3 +1,4 @@
+import { NeonMonitoring } from './NeonMonitoring'
 import { useState } from 'react'
 import { Database, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -69,8 +70,9 @@ export function NeonPanel({ projectId }: { projectId?: string }) {
                   <div key={endpoint.id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-border/60 p-3 text-xs"><span className="break-all font-mono">{endpoint.id}</span><span>{endpoint.disabled ? 'Deaktiviert' : stateLabels[endpoint.state] ?? endpoint.state}{endpoint.pendingState ? ` → ${stateLabels[endpoint.pendingState] ?? endpoint.pendingState}` : ''} · {endpoint.type === 'read_only' ? 'Lesereplikat' : 'Primär'} · {endpoint.minCu ?? '–'}–{endpoint.maxCu ?? '–'} CU</span></div>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">Abruf: {new Date(data.checkedAt).toLocaleString('de-DE')}. Verbrauchswerte gelten für das gesamte Neon-Projekt{data.consumption?.periodStart && data.consumption.periodEnd ? ` (${new Date(data.consumption.periodStart).toLocaleDateString('de-DE')}–${new Date(data.consumption.periodEnd).toLocaleDateString('de-DE')})` : '; Messzeitraum nicht verfügbar'}. Compute-Status ist kein SQL-Funktionstest. Ruhende Computes sind kein Ausfall.</p>
+              <p className="text-xs text-muted-foreground">Abruf: {new Date(data.checkedAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}. Verbrauchswerte gelten für das gesamte Neon-Projekt{data.consumption?.periodStart && data.consumption.periodEnd ? ` (${new Date(data.consumption.periodStart).toLocaleDateString('de-DE')}–${new Date(data.consumption.periodEnd).toLocaleDateString('de-DE')})` : '; Messzeitraum nicht verfügbar'}. Compute-Status ist kein SQL-Funktionstest. Ruhende Computes sind kein Ausfall.</p>
             </>}
+            <NeonMonitoring key={current.projectId} projectId={current.projectId} />
           </>
         )}
       </CardContent>

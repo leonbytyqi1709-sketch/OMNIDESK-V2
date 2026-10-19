@@ -415,6 +415,55 @@ var init_chat = __esm({
   }
 });
 
+// src/db/schema/neon-monitoring.ts
+import { boolean as boolean4, check, index as index12, integer as integer3, jsonb as jsonb5, pgTable as pgTable13, text as text13, timestamp as timestamp13, uniqueIndex as uniqueIndex2, uuid as uuid12 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+var neonMonitoringConfig, neonMonitoringSamples, neonMonitoringAlerts;
+var init_neon_monitoring = __esm({
+  "src/db/schema/neon-monitoring.ts"() {
+    init_projects();
+    neonMonitoringConfig = pgTable13("v2_neon_config", {
+      projectId: uuid12("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+      userId: text13("user_id").notNull(),
+      resourceKey: text13("resource_key").notNull(),
+      settings: jsonb5("settings").$type().notNull(),
+      lastAttemptAt: timestamp13("last_attempt_at", { withTimezone: true }),
+      lastSuccessAt: timestamp13("last_success_at", { withTimezone: true }),
+      lastSchedulerAt: timestamp13("last_scheduler_at", { withTimezone: true }),
+      lastSnapshot: jsonb5("last_snapshot").$type(),
+      lastSql: jsonb5("last_sql").$type(),
+      failures: integer3("failures").notNull().default(0),
+      leaseToken: uuid12("lease_token"),
+      leaseUntil: timestamp13("lease_until", { withTimezone: true }),
+      updatedAt: timestamp13("updated_at", { withTimezone: true }).notNull().defaultNow()
+    });
+    neonMonitoringSamples = pgTable13("v2_neon_samples", {
+      id: uuid12("id").primaryKey().defaultRandom(),
+      projectId: uuid12("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+      userId: text13("user_id").notNull(),
+      resourceKey: text13("resource_key").notNull(),
+      checkedAt: timestamp13("checked_at", { withTimezone: true }).notNull(),
+      bucket: timestamp13("bucket", { withTimezone: true }).notNull(),
+      source: text13("source").notNull(),
+      snapshot: jsonb5("snapshot").$type(),
+      sqlCheck: jsonb5("sql_check").$type(),
+      complete: boolean4("complete").notNull()
+    }, (t) => [check("v2_neon_samples_source_check", sql`${t.source} IN ('manual','scheduler')`), uniqueIndex2("v2_neon_samples_unique").on(t.projectId, t.userId, t.resourceKey, t.bucket), index12("v2_neon_samples_lookup").on(t.projectId, t.userId, t.resourceKey, t.checkedAt)]);
+    neonMonitoringAlerts = pgTable13("v2_neon_alerts", {
+      id: uuid12("id").primaryKey().defaultRandom(),
+      projectId: uuid12("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+      userId: text13("user_id").notNull(),
+      resourceKey: text13("resource_key").notNull(),
+      code: text13("code").notNull(),
+      message: text13("message").notNull(),
+      severity: text13("severity").notNull(),
+      startedAt: timestamp13("started_at", { withTimezone: true }).notNull().defaultNow(),
+      resolvedAt: timestamp13("resolved_at", { withTimezone: true }),
+      acknowledgedAt: timestamp13("acknowledged_at", { withTimezone: true })
+    }, (t) => [uniqueIndex2("v2_neon_alerts_open").on(t.projectId, t.userId, t.resourceKey, t.code).where(sql`${t.resolvedAt} IS NULL`)]);
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -436,6 +485,9 @@ __export(schema_exports, {
   contacts: () => contacts,
   links: () => links,
   milestones: () => milestones,
+  neonMonitoringAlerts: () => neonMonitoringAlerts,
+  neonMonitoringConfig: () => neonMonitoringConfig,
+  neonMonitoringSamples: () => neonMonitoringSamples,
   notes: () => notes,
   projectTasks: () => projectTasks,
   projects: () => projects,
@@ -459,6 +511,7 @@ var init_schema = __esm({
     init_integrations();
     init_uptime();
     init_chat();
+    init_neon_monitoring();
   }
 });
 
@@ -672,11 +725,519 @@ var init_uptime_check = __esm({
   }
 });
 
+// server/neon-monitor.ts
+import { z as z14 } from "zod";
+function readNeonLinks() {
+  const value = process.env.NEON_MONITOR_LINKS;
+  if (!value?.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new NeonConfigurationError("NEON_MONITOR_LINKS enth\xE4lt ung\xFCltiges JSON. In Vercel die vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zus\xE4tzliche \xE4u\xDFere Anf\xFChrungszeichen eintragen und neu deployen.");
+  }
+  const result = z14.array(neonLinkSchema).max(100).safeParse(parsed);
+  if (!result.success) {
+    const path = result.error.issues[0]?.path;
+    const field = path?.length ? path.join(".") : "Liste";
+    throw new NeonConfigurationError(`Neon-Zuordnung ist ung\xFCltig: Feld ${field} in NEON_MONITOR_LINKS pr\xFCfen. projectId muss eine OMNIDESK-Projekt-UUID sein; Neon-IDs d\xFCrfen nur Kleinbuchstaben, Ziffern und Bindestriche enthalten.`);
+  }
+  const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
+  if (new Set(identities).size !== identities.length) {
+    throw new NeonConfigurationError("Neon-Zuordnung ist ung\xFCltig: Mehrere Eintr\xE4ge f\xFCr denselben Benutzer und dasselbe OMNIDESK-Projekt in NEON_MONITOR_LINKS.");
+  }
+  return result.data;
+}
+async function neonGet(path) {
+  const key = process.env.NEON_API_KEY?.trim();
+  if (!key) throw new Error("Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt.");
+  const response = await fetch(`https://console.neon.tech/api/v2${path}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+    redirect: "error",
+    signal: AbortSignal.timeout(12e3)
+  });
+  if (!response.ok) throw new Error(`Neon-Abfrage fehlgeschlagen (HTTP ${response.status}). Berechtigungen, Projektzuordnung oder API-Limit pr\xFCfen.`);
+  return response.json();
+}
+async function fetchNeonSnapshot(link) {
+  const root = `/projects/${encodeURIComponent(link.neonProjectId)}`;
+  const results = await Promise.allSettled([
+    neonGet(root).then((body) => projectSchema.parse(body).project),
+    neonGet(`${root}/branches/${encodeURIComponent(link.branchId)}`).then((body) => branchSchema.parse(body).branch),
+    neonGet(`${root}/endpoints`).then((body) => endpointSchema.parse(body).endpoints)
+  ]);
+  const [projectResult, branchResult, endpointsResult] = results;
+  if (projectResult.status === "fulfilled" && projectResult.value.id !== link.neonProjectId) throw new Error("Neon-Projektzuordnung stimmt nicht mit der Antwort \xFCberein.");
+  if (branchResult.status === "fulfilled" && (branchResult.value.id !== link.branchId || branchResult.value.project_id !== link.neonProjectId)) throw new Error("Neon-Branchzuordnung stimmt nicht mit der Antwort \xFCberein.");
+  if (results.every((result) => result.status === "rejected")) throw new Error("Neon ist derzeit nicht abrufbar. API-Schl\xFCssel, Freigaben und Zuordnung pr\xFCfen.");
+  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
+  const branch = branchResult.status === "fulfilled" ? branchResult.value : null;
+  const endpoints = endpointsResult.status === "fulfilled" ? endpointsResult.value.filter((endpoint) => endpoint.branch_id === link.branchId && endpoint.project_id === link.neonProjectId) : null;
+  return {
+    checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    project: project ? {
+      id: project.id,
+      name: project.name,
+      region: project.region_id ?? null,
+      postgresVersion: project.pg_version ?? null
+    } : null,
+    branch: branch ? {
+      id: branch.id,
+      name: branch.name,
+      state: branch.current_state,
+      logicalSizeBytes: branch.logical_size ?? null
+    } : null,
+    endpoints: endpoints?.map((endpoint) => ({
+      id: endpoint.id,
+      state: endpoint.current_state,
+      pendingState: endpoint.pending_state ?? null,
+      type: endpoint.type,
+      disabled: endpoint.disabled,
+      lastActive: endpoint.last_active ?? null,
+      minCu: endpoint.autoscaling_limit_min_cu ?? null,
+      maxCu: endpoint.autoscaling_limit_max_cu ?? null
+    })) ?? null,
+    consumption: project ? {
+      projectStorageBytes: project.synthetic_storage_size ?? null,
+      computeCuSeconds: project.compute_time_seconds ?? null,
+      activeSeconds: project.active_time_seconds ?? null,
+      transferBytes: project.data_transfer_bytes ?? null,
+      periodStart: project.consumption_period_start ?? null,
+      periodEnd: project.consumption_period_end ?? null
+    } : null,
+    unavailable: results.flatMap((result, index13) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index13]] : [])
+  };
+}
+var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
+var init_neon_monitor = __esm({
+  "server/neon-monitor.ts"() {
+    neonId = z14.string().regex(/^[a-z0-9-]{1,60}$/);
+    neonLinkSchema = z14.object({
+      userId: z14.string().min(1),
+      projectId: z14.uuid(),
+      neonProjectId: neonId,
+      branchId: neonId
+    });
+    NeonConfigurationError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "NeonConfigurationError";
+      }
+    };
+    metric = z14.number().finite().nonnegative().optional().nullable();
+    projectSchema = z14.object({ project: z14.object({
+      id: z14.string(),
+      name: z14.string(),
+      region_id: z14.string().optional(),
+      pg_version: z14.number().optional(),
+      synthetic_storage_size: metric,
+      compute_time_seconds: metric,
+      active_time_seconds: metric,
+      data_transfer_bytes: metric,
+      consumption_period_start: z14.string().optional(),
+      consumption_period_end: z14.string().optional()
+    }) });
+    branchSchema = z14.object({ branch: z14.object({
+      id: z14.string(),
+      project_id: z14.string(),
+      name: z14.string(),
+      current_state: z14.string(),
+      logical_size: metric
+    }) });
+    endpointSchema = z14.object({ endpoints: z14.array(z14.object({
+      id: z14.string(),
+      branch_id: z14.string(),
+      project_id: z14.string(),
+      current_state: z14.string(),
+      pending_state: z14.string().optional(),
+      type: z14.string(),
+      disabled: z14.boolean(),
+      last_active: z14.string().optional(),
+      autoscaling_limit_min_cu: metric,
+      autoscaling_limit_max_cu: metric
+    })) });
+  }
+});
+
+// server/neon-policy.ts
+import { z as z15 } from "zod";
+function evaluateNeonAlerts(settings, snapshot, failures, sql2) {
+  const over = (value, limit, divisor = 1) => limit === null ? false : value == null ? null : value / divisor >= limit;
+  const conditions = [
+    { code: "api_failures", active: failures >= settings.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
+    { code: "storage", active: over(snapshot?.consumption?.projectStorageBytes, settings.storageLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Projektspeicher-Grenzwert wurde erreicht." },
+    { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
+    { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
+    { code: "compute_disabled", active: snapshot?.endpoints == null ? null : snapshot.endpoints.some((endpoint) => endpoint.disabled), severity: "warning", message: "Ein zugeordneter Compute-Endpunkt ist deaktiviert." },
+    { code: "sql_failure", active: !settings.sqlEnabled ? false : sql2 == null ? null : sql2.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
+    { code: "sql_latency", active: !settings.sqlEnabled ? false : sql2?.status !== "up" ? null : over(sql2.latencyMs, settings.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
+  ];
+  return conditions;
+}
+function schedulerInterval() {
+  const value = Number(process.env.NEON_SCHEDULER_INTERVAL_MINUTES ?? 1440);
+  return Number.isInteger(value) && value >= 5 && value <= 1440 ? value : 1440;
+}
+var threshold, neonSettingsSchema, defaultNeonSettings;
+var init_neon_policy = __esm({
+  "server/neon-policy.ts"() {
+    threshold = z15.number().finite().positive().max(1e9).nullable();
+    neonSettingsSchema = z15.object({
+      enabled: z15.boolean(),
+      intervalMinutes: z15.union([z15.literal(5), z15.literal(15), z15.literal(60)]),
+      retentionDays: z15.union([z15.literal(7), z15.literal(30), z15.literal(90)]),
+      storageLimitGiB: threshold,
+      computeLimitHours: threshold,
+      transferLimitGiB: threshold,
+      failureThreshold: z15.number().int().min(1).max(10),
+      sqlEnabled: z15.boolean(),
+      sqlIntervalMinutes: z15.union([z15.literal(15), z15.literal(60), z15.literal(240)]),
+      sqlLatencyLimitMs: threshold,
+      monitorIds: z15.array(z15.uuid()).max(3)
+    }).strict().refine((value) => !value.sqlEnabled || value.sqlIntervalMinutes >= value.intervalMinutes, "SQL-Intervall muss mindestens dem Neon-Pr\xFCfintervall entsprechen").refine((value) => new Set(value.monitorIds).size === value.monitorIds.length, "Doppelte Monitorzuordnung");
+    defaultNeonSettings = {
+      enabled: true,
+      intervalMinutes: 15,
+      retentionDays: 30,
+      storageLimitGiB: null,
+      computeLimitHours: null,
+      transferLimitGiB: null,
+      failureThreshold: 2,
+      sqlEnabled: false,
+      sqlIntervalMinutes: 60,
+      sqlLatencyLimitMs: null,
+      monitorIds: []
+    };
+  }
+});
+
+// server/neon-sql.ts
+import { neon as neon2 } from "@neondatabase/serverless";
+import { z as z16 } from "zod";
+function targetUrl(link) {
+  const targets = targetSchema.parse(JSON.parse(process.env.NEON_SQL_TARGETS || "[]"));
+  const matches = targets.filter((target) => target.neonProjectId === link.neonProjectId && target.branchId === link.branchId);
+  if (matches.length !== 1) throw new Error("SQL target missing or ambiguous");
+  const raw = process.env[matches[0].env];
+  if (!raw) throw new Error("SQL secret missing");
+  const url = new URL(raw);
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname.endsWith(".neon.tech") || !url.username || !url.password || !["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "")) throw new Error("SQL target invalid");
+  return { raw, url };
+}
+function isNeonSqlConfigured(link) {
+  try {
+    targetUrl(link);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function checkNeonSql(link, snapshot) {
+  const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    const { raw, url } = targetUrl(link);
+    const hostname = url.hostname.split(".")[0];
+    if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
+    const sql2 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
+    const started = performance.now();
+    const [rows] = await sql2.transaction([sql2`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
+    if (rows[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
+    return { checkedAt, status: "up", latencyMs: Math.round(performance.now() - started), message: null };
+  } catch {
+    return {
+      checkedAt,
+      status: isNeonSqlConfigured(link) ? "down" : "unavailable",
+      latencyMs: null,
+      message: "SQL-Pr\xFCfung nicht erfolgreich. Serverseitige Zielzuordnung, Branch und Leseberechtigungen pr\xFCfen."
+    };
+  }
+}
+var targetSchema;
+var init_neon_sql = __esm({
+  "server/neon-sql.ts"() {
+    targetSchema = z16.array(z16.object({ neonProjectId: z16.string(), branchId: z16.string(), env: z16.string().regex(/^NEON_SQL_[A-Z0-9_]+_URL$/) })).max(100);
+  }
+});
+
+// server/neon-storage.ts
+import { neon as neon3 } from "@neondatabase/serverless";
+import { randomUUID } from "node:crypto";
+function monitoringSql() {
+  if (!process.env.DATABASE_URL) throw new Error("Monitoring-Speicher: DATABASE_URL fehlt.");
+  return neon3(process.env.DATABASE_URL, { fetchOptions: { signal: AbortSignal.timeout(15e3) } });
+}
+async function initializeNeonStorage() {
+  const sql2 = monitoringSql();
+  const [existing] = await sql2`SELECT to_regclass('v2_neon_config') IS NOT NULL AND to_regclass('v2_neon_samples') IS NOT NULL
+    AND to_regclass('v2_neon_alerts') IS NOT NULL AND to_regclass('v2_neon_samples_unique') IS NOT NULL
+    AND to_regclass('v2_neon_alerts_open') IS NOT NULL AS ready`;
+  if (existing?.ready === true) return;
+  await sql2.transaction([sql2`SELECT pg_advisory_xact_lock(184730019)`, ...neonDdl.map((statement) => sql2.query(statement))]);
+}
+function missingNeonStorage(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "42P01";
+}
+async function loadNeonConfig(link) {
+  const sql2 = monitoringSql();
+  const [config] = await sql2`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
+  return config ?? null;
+}
+async function saveNeonSettings(link, settings) {
+  const sql2 = monitoringSql();
+  const [config] = await sql2`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
+    VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings)}::jsonb)
+    ON CONFLICT (project_id) DO UPDATE SET user_id=EXCLUDED.user_id, resource_key=EXCLUDED.resource_key,
+      settings=EXCLUDED.settings, updated_at=now(), lease_token=NULL, lease_until=NULL,
+      last_attempt_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_attempt_at END,
+      last_success_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_success_at END,
+      last_snapshot=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_snapshot END,
+      last_sql=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_sql END,
+      last_scheduler_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_scheduler_at END,
+      failures=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.failures ELSE 0 END
+    RETURNING *`;
+  return config;
+}
+async function claimNeonCheck(link, source) {
+  const sql2 = monitoringSql();
+  const token = randomUUID();
+  const [config] = await sql2`UPDATE v2_neon_config SET lease_token=${token}, lease_until=now()+interval '90 seconds'
+    WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}
+      AND (lease_until IS NULL OR lease_until<now())
+      AND (${source}='manual' OR (settings->>'enabled')::boolean)
+      AND (last_attempt_at IS NULL OR last_attempt_at<now()-
+        (CASE WHEN ${source}='manual' THEN 60 ELSE (settings->>'intervalMinutes')::int*60 END)*interval '1 second')
+    RETURNING *`;
+  return config ? { config, token } : null;
+}
+async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, source, checkedAt) {
+  const sql2 = monitoringSql();
+  const complete = Boolean(snapshot && !snapshot.unavailable.length);
+  const key = resourceKey(link);
+  const guard = sql2`SELECT 1 FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`;
+  const statements = [
+    // Lock the lease row for the full transaction so settings changes cannot race a completed sample.
+    sql2`SELECT project_id FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND lease_token=${token} FOR UPDATE`,
+    sql2`INSERT INTO v2_neon_samples (project_id,user_id,resource_key,checked_at,bucket,source,snapshot,sql_check,complete)
+      SELECT ${link.projectId},${link.userId},${key},${checkedAt}::timestamptz,date_trunc('minute',${checkedAt}::timestamptz),${source},
+      ${snapshot ? JSON.stringify(snapshot) : null}::jsonb,${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,${complete}
+      WHERE EXISTS (${guard}) ON CONFLICT (project_id,user_id,resource_key,bucket) DO NOTHING`,
+    ...conditions.filter((condition) => condition.active !== null).map((condition) => condition.active ? sql2`INSERT INTO v2_neon_alerts (project_id,user_id,resource_key,code,message,severity)
+          SELECT ${link.projectId},${link.userId},${key},${condition.code},${condition.message},${condition.severity} WHERE EXISTS (${guard})
+          ON CONFLICT (project_id,user_id,resource_key,code) WHERE resolved_at IS NULL DO NOTHING` : sql2`UPDATE v2_neon_alerts SET resolved_at=now() WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+          AND code=${condition.code} AND resolved_at IS NULL AND EXISTS (${guard})`),
+    sql2`DELETE FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId}
+      AND checked_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
+    sql2`DELETE FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resolved_at IS NOT NULL
+      AND resolved_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
+    sql2`UPDATE v2_neon_config SET last_attempt_at=${checkedAt}::timestamptz,
+      last_success_at=CASE WHEN ${complete} THEN ${checkedAt}::timestamptz ELSE last_success_at END,
+      last_scheduler_at=CASE WHEN ${source}='scheduler' THEN now() ELSE last_scheduler_at END,
+      last_snapshot=COALESCE(${snapshot ? JSON.stringify(snapshot) : null}::jsonb,last_snapshot),
+      last_sql=COALESCE(${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,last_sql), failures=CASE WHEN ${complete} THEN 0 ELSE failures+1 END,
+      lease_token=NULL, lease_until=NULL WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`
+  ];
+  await sql2.transaction(statements);
+}
+async function monitoringMonitors(link, settings) {
+  const sql2 = monitoringSql();
+  const rows = await sql2`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
+    LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
+    WHERE m.user_id=${link.userId} ORDER BY m.name LIMIT 500`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    active: Boolean(row.active),
+    linked: settings.monitorIds.includes(String(row.id)),
+    status: row.status,
+    responseTimeMs: row.response_time_ms,
+    checkedAt: row.checked_at
+  }));
+}
+async function readNeonMonitoring(link, days) {
+  const sql2 = monitoringSql();
+  let config = null;
+  let setupRequired = false;
+  try {
+    config = await loadNeonConfig(link);
+  } catch (error) {
+    if (!missingNeonStorage(error)) throw error;
+    setupRequired = true;
+  }
+  const settings = config?.settings ?? defaultNeonSettings;
+  const monitors = await monitoringMonitors(link, settings);
+  const base = {
+    setupRequired: setupRequired || !config,
+    settings,
+    lastAttemptAt: config?.last_attempt_at ?? null,
+    lastSuccessAt: config?.last_success_at ?? null,
+    lastSchedulerAt: config?.last_scheduler_at ?? null,
+    snapshot: config?.last_snapshot ?? null,
+    lastSql: config?.last_sql ?? null,
+    schedulerIntervalMinutes: schedulerInterval(),
+    sqlConfigured: isNeonSqlConfigured(link),
+    monitors,
+    historyDays: days
+  };
+  if (!config) return { ...base, history: [], alerts: [] };
+  const key = resourceKey(link);
+  const bucketSeconds = days === 1 ? 300 : days === 7 ? 3600 : days === 30 ? 21600 : 86400;
+  const [history, alerts] = await Promise.all([
+    sql2`SELECT to_timestamp(floor(extract(epoch FROM checked_at)/${bucketSeconds})*${bucketSeconds}) AS at, snapshot->'consumption'->>'periodStart' AS "periodStart",
+      avg((snapshot->'consumption'->>'projectStorageBytes')::double precision)/1073741824 AS "storageGiB",
+      avg((snapshot->'branch'->>'logicalSizeBytes')::double precision)/1073741824 AS "branchGiB",
+      max((snapshot->'consumption'->>'computeCuSeconds')::double precision)/3600 AS "computeHours",
+      max((snapshot->'consumption'->>'transferBytes')::double precision)/1073741824 AS "transferGiB",
+      avg((sql_check->>'latencyMs')::double precision) AS "sqlLatencyMs", count(*)::int AS samples,
+      count(*) FILTER (WHERE NOT complete)::int AS failures
+      FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+      AND checked_at>=now()-${days}*interval '1 day' GROUP BY 1,2 ORDER BY 1 LIMIT 800`,
+    sql2`SELECT id,code,message,severity,started_at AS "startedAt",resolved_at AS "resolvedAt",acknowledged_at AS "acknowledgedAt"
+      FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+      ORDER BY (resolved_at IS NULL) DESC,started_at DESC LIMIT 100`
+  ]);
+  return { ...base, history, alerts };
+}
+async function acknowledgeNeonAlert(link, id) {
+  const sql2 = monitoringSql();
+  const rows = await sql2`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
+    WHERE id=${id} AND project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)} RETURNING id`;
+  return rows.length > 0;
+}
+var resourceKey, neonDdl;
+var init_neon_storage = __esm({
+  "server/neon-storage.ts"() {
+    init_neon_policy();
+    init_neon_sql();
+    resourceKey = (link) => `${link.neonProjectId}:${link.branchId}`;
+    neonDdl = [
+      `CREATE TABLE IF NOT EXISTS v2_neon_config (
+    project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, settings jsonb NOT NULL,
+    last_attempt_at timestamptz, last_success_at timestamptz, last_scheduler_at timestamptz,
+    last_snapshot jsonb, last_sql jsonb, failures integer NOT NULL DEFAULT 0,
+    lease_token uuid, lease_until timestamptz, updated_at timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE IF NOT EXISTS v2_neon_samples (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, checked_at timestamptz NOT NULL, bucket timestamptz NOT NULL,
+    source text NOT NULL CHECK (source IN ('manual','scheduler')), snapshot jsonb, sql_check jsonb,
+    complete boolean NOT NULL)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_samples_unique ON v2_neon_samples(project_id, user_id, resource_key, bucket)`,
+      `CREATE INDEX IF NOT EXISTS v2_neon_samples_lookup ON v2_neon_samples(project_id, user_id, resource_key, checked_at)`,
+      `CREATE TABLE IF NOT EXISTS v2_neon_alerts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, code text NOT NULL, message text NOT NULL,
+    severity text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, acknowledged_at timestamptz)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_alerts_open ON v2_neon_alerts(project_id, user_id, resource_key, code) WHERE resolved_at IS NULL`
+    ];
+  }
+});
+
+// server/neon-runner.ts
+var neon_runner_exports = {};
+__export(neon_runner_exports, {
+  createNeonRunner: () => createNeonRunner,
+  runNeonCheck: () => runNeonCheck,
+  runNeonScheduler: () => runNeonScheduler
+});
+import { and as and17, eq as eq19, inArray } from "drizzle-orm";
+async function ownsProject(link) {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(and17(eq19(projects.id, link.projectId), eq19(projects.userId, link.userId)));
+  return Boolean(project);
+}
+async function refreshLinkedMonitors(link, ids) {
+  if (!ids.length) return { unavailable: false, down: false };
+  const monitors = await db.select().from(uptimeMonitors).where(and17(eq19(uptimeMonitors.userId, link.userId), inArray(uptimeMonitors.id, ids)));
+  const results = await Promise.allSettled(monitors.filter((monitor) => monitor.active).map((monitor) => checkSingleMonitor({ ...monitor, timeoutMs: Math.min(monitor.timeoutMs, 8e3) })));
+  const unavailable = monitors.length !== ids.length || results.some((result) => result.status === "rejected");
+  return { unavailable, down: results.some((result) => result.status === "fulfilled" && result.value.status === "down") ? true : unavailable || monitors.some((monitor) => !monitor.active) ? null : false };
+}
+function createNeonRunner(dependencies = { ownsProject, claimNeonCheck, fetchNeonSnapshot, checkNeonSql, completeNeonCheck, refreshLinkedMonitors }) {
+  return async (link, source) => {
+    if (!await dependencies.ownsProject(link)) return { outcome: "not_owned" };
+    const claim = await dependencies.claimNeonCheck(link, source);
+    if (!claim) return { outcome: "not_due_or_running" };
+    const { config, token } = claim;
+    const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+    let snapshot = null;
+    try {
+      snapshot = await dependencies.fetchNeonSnapshot(link);
+    } catch {
+    }
+    const sqlDue = config.settings.sqlEnabled && (!config.last_sql || Date.now() - Date.parse(config.last_sql.checkedAt) >= config.settings.sqlIntervalMinutes * 6e4);
+    const [sqlCheck, monitorResult] = await Promise.all([
+      sqlDue ? dependencies.checkNeonSql(link, snapshot) : Promise.resolve(null),
+      dependencies.refreshLinkedMonitors(link, config.settings.monitorIds).catch(() => ({ unavailable: true, down: false }))
+    ]);
+    const complete = Boolean(snapshot && !snapshot.unavailable.length);
+    const failures = complete ? 0 : config.failures + 1;
+    const conditions = evaluateNeonAlerts(config.settings, snapshot, failures, sqlCheck ?? config.last_sql);
+    if (monitorResult.unavailable) conditions.push({ code: "monitor_check", active: true, severity: "warning", message: "Mindestens eine verkn\xFCpfte Monitorpr\xFCfung konnte nicht gespeichert werden." });
+    else conditions.push({ code: "monitor_check", active: false, severity: "warning", message: "" });
+    conditions.push({ code: "monitor_down", active: monitorResult.down ? true : monitorResult.unavailable || monitorResult.down === null ? null : false, severity: "critical", message: "Ein verkn\xFCpfter Website-/API-/TCP-Monitor meldet eine St\xF6rung." });
+    await dependencies.completeNeonCheck(link, token, snapshot, sqlCheck, conditions, source, checkedAt);
+    return { outcome: complete ? "recorded" : "recorded_with_errors" };
+  };
+}
+async function runNeonScheduler(projectId) {
+  const sql2 = monitoringSql();
+  const links2 = readNeonLinks();
+  const permitted = JSON.stringify(links2);
+  let rows;
+  try {
+    await sql2`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
+      WHERE p.id=c.project_id AND p.user_id=c.user_id AND (c.settings->>'enabled')::boolean
+      AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
+        AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)`;
+    rows = await sql2`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
+      JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
+      WHERE (c.settings->>'enabled')::boolean AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
+        AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)
+      AND (c.lease_until IS NULL OR c.lease_until<now())
+      AND (c.last_attempt_at IS NULL OR c.last_attempt_at<now()-(c.settings->>'intervalMinutes')::int*interval '1 minute')
+      ORDER BY c.last_attempt_at ASC NULLS FIRST LIMIT 4`;
+  } catch (error) {
+    if (missingNeonStorage(error)) return { setupRequired: true, processed: 0, pending: false, failures: 0 };
+    throw error;
+  }
+  const eligible = rows.slice(0, 3).flatMap((row) => {
+    const link = links2.find((candidate) => candidate.userId === row.user_id && candidate.projectId === row.project_id && `${candidate.neonProjectId}:${candidate.branchId}` === row.resource_key);
+    return link ? [link] : [];
+  });
+  const results = await Promise.allSettled(eligible.map((link) => runNeonCheck(link, "scheduler")));
+  await sql2.transaction([
+    sql2`DELETE FROM v2_neon_samples s USING v2_neon_config c WHERE s.project_id=c.project_id AND s.checked_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`,
+    sql2`DELETE FROM v2_neon_alerts a USING v2_neon_config c WHERE a.project_id=c.project_id AND a.resolved_at IS NOT NULL AND a.resolved_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`
+  ]);
+  return {
+    setupRequired: false,
+    processed: eligible.length,
+    pending: rows.length > 3,
+    failures: results.filter((result) => result.status === "rejected" || result.value.outcome === "recorded_with_errors").length
+  };
+}
+var runNeonCheck;
+var init_neon_runner = __esm({
+  "server/neon-runner.ts"() {
+    init_client();
+    init_schema();
+    init_neon_monitor();
+    init_uptime_check();
+    init_neon_policy();
+    init_neon_sql();
+    init_neon_storage();
+    runNeonCheck = createNeonRunner();
+  }
+});
+
 // server/vercel-entry.ts
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono19 } from "hono";
+import { Hono as Hono20 } from "hono";
+import { z as z20 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -2530,8 +3091,8 @@ uptimeRoute.post("/:id/check", async (c) => {
   if (!monitor) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
-  const check = await checkSingleMonitor(monitor);
-  return c.json(check);
+  const check2 = await checkSingleMonitor(monitor);
+  return c.json(check2);
 });
 uptimeRoute.get("/:id/checks", async (c) => {
   const userId = c.get("userId");
@@ -2544,155 +3105,89 @@ uptimeRoute.get("/:id/checks", async (c) => {
   return c.json(checks);
 });
 
+// server/routes/neon-history.ts
+init_client();
+init_schema();
+init_neon_monitor();
+init_neon_policy();
+init_neon_sql();
+init_neon_storage();
+init_neon_runner();
+import { and as and18, eq as eq20, inArray as inArray2 } from "drizzle-orm";
+import { Hono as Hono16 } from "hono";
+import { z as z17 } from "zod";
+async function ownsProject2(link) {
+  const [row] = await db.select({ id: projects.id }).from(projects).where(and18(eq20(projects.id, link.projectId), eq20(projects.userId, link.userId)));
+  return Boolean(row);
+}
+async function ownsMonitors(link, ids) {
+  if (!ids.length) return true;
+  const rows = await db.select({ id: uptimeMonitors.id }).from(uptimeMonitors).where(and18(eq20(uptimeMonitors.userId, link.userId), inArray2(uptimeMonitors.id, ids)));
+  return rows.length === ids.length;
+}
+function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, ownsMonitors, initializeNeonStorage, saveNeonSettings, readNeonMonitoring, acknowledgeNeonAlert, runNeonCheck }) {
+  const route = new Hono16();
+  route.onError(() => new Response(JSON.stringify({ error: "Neon-Monitoring-Speicher nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }));
+  route.use("/:projectId/*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    try {
+      const link = readNeonLinks().find((candidate) => candidate.userId === c.get("userId") && candidate.projectId === c.req.param("projectId"));
+      if (!link || !await dependencies.ownsProject(link)) return c.json({ error: "Keine eigene Neon-Projektzuordnung vorhanden." }, 404);
+      c.set("neonLink", link);
+      await next();
+    } catch (error) {
+      return c.json({ error: error instanceof NeonConfigurationError ? error.message : "Neon-Monitoring-Speicher nicht verf\xFCgbar. Datenbank und Einrichtung pr\xFCfen." }, 503);
+    }
+  });
+  route.get("/:projectId/monitoring", async (c) => {
+    const days = Number(c.req.query("days") ?? 1);
+    if (![1, 7, 30, 90].includes(days)) return c.json({ error: "Ung\xFCltiger Zeitraum." }, 400);
+    return c.json(await dependencies.readNeonMonitoring(c.get("neonLink"), days));
+  });
+  route.put("/:projectId/monitoring/settings", async (c) => {
+    const parsed = neonSettingsSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Ung\xFCltige Monitoring-Einstellungen. Intervalle, Grenzen und Monitorzuordnung pr\xFCfen." }, 400);
+    const link = c.get("neonLink");
+    if (!await dependencies.ownsMonitors(link, parsed.data.monitorIds)) return c.json({ error: "Mindestens ein Monitor geh\xF6rt nicht zu deinem Konto." }, 403);
+    if (parsed.data.sqlEnabled && !isNeonSqlConfigured(link)) return c.json({ error: "Vor Aktivierung des SQL-Tests NEON_SQL_TARGETS und die zugeh\xF6rige geheime Verbindungsvariable einrichten." }, 400);
+    await dependencies.initializeNeonStorage();
+    await dependencies.saveNeonSettings(link, parsed.data);
+    return c.json({ ok: true });
+  });
+  route.post("/:projectId/monitoring/check", async (c) => {
+    try {
+      return c.json(await dependencies.runNeonCheck(c.get("neonLink"), "manual"));
+    } catch (error) {
+      return c.json({ error: missingNeonStorage(error) ? "Monitoring zuerst \xFCber Einstellungen speichern einrichten." : "Pr\xFCfung konnte nicht gespeichert werden. Bitte erneut versuchen." }, 503);
+    }
+  });
+  route.post("/:projectId/monitoring/alerts/:alertId/acknowledge", async (c) => {
+    if (!z17.uuid().safeParse(c.req.param("alertId")).success) return c.json({ error: "Ung\xFCltige Warnungskennung." }, 400);
+    if (!await dependencies.acknowledgeNeonAlert(c.get("neonLink"), c.req.param("alertId"))) return c.json({ error: "Warnung nicht gefunden." }, 404);
+    return c.json({ ok: true });
+  });
+  return route;
+}
+var neonHistoryRoute = createNeonHistoryRoute();
+
 // server/routes/neon-monitor.ts
 init_client();
 init_projects();
-import { and as and17, eq as eq19 } from "drizzle-orm";
-import { Hono as Hono16 } from "hono";
-
-// server/neon-monitor.ts
-import { z as z14 } from "zod";
-var neonId = z14.string().regex(/^[a-z0-9-]{1,60}$/);
-var neonLinkSchema = z14.object({
-  userId: z14.string().min(1),
-  projectId: z14.uuid(),
-  neonProjectId: neonId,
-  branchId: neonId
-});
-var NeonConfigurationError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "NeonConfigurationError";
-  }
-};
-function readNeonLinks() {
-  const value = process.env.NEON_MONITOR_LINKS;
-  if (!value?.trim()) return [];
-  let parsed;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new NeonConfigurationError("NEON_MONITOR_LINKS enth\xE4lt ung\xFCltiges JSON. In Vercel die vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zus\xE4tzliche \xE4u\xDFere Anf\xFChrungszeichen eintragen und neu deployen.");
-  }
-  const result = z14.array(neonLinkSchema).max(100).safeParse(parsed);
-  if (!result.success) {
-    const path = result.error.issues[0]?.path;
-    const field = path?.length ? path.join(".") : "Liste";
-    throw new NeonConfigurationError(`Neon-Zuordnung ist ung\xFCltig: Feld ${field} in NEON_MONITOR_LINKS pr\xFCfen. projectId muss eine OMNIDESK-Projekt-UUID sein; Neon-IDs d\xFCrfen nur Kleinbuchstaben, Ziffern und Bindestriche enthalten.`);
-  }
-  const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
-  if (new Set(identities).size !== identities.length) {
-    throw new NeonConfigurationError("Neon-Zuordnung ist ung\xFCltig: Mehrere Eintr\xE4ge f\xFCr denselben Benutzer und dasselbe OMNIDESK-Projekt in NEON_MONITOR_LINKS.");
-  }
-  return result.data;
-}
-var metric = z14.number().finite().nonnegative().optional().nullable();
-var projectSchema = z14.object({ project: z14.object({
-  id: z14.string(),
-  name: z14.string(),
-  region_id: z14.string().optional(),
-  pg_version: z14.number().optional(),
-  synthetic_storage_size: metric,
-  compute_time_seconds: metric,
-  active_time_seconds: metric,
-  data_transfer_bytes: metric,
-  consumption_period_start: z14.string().optional(),
-  consumption_period_end: z14.string().optional()
-}) });
-var branchSchema = z14.object({ branch: z14.object({
-  id: z14.string(),
-  project_id: z14.string(),
-  name: z14.string(),
-  current_state: z14.string(),
-  logical_size: metric
-}) });
-var endpointSchema = z14.object({ endpoints: z14.array(z14.object({
-  id: z14.string(),
-  branch_id: z14.string(),
-  project_id: z14.string(),
-  current_state: z14.string(),
-  pending_state: z14.string().optional(),
-  type: z14.string(),
-  disabled: z14.boolean(),
-  last_active: z14.string().optional(),
-  autoscaling_limit_min_cu: metric,
-  autoscaling_limit_max_cu: metric
-})) });
-async function neonGet(path) {
-  const key = process.env.NEON_API_KEY?.trim();
-  if (!key) throw new Error("Neon ist noch nicht eingerichtet: NEON_API_KEY fehlt.");
-  const response = await fetch(`https://console.neon.tech/api/v2${path}`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-    redirect: "error",
-    signal: AbortSignal.timeout(12e3)
-  });
-  if (!response.ok) throw new Error(`Neon-Abfrage fehlgeschlagen (HTTP ${response.status}). Berechtigungen, Projektzuordnung oder API-Limit pr\xFCfen.`);
-  return response.json();
-}
-async function fetchNeonSnapshot(link) {
-  const root = `/projects/${encodeURIComponent(link.neonProjectId)}`;
-  const results = await Promise.allSettled([
-    neonGet(root).then((body) => projectSchema.parse(body).project),
-    neonGet(`${root}/branches/${encodeURIComponent(link.branchId)}`).then((body) => branchSchema.parse(body).branch),
-    neonGet(`${root}/endpoints`).then((body) => endpointSchema.parse(body).endpoints)
-  ]);
-  const [projectResult, branchResult, endpointsResult] = results;
-  if (projectResult.status === "fulfilled" && projectResult.value.id !== link.neonProjectId) throw new Error("Neon-Projektzuordnung stimmt nicht mit der Antwort \xFCberein.");
-  if (branchResult.status === "fulfilled" && (branchResult.value.id !== link.branchId || branchResult.value.project_id !== link.neonProjectId)) throw new Error("Neon-Branchzuordnung stimmt nicht mit der Antwort \xFCberein.");
-  if (results.every((result) => result.status === "rejected")) throw new Error("Neon ist derzeit nicht abrufbar. API-Schl\xFCssel, Freigaben und Zuordnung pr\xFCfen.");
-  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
-  const branch = branchResult.status === "fulfilled" ? branchResult.value : null;
-  const endpoints = endpointsResult.status === "fulfilled" ? endpointsResult.value.filter((endpoint) => endpoint.branch_id === link.branchId && endpoint.project_id === link.neonProjectId) : null;
-  return {
-    checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    project: project ? {
-      id: project.id,
-      name: project.name,
-      region: project.region_id ?? null,
-      postgresVersion: project.pg_version ?? null
-    } : null,
-    branch: branch ? {
-      id: branch.id,
-      name: branch.name,
-      state: branch.current_state,
-      logicalSizeBytes: branch.logical_size ?? null
-    } : null,
-    endpoints: endpoints?.map((endpoint) => ({
-      id: endpoint.id,
-      state: endpoint.current_state,
-      pendingState: endpoint.pending_state ?? null,
-      type: endpoint.type,
-      disabled: endpoint.disabled,
-      lastActive: endpoint.last_active ?? null,
-      minCu: endpoint.autoscaling_limit_min_cu ?? null,
-      maxCu: endpoint.autoscaling_limit_max_cu ?? null
-    })) ?? null,
-    consumption: project ? {
-      projectStorageBytes: project.synthetic_storage_size ?? null,
-      computeCuSeconds: project.compute_time_seconds ?? null,
-      activeSeconds: project.active_time_seconds ?? null,
-      transferBytes: project.data_transfer_bytes ?? null,
-      periodStart: project.consumption_period_start ?? null,
-      periodEnd: project.consumption_period_end ?? null
-    } : null,
-    unavailable: results.flatMap((result, index12) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index12]] : [])
-  };
-}
-
-// server/routes/neon-monitor.ts
+init_neon_monitor();
+import { and as and19, eq as eq21 } from "drizzle-orm";
+import { Hono as Hono17 } from "hono";
 async function listOwnedProjects(userId) {
-  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq19(projects.userId, userId));
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq21(projects.userId, userId));
 }
-async function ownsProject(userId, projectId) {
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and17(
-    eq19(projects.id, projectId),
-    eq19(projects.userId, userId)
+async function ownsProject3(userId, projectId) {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(and19(
+    eq21(projects.id, projectId),
+    eq21(projects.userId, userId)
   ));
   return Boolean(project);
 }
-function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject, fetchNeonSnapshot }) {
-  const route = new Hono16();
+function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject: ownsProject3, fetchNeonSnapshot }) {
+  const route = new Hono17();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -2745,15 +3240,15 @@ var neonMonitorRoute = createNeonMonitorRoute();
 // server/routes/deployments.ts
 init_client();
 init_projects();
-import { and as and18, eq as eq20 } from "drizzle-orm";
-import { Hono as Hono17 } from "hono";
+import { and as and20, eq as eq22 } from "drizzle-orm";
+import { Hono as Hono18 } from "hono";
 
 // server/vercel-monitor.ts
-import { z as z15 } from "zod";
-var identifier = z15.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
-var linkSchema = z15.object({
-  userId: z15.string().min(1),
-  projectId: z15.uuid(),
+import { z as z18 } from "zod";
+var identifier = z18.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z18.object({
+  userId: z18.string().min(1),
+  projectId: z18.uuid(),
   vercelProjectId: identifier,
   teamId: identifier.optional()
 });
@@ -2776,7 +3271,7 @@ function readVercelLinks() {
   } catch {
     throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
   }
-  const result = z15.array(linkSchema).max(100).safeParse(parsed);
+  const result = z18.array(linkSchema).max(100).safeParse(parsed);
   if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
   const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
   if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
@@ -2823,22 +3318,22 @@ async function vercelGet(path, link, query = {}) {
   if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
   return boundedJson(response);
 }
-var deploymentSchema = z15.object({
-  id: z15.string().optional(),
-  uid: z15.string().optional(),
-  projectId: z15.string().optional(),
-  url: z15.string().optional().nullable(),
-  state: z15.string().optional(),
-  readyState: z15.string().optional(),
-  target: z15.string().optional().nullable(),
-  createdAt: z15.number().optional(),
-  created: z15.number().optional(),
-  meta: z15.record(z15.string(), z15.unknown()).optional()
+var deploymentSchema = z18.object({
+  id: z18.string().optional(),
+  uid: z18.string().optional(),
+  projectId: z18.string().optional(),
+  url: z18.string().optional().nullable(),
+  state: z18.string().optional(),
+  readyState: z18.string().optional(),
+  target: z18.string().optional().nullable(),
+  createdAt: z18.number().optional(),
+  created: z18.number().optional(),
+  meta: z18.record(z18.string(), z18.unknown()).optional()
 }).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
-var projectSchema2 = z15.object({
-  id: z15.string(),
-  name: z15.string(),
-  targets: z15.object({ production: deploymentSchema.nullable().optional() }).optional()
+var projectSchema2 = z18.object({
+  id: z18.string(),
+  name: z18.string(),
+  targets: z18.object({ production: deploymentSchema.nullable().optional() }).optional()
 });
 function safeDeploymentUrl(value) {
   if (!value) return null;
@@ -2851,7 +3346,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text13 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text14 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -2859,16 +3354,16 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text13("githubCommitSha") || text13("gitlabCommitSha") || text13("bitbucketCommitSha"),
-      message: text13("githubCommitMessage") || text13("gitlabCommitMessage") || text13("bitbucketCommitMessage"),
-      branch: text13("githubCommitRef") || text13("gitlabCommitRef") || text13("bitbucketCommitRef")
+      sha: text14("githubCommitSha") || text14("gitlabCommitSha") || text14("bitbucketCommitSha"),
+      message: text14("githubCommitMessage") || text14("gitlabCommitMessage") || text14("bitbucketCommitMessage"),
+      branch: text14("githubCommitRef") || text14("gitlabCommitRef") || text14("bitbucketCommitRef")
     }
   };
 }
 async function fetchVercelSnapshot(link) {
   const [projectResult, deploymentsResult] = await Promise.allSettled([
     vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
-    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z15.object({ deployments: z15.array(deploymentSchema) }).parse(value).deployments)
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z18.object({ deployments: z18.array(deploymentSchema) }).parse(value).deployments)
   ]);
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
     throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
@@ -2894,9 +3389,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item) => Boolean(item))
   };
 }
-function redactBuildLog(text13) {
+function redactBuildLog(text14) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text13.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text14.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -2905,19 +3400,19 @@ function redactBuildLog(text13) {
 }
 async function fetchVercelLogs(link, deploymentId) {
   if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
-  const detail = z15.object({ id: z15.string(), projectId: z15.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  const detail = z18.object({ id: z18.string(), projectId: z18.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
   if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
   const raw = await vercelGet(
     `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
     link,
     { follow: "0", builds: "1", direction: "backward", limit: "100" }
   );
-  const parsedEvents = z15.array(z15.object({
-    text: z15.string().nullable().optional(),
-    type: z15.string().optional(),
-    created: z15.number().optional(),
-    date: z15.number().optional(),
-    deploymentId: z15.string().optional()
+  const parsedEvents = z18.array(z18.object({
+    text: z18.string().nullable().optional(),
+    type: z18.string().optional(),
+    created: z18.number().optional(),
+    date: z18.number().optional(),
+    deploymentId: z18.string().optional()
   }).nullable()).parse(raw);
   const events = parsedEvents.filter((event) => event !== null);
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
@@ -2933,14 +3428,14 @@ async function fetchVercelProjects() {
   const projects2 = [];
   const unavailable = [];
   let limited = false;
-  const pageSchema = z15.object({ pagination: z15.object({ next: z15.number().nullable().optional() }).optional() });
+  const pageSchema = z18.object({ pagination: z18.object({ next: z18.number().nullable().optional() }).optional() });
   async function pages(path, field, teamId) {
     const items = [];
     let until;
     for (let page = 0; page < 10; page++) {
       const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
       const parsed = pageSchema.parse(raw);
-      items.push(...z15.array(z15.unknown()).parse(z15.record(z15.string(), z15.unknown()).parse(raw)[field]));
+      items.push(...z18.array(z18.unknown()).parse(z18.record(z18.string(), z18.unknown()).parse(raw)[field]));
       const next = parsed.pagination?.next;
       if (next == null) return items;
       if (String(next) === until) {
@@ -2954,7 +3449,7 @@ async function fetchVercelProjects() {
   }
   const teams = [];
   try {
-    teams.push(...z15.array(z15.object({ id: identifier, name: z15.string() })).parse(await pages("/v2/teams", "teams")));
+    teams.push(...z18.array(z18.object({ id: identifier, name: z18.string() })).parse(await pages("/v2/teams", "teams")));
   } catch {
     unavailable.push("Team-Liste");
   }
@@ -2963,7 +3458,7 @@ async function fetchVercelProjects() {
   for (let i = 0; i < scopes.length; i += 4) {
     await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
       try {
-        const items = z15.array(z15.object({ id: identifier, name: z15.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        const items = z18.array(z18.object({ id: identifier, name: z18.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
         for (const item of items) {
           const teamId = item.accountId?.startsWith("team_") ? item.accountId : scope.id ?? null;
           if (!projects2.some((project) => project.id === item.id && project.teamId === teamId)) {
@@ -2980,14 +3475,14 @@ async function fetchVercelProjects() {
 
 // server/routes/deployments.ts
 async function listOwnedProjects2(userId) {
-  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq20(projects.userId, userId));
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq22(projects.userId, userId));
 }
-async function ownsProject2(userId, projectId) {
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and18(eq20(projects.id, projectId), eq20(projects.userId, userId)));
+async function ownsProject4(userId, projectId) {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(and20(eq22(projects.id, projectId), eq22(projects.userId, userId)));
   return Boolean(project);
 }
-function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject2, fetchVercelSnapshot, fetchVercelLogs }) {
-  const route = new Hono17();
+function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject4, fetchVercelSnapshot, fetchVercelLogs }) {
+  const route = new Hono18();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -3076,10 +3571,10 @@ var deploymentsRoute = createDeploymentsRoute();
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and19, asc as asc5, desc as desc9, eq as eq21 } from "drizzle-orm";
-import { Hono as Hono18 } from "hono";
-import { z as z16 } from "zod";
-var chatRoute = new Hono18();
+import { and as and21, asc as asc5, desc as desc9, eq as eq23 } from "drizzle-orm";
+import { Hono as Hono19 } from "hono";
+import { z as z19 } from "zod";
+var chatRoute = new Hono19();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -3091,18 +3586,18 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z16.object({
-  title: z16.string().trim().max(200).optional()
+var createSessionSchema = z19.object({
+  title: z19.string().trim().max(200).optional()
 });
-var updateSessionSchema = z16.object({
-  title: z16.string().trim().min(1).max(200)
+var updateSessionSchema = z19.object({
+  title: z19.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z16.object({
-  content: z16.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z19.object({
+  content: z19.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq21(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq23(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -3121,12 +3616,12 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z19.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and19(eq21(chatSessions.id, id), eq21(chatSessions.userId, userId))).returning();
+  }).where(and21(eq23(chatSessions.id, id), eq23(chatSessions.userId, userId))).returning();
   if (!updated) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -3135,7 +3630,7 @@ chatRoute.put("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(chatSessions).where(and19(eq21(chatSessions.id, id), eq21(chatSessions.userId, userId))).returning();
+  const [deleted] = await db.delete(chatSessions).where(and21(eq23(chatSessions.id, id), eq23(chatSessions.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -3144,23 +3639,23 @@ chatRoute.delete("/sessions/:id", async (c) => {
 chatRoute.get("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and19(eq21(chatSessions.id, sessionId), eq21(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and21(eq23(chatSessions.id, sessionId), eq23(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
-  const messages = await db.select().from(chatMessages).where(eq21(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
+  const messages = await db.select().from(chatMessages).where(eq23(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
   return c.json(messages);
 });
 chatRoute.post("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and19(eq21(chatSessions.id, sessionId), eq21(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and21(eq23(chatSessions.id, sessionId), eq23(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z19.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -3170,11 +3665,11 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }).returning();
   if (session.title === "Neuer Chat") {
     const cleanTitle = userContent.length > 35 ? `${userContent.slice(0, 35).trim()}\u2026` : userContent;
-    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq21(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq23(chatSessions.id, sessionId));
   } else {
-    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq21(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq23(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq21(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq23(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -3291,7 +3786,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono19().basePath("/api");
+  const app = new Hono20().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -3321,6 +3816,19 @@ function createApp() {
       return c.json({ error: "Uptime-Refresh fehlgeschlagen" }, 500);
     }
   });
+  app.get("/cron/neon-refresh", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const secret = process.env.CRON_SECRET;
+    if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
+    const projectId = c.req.query("projectId");
+    if (projectId && !z20.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    try {
+      const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
+      return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
+    } catch {
+      return c.json({ error: "Neon-Hintergrundpr\xFCfung fehlgeschlagen. Speicher und Konfiguration pr\xFCfen." }, 503);
+    }
+  });
   app.use("*", requireAuth);
   app.route("/links", linksRoute);
   app.route("/notes", notesRoute);
@@ -3334,6 +3842,7 @@ function createApp() {
   app.route("/integrations", integrationsRoute);
   app.route("/cloud-monitor", cloudMonitorRoute);
   app.route("/uptime", uptimeRoute);
+  app.route("/neon", neonHistoryRoute);
   app.route("/neon", neonMonitorRoute);
   app.route("/deployments", deploymentsRoute);
   app.route("/chat", chatRoute);
