@@ -464,6 +464,21 @@ var init_neon_monitoring = __esm({
   }
 });
 
+// src/db/schema/github.ts
+import { pgTable as pgTable14, text as text14, timestamp as timestamp14, uuid as uuid13 } from "drizzle-orm/pg-core";
+var githubProjectLinks;
+var init_github = __esm({
+  "src/db/schema/github.ts"() {
+    init_projects();
+    githubProjectLinks = pgTable14("v2_github_links", {
+      projectId: uuid13("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+      userId: text14("user_id").notNull(),
+      repository: text14("repository").notNull(),
+      updatedAt: timestamp14("updated_at", { withTimezone: true }).notNull().defaultNow()
+    });
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -483,6 +498,7 @@ __export(schema_exports, {
   commands: () => commands,
   connectedAccounts: () => connectedAccounts,
   contacts: () => contacts,
+  githubProjectLinks: () => githubProjectLinks,
   links: () => links,
   milestones: () => milestones,
   neonMonitoringAlerts: () => neonMonitoringAlerts,
@@ -512,6 +528,7 @@ var init_schema = __esm({
     init_uptime();
     init_chat();
     init_neon_monitoring();
+    init_github();
   }
 });
 
@@ -594,14 +611,14 @@ function getSslDaysRemaining(hostname, port = 443, timeoutMs = 5e3) {
     }
   });
 }
-async function checkHttp(url, expectedStatus = 200, timeoutMs = 1e4) {
+async function checkHttp(url2, expectedStatus = 200, timeoutMs = 1e4) {
   const start = performance.now();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   let statusCode = null;
   let sslDaysLeft = null;
   try {
-    const normalizedUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `https://${url}`;
+    const normalizedUrl = url2.startsWith("http://") || url2.startsWith("https://") ? url2 : `https://${url2}`;
     const parsedUrl = new URL(normalizedUrl);
     if (parsedUrl.protocol === "https:") {
       const sslPort = parsedUrl.port ? parseInt(parsedUrl.port, 10) : 443;
@@ -771,16 +788,16 @@ async function fetchNeonSnapshot(link) {
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.neonProjectId) throw new Error("Neon-Projektzuordnung stimmt nicht mit der Antwort \xFCberein.");
   if (branchResult.status === "fulfilled" && (branchResult.value.id !== link.branchId || branchResult.value.project_id !== link.neonProjectId)) throw new Error("Neon-Branchzuordnung stimmt nicht mit der Antwort \xFCberein.");
   if (results.every((result) => result.status === "rejected")) throw new Error("Neon ist derzeit nicht abrufbar. API-Schl\xFCssel, Freigaben und Zuordnung pr\xFCfen.");
-  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
+  const project2 = projectResult.status === "fulfilled" ? projectResult.value : null;
   const branch = branchResult.status === "fulfilled" ? branchResult.value : null;
   const endpoints = endpointsResult.status === "fulfilled" ? endpointsResult.value.filter((endpoint) => endpoint.branch_id === link.branchId && endpoint.project_id === link.neonProjectId) : null;
   return {
     checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    project: project ? {
-      id: project.id,
-      name: project.name,
-      region: project.region_id ?? null,
-      postgresVersion: project.pg_version ?? null
+    project: project2 ? {
+      id: project2.id,
+      name: project2.name,
+      region: project2.region_id ?? null,
+      postgresVersion: project2.pg_version ?? null
     } : null,
     branch: branch ? {
       id: branch.id,
@@ -798,13 +815,13 @@ async function fetchNeonSnapshot(link) {
       minCu: endpoint.autoscaling_limit_min_cu ?? null,
       maxCu: endpoint.autoscaling_limit_max_cu ?? null
     })) ?? null,
-    consumption: project ? {
-      projectStorageBytes: project.synthetic_storage_size ?? null,
-      computeCuSeconds: project.compute_time_seconds ?? null,
-      activeSeconds: project.active_time_seconds ?? null,
-      transferBytes: project.data_transfer_bytes ?? null,
-      periodStart: project.consumption_period_start ?? null,
-      periodEnd: project.consumption_period_end ?? null
+    consumption: project2 ? {
+      projectStorageBytes: project2.synthetic_storage_size ?? null,
+      computeCuSeconds: project2.compute_time_seconds ?? null,
+      activeSeconds: project2.active_time_seconds ?? null,
+      transferBytes: project2.data_transfer_bytes ?? null,
+      periodStart: project2.consumption_period_start ?? null,
+      periodEnd: project2.consumption_period_end ?? null
     } : null,
     unavailable: results.flatMap((result, index13) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index13]] : [])
   };
@@ -921,9 +938,9 @@ function targetUrl(link) {
   if (matches.length !== 1) throw new Error("SQL target missing or ambiguous");
   const raw = process.env[matches[0].env];
   if (!raw) throw new Error("SQL secret missing");
-  const url = new URL(raw);
-  if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname.endsWith(".neon.tech") || !url.username || !url.password || !["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "")) throw new Error("SQL target invalid");
-  return { raw, url };
+  const url2 = new URL(raw);
+  if (!["postgres:", "postgresql:"].includes(url2.protocol) || !url2.hostname.endsWith(".neon.tech") || !url2.username || !url2.password || !["require", "verify-full"].includes(url2.searchParams.get("sslmode") ?? "")) throw new Error("SQL target invalid");
+  return { raw, url: url2 };
 }
 function isNeonSqlConfigured(link) {
   try {
@@ -936,8 +953,8 @@ function isNeonSqlConfigured(link) {
 async function checkNeonSql(link, snapshot) {
   const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
   try {
-    const { raw, url } = targetUrl(link);
-    const hostname = url.hostname.split(".")[0];
+    const { raw, url: url2 } = targetUrl(link);
+    const hostname = url2.hostname.split(".")[0];
     if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
     const sql2 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
     const started = performance.now();
@@ -1142,8 +1159,8 @@ __export(neon_runner_exports, {
 });
 import { and as and17, eq as eq19, inArray } from "drizzle-orm";
 async function ownsProject(link) {
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and17(eq19(projects.id, link.projectId), eq19(projects.userId, link.userId)));
-  return Boolean(project);
+  const [project2] = await db.select({ id: projects.id }).from(projects).where(and17(eq19(projects.id, link.projectId), eq19(projects.userId, link.userId)));
+  return Boolean(project2);
 }
 async function refreshLinkedMonitors(link, ids) {
   if (!ids.length) return { unavailable: false, down: false };
@@ -1236,8 +1253,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono20 } from "hono";
-import { z as z20 } from "zod";
+import { Hono as Hono21 } from "hono";
+import { z as z22 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -1607,13 +1624,13 @@ projectsRoute.get("/", async (c) => {
 projectsRoute.get("/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [project] = await db.select().from(projects).where(and7(eq7(projects.id, id), eq7(projects.userId, userId)));
-  if (!project) return c.json({ error: "Projekt nicht gefunden" }, 404);
+  const [project2] = await db.select().from(projects).where(and7(eq7(projects.id, id), eq7(projects.userId, userId)));
+  if (!project2) return c.json({ error: "Projekt nicht gefunden" }, 404);
   const [tasks2, projectMilestones] = await Promise.all([
     db.select().from(projectTasks).where(and7(eq7(projectTasks.projectId, id), eq7(projectTasks.userId, userId))).orderBy(asc4(projectTasks.createdAt)),
     db.select().from(milestones).where(and7(eq7(milestones.projectId, id), eq7(milestones.userId, userId))).orderBy(asc4(milestones.dueDate))
   ]);
-  return c.json({ project, tasks: tasks2, milestones: projectMilestones });
+  return c.json({ project: project2, tasks: tasks2, milestones: projectMilestones });
 });
 projectsRoute.post("/", async (c) => {
   const parsed = projectInput.safeParse(await c.req.json());
@@ -1648,8 +1665,8 @@ projectsRoute.post("/:id/tasks", async (c) => {
   }
   const userId = c.get("userId");
   const projectId = c.req.param("id");
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and7(eq7(projects.id, projectId), eq7(projects.userId, userId)));
-  if (!project) return c.json({ error: "Projekt nicht gefunden" }, 404);
+  const [project2] = await db.select({ id: projects.id }).from(projects).where(and7(eq7(projects.id, projectId), eq7(projects.userId, userId)));
+  if (!project2) return c.json({ error: "Projekt nicht gefunden" }, 404);
   const [row] = await db.insert(projectTasks).values({ ...parsed.data, projectId, userId }).returning();
   return c.json(row, 201);
 });
@@ -1684,8 +1701,8 @@ projectsRoute.post("/:id/milestones", async (c) => {
   }
   const userId = c.get("userId");
   const projectId = c.req.param("id");
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and7(eq7(projects.id, projectId), eq7(projects.userId, userId)));
-  if (!project) return c.json({ error: "Projekt nicht gefunden" }, 404);
+  const [project2] = await db.select({ id: projects.id }).from(projects).where(and7(eq7(projects.id, projectId), eq7(projects.userId, userId)));
+  if (!project2) return c.json({ error: "Projekt nicht gefunden" }, 404);
   const { dueDate, ...rest } = parsed.data;
   const [row] = await db.insert(milestones).values({
     ...rest,
@@ -2282,8 +2299,8 @@ function startMicrosoftAuthorization(userId, returnTo) {
     returnTo: returnTo === "/cloud-monitor" ? returnTo : "/settings",
     createdAt: Date.now()
   });
-  const url = new URL(`https://login.microsoftonline.com/${config.tenant}/oauth2/v2.0/authorize`);
-  url.search = new URLSearchParams({
+  const url2 = new URL(`https://login.microsoftonline.com/${config.tenant}/oauth2/v2.0/authorize`);
+  url2.search = new URLSearchParams({
     client_id: config.clientId,
     response_type: "code",
     redirect_uri: config.redirectUri,
@@ -2294,7 +2311,7 @@ function startMicrosoftAuthorization(userId, returnTo) {
     code_challenge_method: "S256",
     prompt: "select_account"
   }).toString();
-  return { url: url.toString(), cookie: sealMicrosoftValue(JSON.stringify(transaction), "transaction") };
+  return { url: url2.toString(), cookie: sealMicrosoftValue(JSON.stringify(transaction), "transaction") };
 }
 function readMicrosoftTransaction(cookie, state) {
   if (!cookie || !state) throw new Error("OneDrive-Anmeldung fehlt oder ist abgelaufen. Bitte erneut starten.");
@@ -2520,8 +2537,8 @@ integrationsRoute.get("/microsoft/auth-url", (c) => {
 integrationsRoute.get("/google/auth-url", (c) => {
   const returnTo = c.req.query("returnTo") || "/settings";
   try {
-    const url = getGoogleOAuthUrl(c.get("userId"), returnTo);
-    return c.json({ url });
+    const url2 = getGoogleOAuthUrl(c.get("userId"), returnTo);
+    return c.json({ url: url2 });
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Google OAuth URL konnte nicht generiert werden." },
@@ -2760,9 +2777,9 @@ function createMicrosoftCallbackRoute(persist = persistMicrosoftConnection) {
       return c.json({ error: "OneDrive ist noch nicht vollst\xE4ndig konfiguriert." }, 503);
     }
     const redirect = (destination, key, value) => {
-      const url = new URL(destination, origin);
-      url.searchParams.set(key, value);
-      return c.redirect(url.toString());
+      const url2 = new URL(destination, origin);
+      url2.searchParams.set(key, value);
+      return c.redirect(url2.toString());
     };
     try {
       const transaction = readMicrosoftTransaction(getCookie(c, MICROSOFT_COOKIE), c.req.query("state"));
@@ -3180,11 +3197,11 @@ async function listOwnedProjects(userId) {
   return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq21(projects.userId, userId));
 }
 async function ownsProject3(userId, projectId) {
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and19(
+  const [project2] = await db.select({ id: projects.id }).from(projects).where(and19(
     eq21(projects.id, projectId),
     eq21(projects.userId, userId)
   ));
-  return Boolean(project);
+  return Boolean(project2);
 }
 function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject: ownsProject3, fetchNeonSnapshot }) {
   const route = new Hono17();
@@ -3202,10 +3219,10 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject:
         configured: Boolean(process.env.NEON_API_KEY?.trim()),
         userId,
         links: links2.flatMap((link) => {
-          const project = owned.find((candidate) => candidate.id === link.projectId);
-          return project ? [{
-            projectId: project.id,
-            projectName: project.name,
+          const project2 = owned.find((candidate) => candidate.id === link.projectId);
+          return project2 ? [{
+            projectId: project2.id,
+            projectName: project2.name,
             neonProjectId: link.neonProjectId,
             branchId: link.branchId
           }] : [];
@@ -3237,18 +3254,214 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject:
 }
 var neonMonitorRoute = createNeonMonitorRoute();
 
+// server/routes/github.ts
+import { Hono as Hono18 } from "hono";
+import { z as z19 } from "zod";
+
+// server/github-monitor.ts
+import { z as z18 } from "zod";
+var githubOwner = z18.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
+var githubRepo = z18.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
+var repositoryName = z18.string().refine((value) => {
+  const parts = value.split("/");
+  return parts.length === 2 && githubOwner.safeParse(parts[0]).success && githubRepo.safeParse(parts[1]).success;
+});
+var GitHubError = class extends Error {
+  status;
+  constructor(message, status = 502) {
+    super(message);
+    this.status = status;
+  }
+};
+var text15 = z18.string();
+var nullableDate = z18.string().nullable().optional();
+var repoSchema = z18.object({ id: z18.number(), full_name: text15, name: text15, private: z18.boolean(), default_branch: text15, updated_at: nullableDate, html_url: text15 });
+function url(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.hostname === "github.com" && !parsed.username && !parsed.password ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+function project(value) {
+  if (!repositoryName.safeParse(value.full_name).success) throw new GitHubError("GitHub lieferte eine ung\xFCltige Repository-Kennung.");
+  return { id: value.id, fullName: value.full_name, name: value.name, private: value.private, defaultBranch: value.default_branch, updatedAt: value.updated_at ?? null, url: url(value.html_url) };
+}
+async function githubGet(path, query = {}) {
+  const token = process.env.GITHUB_API_TOKEN?.trim();
+  if (!token) throw new GitHubError("GITHUB_API_TOKEN ist noch nicht eingerichtet.", 503);
+  const endpoint = new URL(path, "https://api.github.com");
+  if (endpoint.origin !== "https://api.github.com") throw new GitHubError("Ung\xFCltiger API-Pfad.", 400);
+  for (const [key, value] of Object.entries(query)) endpoint.searchParams.set(key, value);
+  let response;
+  try {
+    response = await fetch(endpoint, { method: "GET", redirect: "error", signal: AbortSignal.timeout(12e3), headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "OMNIDESK-V2"
+    } });
+  } catch {
+    throw new GitHubError("GitHub ist derzeit nicht erreichbar.");
+  }
+  if (!response.ok) {
+    const rateLimited = response.status === 429 || response.headers.get("x-ratelimit-remaining") === "0";
+    throw new GitHubError(rateLimited ? "GitHub-API-Limit erreicht. Bitte sp\xE4ter aktualisieren." : `GitHub-Abfrage fehlgeschlagen (HTTP ${response.status}). Token und Repository-Berechtigungen pr\xFCfen.`, rateLimited ? 429 : response.status === 404 ? 404 : 502);
+  }
+  if (!response.body) throw new GitHubError("Leere GitHub-Antwort.");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 2e6) {
+        await reader.cancel();
+        throw new GitHubError("GitHub-Antwort \xFCberschreitet die Gr\xF6\xDFenbegrenzung.");
+      }
+      ;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new GitHubError("GitHub-Antwort konnte nicht gelesen werden.");
+  }
+}
+async function listGitHubRepositories() {
+  const repositories = [];
+  for (let page = 1; page <= 10; page++) {
+    const items = z18.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
+    for (const item of items) if (!repositories.some((repo) => repo.id === item.id)) repositories.push(project(item));
+    if (items.length < 100) return { repositories, limited: false };
+  }
+  return { repositories, limited: true };
+}
+async function fetchGitHubSnapshot(name) {
+  if (!repositoryName.safeParse(name).success) throw new GitHubError("Ung\xFCltiges Repository.", 400);
+  const root = `/repos/${name.split("/").map(encodeURIComponent).join("/")}`;
+  const repository = project(repoSchema.parse(await githubGet(root)));
+  if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
+  const item = (id, title, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
+  const issueSchema = z18.object({ id: z18.number(), number: z18.number(), title: text15, html_url: text15, state: text15, updated_at: nullableDate, draft: z18.boolean().optional(), pull_request: z18.unknown().optional() });
+  const loaders = {
+    branches: async () => z18.array(z18.object({ name: text15, protected: z18.boolean(), commit: z18.object({ sha: text15 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z18.array(z18.object({ sha: text15, html_url: text15, commit: z18.object({ message: text15, committer: z18.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    issues: async () => z18.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
+    pulls: async () => z18.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
+    runs: async () => z18.object({ workflow_runs: z18.array(z18.object({ id: z18.number(), name: text15.nullable(), html_url: text15, status: text15, conclusion: text15.nullable(), updated_at: nullableDate, head_sha: text15, head_branch: text15.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z18.array(z18.object({ id: z18.number(), name: text15.nullable(), tag_name: text15, html_url: text15, published_at: nullableDate, draft: z18.boolean(), prerelease: z18.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+  };
+  const keys = Object.keys(loaders);
+  const results = await Promise.allSettled(keys.map((key) => loaders[key]()));
+  const values = Object.fromEntries(keys.map((key, i) => [key, results[i].status === "fulfilled" ? results[i].value : null]));
+  return { repository, ...values, checkedAt: (/* @__PURE__ */ new Date()).toISOString(), unavailable: keys.filter((_key, i) => results[i].status === "rejected"), limit: 20 };
+}
+
+// server/github-links.ts
+init_client();
+init_projects();
+init_neon_storage();
+import { and as and20, eq as eq22 } from "drizzle-orm";
+async function githubProjects(userId) {
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq22(projects.userId, userId));
+}
+async function ownsGitHubProject(userId, projectId) {
+  const [row] = await db.select({ id: projects.id }).from(projects).where(and20(eq22(projects.id, projectId), eq22(projects.userId, userId)));
+  return Boolean(row);
+}
+async function listGitHubLinks(userId) {
+  const sql2 = monitoringSql();
+  try {
+    const rows = await sql2`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
+      JOIN projects p ON p.id=l.project_id AND p.user_id=l.user_id WHERE l.user_id=${userId}`;
+    return rows;
+  } catch (error) {
+    if (error.code === "42P01") return [];
+    throw error;
+  }
+}
+var githubLinksDdl = `CREATE TABLE IF NOT EXISTS v2_github_links (
+  project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  user_id text NOT NULL, repository text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
+async function saveGitHubLink(userId, projectId, repository) {
+  const sql2 = monitoringSql();
+  const [exists] = await sql2`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
+  if (!exists?.ready) await sql2.transaction([sql2`SELECT pg_advisory_xact_lock(184730020)`, sql2.query(githubLinksDdl)]);
+  const rows = await sql2`INSERT INTO v2_github_links(project_id,user_id,repository)
+    SELECT id,user_id,${repository} FROM projects WHERE id=${projectId} AND user_id=${userId}
+    ON CONFLICT(project_id) DO UPDATE SET user_id=EXCLUDED.user_id,repository=EXCLUDED.repository,updated_at=now() RETURNING project_id`;
+  return rows.length > 0;
+}
+async function deleteGitHubLink(userId, projectId) {
+  const sql2 = monitoringSql();
+  await sql2`DELETE FROM v2_github_links l USING projects p WHERE l.project_id=${projectId} AND l.user_id=${userId} AND p.id=l.project_id AND p.user_id=${userId}`;
+}
+
+// server/routes/github.ts
+function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepositories, githubProjects, ownsGitHubProject, listGitHubLinks, saveGitHubLink, deleteGitHubLink }) {
+  const route = new Hono18();
+  route.onError((error, c) => c.json({ error: error instanceof GitHubError ? error.message : "GitHub-Daten konnten nicht geladen werden. Einrichtung und Datenbankrechte pr\xFCfen." }, error instanceof GitHubError ? error.status : 503));
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    if (!process.env.GITHUB_ACCOUNT_USER_ID?.trim() || process.env.GITHUB_ACCOUNT_USER_ID.trim() !== c.get("userId")) return c.json({ error: "GitHub-Zentrale nicht freigeschaltet. GITHUB_ACCOUNT_USER_ID muss deine OMNIDESK-Benutzerkennung enthalten." }, 403);
+    await next();
+  });
+  route.get("/", async (c) => {
+    const userId = c.get("userId");
+    if (!process.env.GITHUB_API_TOKEN?.trim()) return c.json({ configured: false, userId, repositories: [], limited: false, projects: [], links: [], mappingUnavailable: false });
+    const catalogue = await dependencies.listGitHubRepositories();
+    const [projects2, links2] = await Promise.allSettled([dependencies.githubProjects(userId), dependencies.listGitHubLinks(userId)]);
+    return c.json({
+      configured: true,
+      userId,
+      ...catalogue,
+      projects: projects2.status === "fulfilled" ? projects2.value : [],
+      links: links2.status === "fulfilled" ? links2.value : [],
+      mappingUnavailable: projects2.status === "rejected" || links2.status === "rejected"
+    });
+  });
+  route.get("/repositories/:owner/:repo", async (c) => c.json(await dependencies.fetchGitHubSnapshot(`${c.req.param("owner")}/${c.req.param("repo")}`)));
+  route.put("/links/:projectId", async (c) => {
+    const projectId = c.req.param("projectId");
+    const userId = c.get("userId");
+    const parsed = z19.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!z19.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
+    if (!await dependencies.ownsGitHubProject(userId, projectId)) return c.json({ error: "Eigenes OMNIDESK-Projekt nicht gefunden." }, 404);
+    await dependencies.fetchGitHubSnapshot(parsed.data.repository);
+    if (!await dependencies.saveGitHubLink(userId, projectId, parsed.data.repository)) return c.json({ error: "Projekt nicht mehr verf\xFCgbar." }, 404);
+    return c.json({ ok: true });
+  });
+  route.delete("/links/:projectId", async (c) => {
+    const id = c.req.param("projectId");
+    const userId = c.get("userId");
+    if (!z19.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (!await dependencies.ownsGitHubProject(userId, id)) return c.json({ error: "Projekt nicht gefunden." }, 404);
+    await dependencies.deleteGitHubLink(userId, id);
+    return c.json({ ok: true });
+  });
+  return route;
+}
+var githubRoute = createGitHubRoute();
+
 // server/routes/deployments.ts
 init_client();
 init_projects();
-import { and as and20, eq as eq22 } from "drizzle-orm";
-import { Hono as Hono18 } from "hono";
+import { and as and21, eq as eq23 } from "drizzle-orm";
+import { Hono as Hono19 } from "hono";
 
 // server/vercel-monitor.ts
-import { z as z18 } from "zod";
-var identifier = z18.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
-var linkSchema = z18.object({
-  userId: z18.string().min(1),
-  projectId: z18.uuid(),
+import { z as z20 } from "zod";
+var identifier = z20.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z20.object({
+  userId: z20.string().min(1),
+  projectId: z20.uuid(),
   vercelProjectId: identifier,
   teamId: identifier.optional()
 });
@@ -3271,7 +3484,7 @@ function readVercelLinks() {
   } catch {
     throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
   }
-  const result = z18.array(linkSchema).max(100).safeParse(parsed);
+  const result = z20.array(linkSchema).max(100).safeParse(parsed);
   if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
   const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
   if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
@@ -3301,12 +3514,12 @@ async function boundedJson(response, maxBytes = 2e6) {
 async function vercelGet(path, link, query = {}) {
   const token = process.env.DEPLOYMENT_API_TOKEN?.trim();
   if (!token) throw new VercelMonitorError("VERCEL_NOT_CONFIGURED", "Vercel ist noch nicht eingerichtet: DEPLOYMENT_API_TOKEN fehlt.", 503);
-  const url = new URL(path, "https://api.vercel.com");
-  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
-  if (link.teamId) url.searchParams.set("teamId", link.teamId);
+  const url2 = new URL(path, "https://api.vercel.com");
+  for (const [key, value] of Object.entries(query)) url2.searchParams.set(key, value);
+  if (link.teamId) url2.searchParams.set("teamId", link.teamId);
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetch(url2, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       redirect: "error",
@@ -3318,35 +3531,36 @@ async function vercelGet(path, link, query = {}) {
   if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
   return boundedJson(response);
 }
-var deploymentSchema = z18.object({
-  id: z18.string().optional(),
-  uid: z18.string().optional(),
-  projectId: z18.string().optional(),
-  url: z18.string().optional().nullable(),
-  state: z18.string().optional(),
-  readyState: z18.string().optional(),
-  target: z18.string().optional().nullable(),
-  createdAt: z18.number().optional(),
-  created: z18.number().optional(),
-  meta: z18.record(z18.string(), z18.unknown()).optional()
+var deploymentSchema = z20.object({
+  id: z20.string().optional(),
+  uid: z20.string().optional(),
+  projectId: z20.string().optional(),
+  url: z20.string().optional().nullable(),
+  state: z20.string().optional(),
+  readyState: z20.string().optional(),
+  target: z20.string().optional().nullable(),
+  createdAt: z20.number().optional(),
+  created: z20.number().optional(),
+  meta: z20.record(z20.string(), z20.unknown()).optional()
 }).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
-var projectSchema2 = z18.object({
-  id: z18.string(),
-  name: z18.string(),
-  targets: z18.object({ production: deploymentSchema.nullable().optional() }).optional()
+var projectSchema2 = z20.object({
+  id: z20.string(),
+  name: z20.string(),
+  link: z20.object({ type: z20.string().optional(), org: z20.string().optional(), repo: z20.string().optional() }).nullable().optional(),
+  targets: z20.object({ production: deploymentSchema.nullable().optional() }).optional()
 });
 function safeDeploymentUrl(value) {
   if (!value) return null;
   try {
-    const url = new URL(value.startsWith("https://") ? value : `https://${value}`);
-    return url.protocol === "https:" && !url.username && !url.password && url.hostname.endsWith(".vercel.app") ? url.origin : null;
+    const url2 = new URL(value.startsWith("https://") ? value : `https://${value}`);
+    return url2.protocol === "https:" && !url2.username && !url2.password && url2.hostname.endsWith(".vercel.app") ? url2.origin : null;
   } catch {
     return null;
   }
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text14 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text16 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -3354,16 +3568,16 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text14("githubCommitSha") || text14("gitlabCommitSha") || text14("bitbucketCommitSha"),
-      message: text14("githubCommitMessage") || text14("gitlabCommitMessage") || text14("bitbucketCommitMessage"),
-      branch: text14("githubCommitRef") || text14("gitlabCommitRef") || text14("bitbucketCommitRef")
+      sha: text16("githubCommitSha") || text16("gitlabCommitSha") || text16("bitbucketCommitSha"),
+      message: text16("githubCommitMessage") || text16("gitlabCommitMessage") || text16("bitbucketCommitMessage"),
+      branch: text16("githubCommitRef") || text16("gitlabCommitRef") || text16("bitbucketCommitRef")
     }
   };
 }
 async function fetchVercelSnapshot(link) {
   const [projectResult, deploymentsResult] = await Promise.allSettled([
     vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
-    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z18.object({ deployments: z18.array(deploymentSchema) }).parse(value).deployments)
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z20.object({ deployments: z20.array(deploymentSchema) }).parse(value).deployments)
   ]);
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
     throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
@@ -3372,14 +3586,16 @@ async function fetchVercelSnapshot(link) {
     if (projectResult.reason instanceof VercelMonitorError) throw projectResult.reason;
     throw new VercelMonitorError("VERCEL_RESPONSE_INVALID", "Die Vercel-Antwort konnte nicht ausgewertet werden.");
   }
-  const project = projectResult.status === "fulfilled" ? projectResult.value : null;
-  const production = project?.targets?.production;
+  const project2 = projectResult.status === "fulfilled" ? projectResult.value : null;
+  const production = project2?.targets?.production;
   if (production?.projectId && production.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Produktionszuordnung stimmt nicht mit dem Projekt \xFCberein.");
   const deployments = deploymentsResult.status === "fulfilled" ? deploymentsResult.value : null;
   if (deployments?.some((deployment) => deployment.projectId && deployment.projectId !== link.vercelProjectId)) throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Deployment-Liste enth\xE4lt eine fremde Projektzuordnung.");
+  const linkedRepository = project2?.link?.type === "github" ? `${project2.link.org}/${project2.link.repo}` : null;
   return {
+    githubRepository: linkedRepository && repositoryName.safeParse(linkedRepository).success ? linkedRepository : null,
     checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    project: project ? { id: project.id, name: project.name } : null,
+    project: project2 ? { id: project2.id, name: project2.name } : null,
     production: production ? { ...publicDeployment(production), target: "production" } : null,
     deployments: deployments?.slice(0, 20).map(publicDeployment) ?? null,
     historyLimit: 20,
@@ -3389,9 +3605,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item) => Boolean(item))
   };
 }
-function redactBuildLog(text14) {
+function redactBuildLog(text16) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text14.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text16.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -3400,19 +3616,19 @@ function redactBuildLog(text14) {
 }
 async function fetchVercelLogs(link, deploymentId) {
   if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
-  const detail = z18.object({ id: z18.string(), projectId: z18.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  const detail = z20.object({ id: z20.string(), projectId: z20.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
   if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
   const raw = await vercelGet(
     `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
     link,
     { follow: "0", builds: "1", direction: "backward", limit: "100" }
   );
-  const parsedEvents = z18.array(z18.object({
-    text: z18.string().nullable().optional(),
-    type: z18.string().optional(),
-    created: z18.number().optional(),
-    date: z18.number().optional(),
-    deploymentId: z18.string().optional()
+  const parsedEvents = z20.array(z20.object({
+    text: z20.string().nullable().optional(),
+    type: z20.string().optional(),
+    created: z20.number().optional(),
+    date: z20.number().optional(),
+    deploymentId: z20.string().optional()
   }).nullable()).parse(raw);
   const events = parsedEvents.filter((event) => event !== null);
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
@@ -3428,14 +3644,14 @@ async function fetchVercelProjects() {
   const projects2 = [];
   const unavailable = [];
   let limited = false;
-  const pageSchema = z18.object({ pagination: z18.object({ next: z18.number().nullable().optional() }).optional() });
+  const pageSchema = z20.object({ pagination: z20.object({ next: z20.number().nullable().optional() }).optional() });
   async function pages(path, field, teamId) {
     const items = [];
     let until;
     for (let page = 0; page < 10; page++) {
       const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
       const parsed = pageSchema.parse(raw);
-      items.push(...z18.array(z18.unknown()).parse(z18.record(z18.string(), z18.unknown()).parse(raw)[field]));
+      items.push(...z20.array(z20.unknown()).parse(z20.record(z20.string(), z20.unknown()).parse(raw)[field]));
       const next = parsed.pagination?.next;
       if (next == null) return items;
       if (String(next) === until) {
@@ -3449,7 +3665,7 @@ async function fetchVercelProjects() {
   }
   const teams = [];
   try {
-    teams.push(...z18.array(z18.object({ id: identifier, name: z18.string() })).parse(await pages("/v2/teams", "teams")));
+    teams.push(...z20.array(z20.object({ id: identifier, name: z20.string() })).parse(await pages("/v2/teams", "teams")));
   } catch {
     unavailable.push("Team-Liste");
   }
@@ -3458,10 +3674,10 @@ async function fetchVercelProjects() {
   for (let i = 0; i < scopes.length; i += 4) {
     await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
       try {
-        const items = z18.array(z18.object({ id: identifier, name: z18.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        const items = z20.array(z20.object({ id: identifier, name: z20.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
         for (const item of items) {
           const teamId = item.accountId?.startsWith("team_") ? item.accountId : scope.id ?? null;
-          if (!projects2.some((project) => project.id === item.id && project.teamId === teamId)) {
+          if (!projects2.some((project2) => project2.id === item.id && project2.teamId === teamId)) {
             projects2.push({ id: item.id, name: item.name, teamId, scope: teams.find((team) => team.id === teamId)?.name ?? scope.name });
           }
         }
@@ -3475,14 +3691,14 @@ async function fetchVercelProjects() {
 
 // server/routes/deployments.ts
 async function listOwnedProjects2(userId) {
-  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq22(projects.userId, userId));
+  return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq23(projects.userId, userId));
 }
 async function ownsProject4(userId, projectId) {
-  const [project] = await db.select({ id: projects.id }).from(projects).where(and20(eq22(projects.id, projectId), eq22(projects.userId, userId)));
-  return Boolean(project);
+  const [project2] = await db.select({ id: projects.id }).from(projects).where(and21(eq23(projects.id, projectId), eq23(projects.userId, userId)));
+  return Boolean(project2);
 }
 function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject4, fetchVercelSnapshot, fetchVercelLogs }) {
-  const route = new Hono18();
+  const route = new Hono19();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -3502,9 +3718,9 @@ function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedPro
   });
   async function accountLink(userId, id, teamId) {
     const catalogue = await fetchVercelProjects();
-    const project = catalogue.projects.find((item) => item.id === id && (item.teamId ?? "") === (teamId ?? ""));
-    if (!project) throw new VercelMonitorError("VERCEL_PROJECT_FORBIDDEN", "Dieses Vercel-Projekt ist f\xFCr dein Konto nicht verf\xFCgbar.", 404);
-    return { userId, projectId: "00000000-0000-4000-8000-000000000000", vercelProjectId: project.id, ...project.teamId ? { teamId: project.teamId } : {} };
+    const project2 = catalogue.projects.find((item) => item.id === id && (item.teamId ?? "") === (teamId ?? ""));
+    if (!project2) throw new VercelMonitorError("VERCEL_PROJECT_FORBIDDEN", "Dieses Vercel-Projekt ist f\xFCr dein Konto nicht verf\xFCgbar.", 404);
+    return { userId, projectId: "00000000-0000-4000-8000-000000000000", vercelProjectId: project2.id, ...project2.teamId ? { teamId: project2.teamId } : {} };
   }
   route.get("/account/projects/:id", async (c) => {
     try {
@@ -3530,10 +3746,10 @@ function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedPro
         configured: Boolean(process.env.DEPLOYMENT_API_TOKEN?.trim()),
         userId,
         links: links2.flatMap((link) => {
-          const project = owned.find((candidate) => candidate.id === link.projectId);
-          return project ? [{
-            projectId: project.id,
-            projectName: project.name,
+          const project2 = owned.find((candidate) => candidate.id === link.projectId);
+          return project2 ? [{
+            projectId: project2.id,
+            projectName: project2.name,
             vercelProjectId: link.vercelProjectId,
             teamId: link.teamId ?? null
           }] : [];
@@ -3571,10 +3787,10 @@ var deploymentsRoute = createDeploymentsRoute();
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and21, asc as asc5, desc as desc9, eq as eq23 } from "drizzle-orm";
-import { Hono as Hono19 } from "hono";
-import { z as z19 } from "zod";
-var chatRoute = new Hono19();
+import { and as and22, asc as asc5, desc as desc9, eq as eq24 } from "drizzle-orm";
+import { Hono as Hono20 } from "hono";
+import { z as z21 } from "zod";
+var chatRoute = new Hono20();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -3586,18 +3802,18 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z19.object({
-  title: z19.string().trim().max(200).optional()
+var createSessionSchema = z21.object({
+  title: z21.string().trim().max(200).optional()
 });
-var updateSessionSchema = z19.object({
-  title: z19.string().trim().min(1).max(200)
+var updateSessionSchema = z21.object({
+  title: z21.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z19.object({
-  content: z19.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z21.object({
+  content: z21.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq23(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq24(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -3616,12 +3832,12 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z19.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z21.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and21(eq23(chatSessions.id, id), eq23(chatSessions.userId, userId))).returning();
+  }).where(and22(eq24(chatSessions.id, id), eq24(chatSessions.userId, userId))).returning();
   if (!updated) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -3630,7 +3846,7 @@ chatRoute.put("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(chatSessions).where(and21(eq23(chatSessions.id, id), eq23(chatSessions.userId, userId))).returning();
+  const [deleted] = await db.delete(chatSessions).where(and22(eq24(chatSessions.id, id), eq24(chatSessions.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -3639,23 +3855,23 @@ chatRoute.delete("/sessions/:id", async (c) => {
 chatRoute.get("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and21(eq23(chatSessions.id, sessionId), eq23(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and22(eq24(chatSessions.id, sessionId), eq24(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
-  const messages = await db.select().from(chatMessages).where(eq23(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
+  const messages = await db.select().from(chatMessages).where(eq24(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
   return c.json(messages);
 });
 chatRoute.post("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and21(eq23(chatSessions.id, sessionId), eq23(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and22(eq24(chatSessions.id, sessionId), eq24(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z19.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z21.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -3665,11 +3881,11 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }).returning();
   if (session.title === "Neuer Chat") {
     const cleanTitle = userContent.length > 35 ? `${userContent.slice(0, 35).trim()}\u2026` : userContent;
-    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq23(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq24(chatSessions.id, sessionId));
   } else {
-    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq23(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq24(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq23(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq24(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -3786,7 +4002,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono20().basePath("/api");
+  const app = new Hono21().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -3821,7 +4037,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z20.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z22.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -3845,6 +4061,7 @@ function createApp() {
   app.route("/neon", neonHistoryRoute);
   app.route("/neon", neonMonitorRoute);
   app.route("/deployments", deploymentsRoute);
+  app.route("/github", githubRoute);
   app.route("/chat", chatRoute);
   return app;
 }

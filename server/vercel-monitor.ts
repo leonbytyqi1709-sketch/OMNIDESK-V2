@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { repositoryName } from './github-monitor'
 import type { DeploymentLogs, DeploymentSnapshot, DeploymentSummary } from '../src/types/deployments'
 
 const identifier = z.string().regex(/^[A-Za-z0-9_-]{1,150}$/)
@@ -75,6 +76,7 @@ const deploymentSchema = z.object({ id: z.string().optional(), uid: z.string().o
   meta: z.record(z.string(), z.unknown()).optional(),
 }).refine((value) => Boolean(value.id || value.uid), 'Missing deployment identifier')
 const projectSchema = z.object({ id: z.string(), name: z.string(),
+  link: z.object({ type: z.string().optional(), org: z.string().optional(), repo: z.string().optional() }).nullable().optional(),
   targets: z.object({ production: deploymentSchema.nullable().optional() }).optional(),
 })
 
@@ -115,7 +117,9 @@ export async function fetchVercelSnapshot(link: VercelLink): Promise<DeploymentS
   if (production?.projectId && production.projectId !== link.vercelProjectId) throw new VercelMonitorError('VERCEL_PROJECT_MISMATCH', 'Produktionszuordnung stimmt nicht mit dem Projekt überein.')
   const deployments = deploymentsResult.status === 'fulfilled' ? deploymentsResult.value : null
   if (deployments?.some((deployment) => deployment.projectId && deployment.projectId !== link.vercelProjectId)) throw new VercelMonitorError('VERCEL_PROJECT_MISMATCH', 'Die Deployment-Liste enthält eine fremde Projektzuordnung.')
-  return { checkedAt: new Date().toISOString(), project: project ? { id: project.id, name: project.name } : null,
+  const linkedRepository = project?.link?.type === 'github' ? `${project.link.org}/${project.link.repo}` : null
+  return { githubRepository: linkedRepository && repositoryName.safeParse(linkedRepository).success ? linkedRepository : null,
+    checkedAt: new Date().toISOString(), project: project ? { id: project.id, name: project.name } : null,
     production: production ? { ...publicDeployment(production), target: 'production' } : null,
     deployments: deployments?.slice(0, 20).map(publicDeployment) ?? null, historyLimit: 20,
     unavailable: [projectResult.status === 'rejected' ? 'Projekt und Produktionszuordnung' : null,

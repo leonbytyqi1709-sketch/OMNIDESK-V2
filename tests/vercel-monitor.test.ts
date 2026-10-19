@@ -33,7 +33,7 @@ test('read-only Vercel deployment monitoring', async (t) => {
         assert.equal(init?.method, 'GET')
         assert.equal(init?.redirect, 'error')
         assert.equal(new Headers(init?.headers).get('Authorization'), `Bearer ${process.env.DEPLOYMENT_API_TOKEN}`)
-        if (url.pathname.startsWith('/v9/')) return Response.json({ id: link.vercelProjectId, name: 'OMNIDESK V2',
+        if (url.pathname.startsWith('/v9/')) return Response.json({ id: link.vercelProjectId, name: 'OMNIDESK V2', link: { type: 'github', org: 'owner', repo: 'OMNIDESK' },
           env: [{ value: 'must-not-expose' }], targets: { production: { id: 'dpl_production', readyState: 'READY', url: 'production.vercel.app', meta: { githubCommitSha: 'abcdef123456' } } } })
         assert.equal(url.searchParams.get('projectId'), link.vercelProjectId)
         assert.equal(url.searchParams.get('limit'), '20')
@@ -42,6 +42,7 @@ test('read-only Vercel deployment monitoring', async (t) => {
         ] })
       }
       const result = await fetchVercelSnapshot(link)
+      assert.equal(result.githubRepository, 'owner/OMNIDESK')
       assert.equal(result.production?.id, 'dpl_production')
       assert.equal(result.production?.target, 'production')
       assert.equal(result.deployments?.[0].target, 'preview')

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { GitHubPanel } from '@/components/integrations/GitHubPanel'
 import { DeploymentPanel } from '@/components/integrations/DeploymentPanel'
 import { NeonPanel } from '@/components/integrations/NeonPanel'
 import {
@@ -109,7 +110,7 @@ function ProjectDetailView({
         <ProjectBoard projectId={projectId} tasks={data.tasks} />
         <MilestonePanel projectId={projectId} milestones={data.milestones} />
       </div>
-      <div className="mt-6 space-y-6"><NeonPanel projectId={projectId} /><DeploymentPanel projectId={projectId} /></div>
+      <div className="mt-6 space-y-6"><NeonPanel projectId={projectId} /><DeploymentPanel projectId={projectId} /><GitHubPanel key={projectId} projectId={projectId} /></div>
     </div>
   )
 }

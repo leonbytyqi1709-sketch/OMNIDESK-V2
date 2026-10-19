@@ -104,3 +104,5 @@ Das Repo ist Vercel-ready: `server/vercel-entry.ts` wird beim Build zu `api/inde
 | `npm run lint` | Oxlint |
 | `npm run db:push` | Drizzle-Schema nach Neon syncen |
 | `npm run db:studio` | Drizzle Studio (DB-GUI) |
+
+GitHub-Zentrale: [Einrichtung und Berechtigungen](docs/GITHUB-ZENTRALE.md).

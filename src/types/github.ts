@@ -1,0 +1,4 @@
+export interface GitHubRepository { id: number; fullName: string; name: string; private: boolean; defaultBranch: string; updatedAt: string | null; url: string }
+export interface GitHubItem { id: string; title: string; url: string; status: string; updatedAt: string | null; sha?: string; branch?: string }
+export interface GitHubSnapshot { repository: GitHubRepository; checkedAt: string; branches: GitHubItem[] | null; commits: GitHubItem[] | null; issues: GitHubItem[] | null; pulls: GitHubItem[] | null; runs: GitHubItem[] | null; releases: GitHubItem[] | null; unavailable: string[]; limit: number }
+export interface GitHubOverview { configured: boolean; userId: string; repositories: GitHubRepository[]; limited: boolean; projects: Array<{ id: string; name: string }>; links: Array<{ projectId: string; repository: string }>; mappingUnavailable: boolean }

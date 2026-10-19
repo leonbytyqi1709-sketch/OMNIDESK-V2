@@ -8,6 +8,7 @@ export interface DeploymentSummary {
 }
 
 export interface DeploymentSnapshot {
+  githubRepository: string | null
   checkedAt: string
   project: { id: string; name: string } | null
   production: DeploymentSummary | null

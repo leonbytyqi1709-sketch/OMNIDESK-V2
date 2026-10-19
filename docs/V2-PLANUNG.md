@@ -349,3 +349,11 @@ Auf ausdrücklichen Auftrag des Nutzers werden die offenen Neon-Bausteine umgese
 Der Nutzer verwendet Vercel Hobby. Der tägliche Vercel-Rückfall wird deshalb um einen geschützten extern aufrufbaren Scheduler-Endpunkt ergänzt. Ein Fünf-Minuten-Job muss extern eingerichtet werden; eine Intervallvariable allein führt nichts aus. Fehlende Scheduler-Aufrufe und alte Daten werden sichtbar, ein ruhender Compute gilt nicht als Ausfall. Die Einrichtung ist in docs/NEON-MONITORING.md beschrieben. Die bestehende API-Bereitstellung und Rewrites bleiben erhalten.
 
 Lokale PostgreSQL/WASM-Integrationstests, vollständige Regressionstests sowie Desktop-/Mobil-Browserprüfung mit Beispieldaten werden ausgeführt. Neue Tabellen, echter Scheduler und optionaler SQL-Zugang sind ohne produktive Zugangsdaten in dieser Arbeitsumgebung nicht live abgenommen. Neon wird erst nach diesen Einrichtungsschritten und der dokumentierten Live-Abnahme als vollständig abgeschlossen gezählt. Es wurde kein neuer externer Scheduler-Account im Namen des Nutzers erstellt und kein Secret an einen externen Dienst übertragen.
+
+### GitHub-Zentrale · 19.10.2026
+
+Der Nutzer verzichtet ausdrücklich auf den optionalen Neon-SQL-Test und setzt die Arbeit mit GitHub fort. Die frühere fehlgeschlagene Scheduler-Abnahme bleibt unbestätigt; eine gute Tabellenansicht beweist keinen erfolgreichen Hintergrundbetrieb.
+
+Nr. 12 ist als lesende Integration ergänzt: eigenes Modul GitHub, automatische Repository-Liste, Branches, Standardbranch-Commits, offene Issues/PRs, Actions-Läufe und Releases. Repositories lassen sich innerhalb der App eigenen OMNIDESK-Projekten zuordnen; dafür wird beim ersten Speichern ausschließlich v2_github_links angelegt. Eine GitHub-Karte erscheint im Projektmanagement. Vercel-Repository-Identitäten und Produktions-SHAs führen in die GitHub-Zentrale; nur exakte SHA-Treffer werden markiert. Keine behauptete Störungsursache oder automatische zeitliche Korrelation.
+
+Einrichtung über GITHUB_API_TOKEN und GITHUB_ACCOUNT_USER_ID, beschrieben in docs/GITHUB-ZENTRALE.md. Keine schreibenden GitHub-Aktionen. Lokale Tests und Browserprüfung werden durchgeführt; Token-Einrichtung und produktive Live-Abnahme bleiben erforderlich. Das Original-Repository wird nicht verändert.

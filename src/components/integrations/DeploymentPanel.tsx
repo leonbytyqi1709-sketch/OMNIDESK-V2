@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useState } from 'react'
 import { ExternalLink, FileText, RefreshCw, Rocket } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -72,6 +73,7 @@ export function DeploymentPanel({ projectId }: { projectId?: string }) {
               </div>
             ))}
           </div>
+          {data.githubRepository && <Link className="inline-block text-xs underline underline-offset-4" to={`/github?repository=${encodeURIComponent(data.githubRepository)}${data.production?.commit.sha && /^[a-f0-9]{40}$/i.test(data.production.commit.sha) ? `&sha=${encodeURIComponent(data.production.commit.sha)}` : ''}`}>GitHub-Repository{data.production?.commit.sha ? ' und Produktions-Commit' : ''} anzeigen</Link>}
           <p className="text-xs text-muted-foreground">Abruf: {new Date(data.checkedAt).toLocaleString('de-DE')}. Nur lesender Zugriff. Deployment-Status ist kein Healthcheck der Anwendung.</p>
         </>}
         {selectedLog && <section aria-label="Build-Logs" className="space-y-3 rounded-xl border border-border p-4">

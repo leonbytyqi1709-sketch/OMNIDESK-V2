@@ -18,6 +18,7 @@ import { cloudMonitorRoute } from './routes/cloud-monitor'
 import { uptimeRoute } from './routes/uptime'
 import { neonHistoryRoute } from './routes/neon-history'
 import { neonMonitorRoute } from './routes/neon-monitor'
+import { githubRoute } from './routes/github'
 import { deploymentsRoute } from './routes/deployments'
 import { chatRoute } from './routes/chat'
 
@@ -103,6 +104,7 @@ export function createApp() {
   app.route('/neon', neonHistoryRoute)
   app.route('/neon', neonMonitorRoute)
   app.route('/deployments', deploymentsRoute)
+  app.route('/github', githubRoute)
   app.route('/chat', chatRoute)
 
   return app
