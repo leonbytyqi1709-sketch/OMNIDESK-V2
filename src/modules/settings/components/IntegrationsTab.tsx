@@ -11,8 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { AccountCard } from '@/modules/cloud-monitor/components/AccountCard'
 import { AddAccountDialog } from '@/modules/cloud-monitor/components/AddAccountDialog'
-import { useCloudOverview, useDeleteAccount, useGoogleAuthUrl, useSyncAccount } from '@/modules/cloud-monitor/api'
+import { useCloudOverview, useDeleteAccount, useGoogleAuthUrl, useMicrosoftAuthUrl, useSyncAccount } from '@/modules/cloud-monitor/api'
 import { cn } from '@/lib/utils'
 
 function formatBytes(bytesStr: string): string {
@@ -31,6 +32,7 @@ export function IntegrationsTab() {
   const deleteMutation = useDeleteAccount()
   const syncMutation = useSyncAccount()
   const googleAuthMutation = useGoogleAuthUrl()
+  const microsoftAuthMutation = useMicrosoftAuthUrl()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [syncingId, setSyncingId] = useState<string | null>(null)
 
@@ -40,8 +42,8 @@ export function IntegrationsTab() {
     const error = searchParams.get('error')
     const email = searchParams.get('email')
 
-    if (connected === 'google') {
-      toast.success(`Google-Konto ${email ? `(${email})` : ''} erfolgreich verknüpft!`)
+    if (connected === 'google' || connected === 'microsoft') {
+      toast.success(`${connected === 'microsoft' ? 'Microsoft' : 'Google'}-Konto ${email ? `(${email})` : ''} erfolgreich verknüpft!`)
       searchParams.delete('connected')
       if (email) searchParams.delete('email')
       setSearchParams(searchParams, { replace: true })
@@ -54,6 +56,7 @@ export function IntegrationsTab() {
 
   const accounts = data?.accounts ?? []
   const googleAccounts = accounts.filter((a) => a.provider === 'google')
+  const microsoftAccounts = accounts.filter((a) => a.provider === 'microsoft')
   const megaAccounts = accounts.filter((a) => a.provider === 'mega')
 
   const handleGoogleConnect = async () => {
@@ -87,13 +90,13 @@ export function IntegrationsTab() {
             OAuth2 & Cloud-Schnittstellen (Phase 4)
           </CardTitle>
           <CardDescription>
-            Verwalte deine Live-Verbindungen für Google Drive und MEGA Cloud.
+            Verwalte deine Live-Verbindungen für Google Drive, OneDrive und MEGA Cloud.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
             <p className="max-w-xl">
-              Verknüpfe echte Konten per sicherem Google OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
+              Verknüpfe echte Konten per sicherem Google-/Microsoft-OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
             </p>
             <Button
               size="sm"
@@ -296,6 +299,21 @@ export function IntegrationsTab() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><CardTitle className="text-base">Microsoft OneDrive</CardTitle><CardDescription>Private Konten sowie Geschäfts- und Schulkonten.</CardDescription></div>
+            <Button size="sm" variant="outline" disabled={microsoftAuthMutation.isPending} onClick={async () => {
+              try { const { url } = await microsoftAuthMutation.mutateAsync('/settings'); window.location.href = url }
+              catch (error) { toast.error(error instanceof Error ? error.message : 'Microsoft-Anmeldung fehlgeschlagen') }
+            }}>{microsoftAuthMutation.isPending ? 'Verbinde…' : 'Mit Microsoft verbinden'}</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? <p className="text-xs text-muted-foreground">Konten werden geladen…</p> : microsoftAccounts.length === 0 ? <p className="text-xs text-muted-foreground">Noch kein OneDrive-Konto verknüpft.</p> : <div className="grid gap-3 sm:grid-cols-2">{microsoftAccounts.map((account) => <AccountCard key={account.id} account={account} />)}</div>}
         </CardContent>
       </Card>
 

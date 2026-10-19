@@ -1,5 +1,9 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { setCookie } from 'hono/cookie'
+import { MICROSOFT_COOKIE, MICROSOFT_COOKIE_PATH, OAUTH_MAX_AGE, microsoftConfig, startMicrosoftAuthorization } from '../microsoft-auth'
+import { syncMicrosoftAccount } from '../microsoft-account'
+import { publicAccount } from '../public-account'
 import { z } from 'zod'
 import { db } from '../../src/db/client'
 import { connectedAccounts } from '../../src/db/schema/index'
@@ -24,6 +28,23 @@ const updateAccountInput = z.object({
 })
 
 export const integrationsRoute = new Hono()
+
+/** Authenticated start; callback is public but bound to this browser and user. */
+integrationsRoute.get('/microsoft/auth-url', (c) => {
+  c.header('Cache-Control', 'no-store')
+  try {
+    const config = microsoftConfig()
+    if (new URL(c.req.url).origin !== config.origin) {
+      return c.json({ error: 'Bitte OneDrive auf der in MICROSOFT_REDIRECT_URI konfigurierten App-Adresse verbinden.' }, 400)
+    }
+    const authorization = startMicrosoftAuthorization(c.get('userId'), c.req.query('returnTo'))
+    setCookie(c, MICROSOFT_COOKIE, authorization.cookie, { path: MICROSOFT_COOKIE_PATH,
+      httpOnly: true, secure: config.secure, sameSite: 'Lax', maxAge: OAUTH_MAX_AGE })
+    return c.json({ url: authorization.url })
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'OneDrive-Anmeldung konnte nicht gestartet werden.' }, 503)
+  }
+})
 
 /** Google OAuth2 Autorisierungs-URL anfordern */
 integrationsRoute.get('/google/auth-url', (c) => {
@@ -219,6 +240,14 @@ integrationsRoute.post('/accounts/:id/sync', async (c) => {
 
   if (!account) return c.json({ error: 'Konto nicht gefunden' }, 404)
 
+  if (account.provider === 'microsoft') {
+    try {
+      return c.json(publicAccount(await syncMicrosoftAccount(account)))
+    } catch {
+      return c.json({ error: 'OneDrive-Synchronisation fehlgeschlagen. Die bisherigen Messwerte bleiben erhalten. Bitte Microsoft-Berechtigungen prüfen oder das Konto erneut verbinden.' }, 502)
+    }
+  }
+
   // 1. Google Drive Live-Synchronisation
   if (account.provider === 'google' && (account.accessToken || account.refreshToken)) {
     try {
@@ -251,7 +280,7 @@ integrationsRoute.post('/accounts/:id/sync', async (c) => {
             })
             .where(eq(connectedAccounts.id, account.id))
             .returning()
-          return c.json(updated)
+          return c.json(publicAccount(updated))
         }
       }
     } catch {
@@ -278,7 +307,7 @@ integrationsRoute.post('/accounts/:id/sync', async (c) => {
         })
         .where(eq(connectedAccounts.id, account.id))
         .returning()
-      return c.json(updated)
+      return c.json(publicAccount(updated))
     } catch {
       // Fallback bei Netzwerkfehlern
     }
@@ -297,5 +326,5 @@ integrationsRoute.post('/accounts/:id/sync', async (c) => {
     .where(eq(connectedAccounts.id, account.id))
     .returning()
 
-  return c.json(updated)
+  return c.json(publicAccount(updated))
 })

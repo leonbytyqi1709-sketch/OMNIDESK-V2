@@ -304,7 +304,7 @@ import {
 var INTEGRATION_PROVIDERS, connectedAccounts;
 var init_integrations = __esm({
   "src/db/schema/integrations.ts"() {
-    INTEGRATION_PROVIDERS = ["google", "mega"];
+    INTEGRATION_PROVIDERS = ["google", "mega", "microsoft"];
     connectedAccounts = pgTable10(
       "connected_accounts",
       {
@@ -498,7 +498,7 @@ __export(uptime_check_exports, {
 });
 import net from "node:net";
 import tls from "node:tls";
-import { and as and13, eq as eq15 } from "drizzle-orm";
+import { and as and15, eq as eq17 } from "drizzle-orm";
 function getSslDaysRemaining(hostname, port = 443, timeoutMs = 5e3) {
   return new Promise((resolve) => {
     try {
@@ -657,7 +657,7 @@ async function checkSingleMonitor(monitor) {
   return row;
 }
 async function refreshAllMonitors(userId) {
-  const query = userId ? and13(eq15(uptimeMonitors.active, true), eq15(uptimeMonitors.userId, userId)) : eq15(uptimeMonitors.active, true);
+  const query = userId ? and15(eq17(uptimeMonitors.active, true), eq17(uptimeMonitors.userId, userId)) : eq17(uptimeMonitors.active, true);
   const monitors = await db.select().from(uptimeMonitors).where(query);
   if (monitors.length === 0) return [];
   const results = await Promise.allSettled(
@@ -676,7 +676,7 @@ var init_uptime_check = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono16 } from "hono";
+import { Hono as Hono17 } from "hono";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -1661,11 +1661,219 @@ googleCallbackRoute.get("/callback", async (c) => {
 });
 
 // server/routes/integrations.ts
+import { and as and12, desc as desc6, eq as eq14 } from "drizzle-orm";
+import { Hono as Hono12 } from "hono";
+import { setCookie } from "hono/cookie";
+
+// server/microsoft-auth.ts
+import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { z as z11 } from "zod";
+var MICROSOFT_COOKIE = "omnidesk-ms-oauth";
+var MICROSOFT_COOKIE_PATH = "/api/integrations/microsoft";
+var MICROSOFT_SCOPES = ["offline_access", "User.Read", "Files.Read"];
+var OAUTH_MAX_AGE = 600;
+function microsoftConfig() {
+  const clientId = process.env.MICROSOFT_CLIENT_ID?.trim();
+  const secret = process.env.MICROSOFT_CLIENT_SECRET;
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI?.trim();
+  if (!clientId || !secret || !redirectUri) {
+    throw new Error("OneDrive ist noch nicht eingerichtet. MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET und MICROSOFT_REDIRECT_URI fehlen oder sind unvollst\xE4ndig.");
+  }
+  const redirect = new URL(redirectUri);
+  if (redirect.username || redirect.password || redirect.search || redirect.hash || redirect.pathname !== `${MICROSOFT_COOKIE_PATH}/callback` || redirect.protocol !== "https:" && !(redirect.protocol === "http:" && ["localhost", "127.0.0.1"].includes(redirect.hostname))) {
+    throw new Error("MICROSOFT_REDIRECT_URI muss auf den OneDrive-Callback dieser App zeigen (HTTPS; lokal HTTP erlaubt).");
+  }
+  const tenant = process.env.MICROSOFT_TENANT || "common";
+  if (!["consumers", "organizations", "common"].includes(tenant)) throw new Error("MICROSOFT_TENANT muss consumers, organizations oder common sein.");
+  return { clientId, secret, redirectUri, origin: redirect.origin, secure: redirect.protocol === "https:", tenant };
+}
+function sealMicrosoftValue(value, purpose) {
+  const key = createHash("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `ms1.${Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url")}`;
+}
+function openMicrosoftValue(value, purpose) {
+  if (!value.startsWith("ms1.")) throw new Error("OneDrive-Verbindung ung\xFCltig. Bitte erneut verbinden.");
+  const buffer = Buffer.from(value.slice(4), "base64url");
+  if (buffer.length < 29) throw new Error("OneDrive-Verbindung ung\xFCltig. Bitte erneut verbinden.");
+  const key = createHash("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
+  const decipher = createDecipheriv("aes-256-gcm", key, buffer.subarray(0, 12));
+  decipher.setAuthTag(buffer.subarray(12, 28));
+  return Buffer.concat([decipher.update(buffer.subarray(28)), decipher.final()]).toString("utf8");
+}
+var transactionSchema = z11.object({
+  userId: z11.string().min(1),
+  state: z11.string().min(32),
+  verifier: z11.string().min(43),
+  returnTo: z11.enum(["/settings", "/cloud-monitor"]),
+  createdAt: z11.number()
+});
+function startMicrosoftAuthorization(userId, returnTo) {
+  const config = microsoftConfig();
+  const state = randomBytes(32).toString("base64url");
+  const verifier = randomBytes(48).toString("base64url");
+  const transaction = transactionSchema.parse({
+    userId,
+    state,
+    verifier,
+    returnTo: returnTo === "/cloud-monitor" ? returnTo : "/settings",
+    createdAt: Date.now()
+  });
+  const url = new URL(`https://login.microsoftonline.com/${config.tenant}/oauth2/v2.0/authorize`);
+  url.search = new URLSearchParams({
+    client_id: config.clientId,
+    response_type: "code",
+    redirect_uri: config.redirectUri,
+    response_mode: "query",
+    scope: MICROSOFT_SCOPES.join(" "),
+    state,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+    prompt: "select_account"
+  }).toString();
+  return { url: url.toString(), cookie: sealMicrosoftValue(JSON.stringify(transaction), "transaction") };
+}
+function readMicrosoftTransaction(cookie, state) {
+  if (!cookie || !state) throw new Error("OneDrive-Anmeldung fehlt oder ist abgelaufen. Bitte erneut starten.");
+  const transaction = transactionSchema.parse(JSON.parse(openMicrosoftValue(cookie, "transaction")));
+  const expected = Buffer.from(transaction.state);
+  const supplied = Buffer.from(state);
+  const age = Date.now() - transaction.createdAt;
+  if (age < 0 || age > OAUTH_MAX_AGE * 1e3 || expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+    throw new Error("OneDrive-Anmeldung ung\xFCltig oder abgelaufen. Bitte erneut starten.");
+  }
+  return transaction;
+}
+var tokenSchema = z11.object({
+  access_token: z11.string().min(1),
+  refresh_token: z11.string().min(1).optional(),
+  expires_in: z11.number().positive(),
+  scope: z11.string().optional()
+});
+async function requestTokens(parameters) {
+  const config = microsoftConfig();
+  const response = await fetch(`https://login.microsoftonline.com/${config.tenant}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.secret,
+      redirect_uri: config.redirectUri,
+      ...parameters
+    }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!response.ok) throw new Error(`Microsoft-Anmeldung fehlgeschlagen (HTTP ${response.status}). Bitte Konto erneut verbinden und die App-Konfiguration pr\xFCfen.`);
+  return tokenSchema.parse(await response.json());
+}
+var exchangeMicrosoftCode = (code, verifier) => requestTokens({ grant_type: "authorization_code", code, code_verifier: verifier });
+var refreshMicrosoftTokens = (refreshToken) => requestTokens({ grant_type: "refresh_token", refresh_token: refreshToken, scope: MICROSOFT_SCOPES.join(" ") });
+var bytes = z11.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+var driveSchema = z11.object({ id: z11.string().min(1), driveType: z11.string(), quota: z11.object({
+  used: bytes,
+  total: bytes.positive(),
+  deleted: bytes.optional(),
+  remaining: bytes.optional(),
+  state: z11.string().optional()
+}) });
+var profileSchema = z11.object({
+  id: z11.string().min(1),
+  displayName: z11.string().optional(),
+  mail: z11.string().nullable().optional(),
+  userPrincipalName: z11.string().optional()
+});
+async function getMicrosoftStorage(accessToken) {
+  const response = await fetch("https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType,quota", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!response.ok) throw new Error(`OneDrive-Speicher konnte nicht abgerufen werden (HTTP ${response.status}). Bitte Berechtigungen pr\xFCfen oder Konto erneut verbinden.`);
+  const parsed = driveSchema.safeParse(await response.json());
+  if (!parsed.success) throw new Error("Microsoft liefert derzeit keine vollst\xE4ndige unterst\xFCtzte Speicherquote. Es werden keine Ersatzwerte gespeichert.");
+  const { id, driveType, quota } = parsed.data;
+  return { storageUsedBytes: String(quota.used), storageTotalBytes: String(quota.total), metadata: {
+    driveId: id,
+    driveType,
+    quotaState: quota.state,
+    trashUsage: String(quota.deleted ?? 0),
+    quotaScope: driveType === "personal" ? "microsoft-unified" : "drive",
+    lastSyncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    liveConnected: true
+  } };
+}
+async function getMicrosoftProfile(accessToken) {
+  const response = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!response.ok) throw new Error("Microsoft-Kontoprofil konnte nicht abgerufen werden.");
+  const profile = profileSchema.parse(await response.json());
+  const email = profile.mail || profile.userPrincipalName;
+  if (!email) throw new Error("Microsoft hat keine Konto-Adresse zur\xFCckgegeben.");
+  return { ...profile, email };
+}
+
+// server/microsoft-account.ts
+init_client();
+init_integrations();
+import { and as and11, eq as eq13 } from "drizzle-orm";
+async function syncMicrosoftAccount(account, persist = async (fields) => {
+  const [updated] = await db.update(connectedAccounts).set(fields).where(and11(
+    eq13(connectedAccounts.id, account.id),
+    eq13(connectedAccounts.userId, account.userId)
+  )).returning();
+  return updated;
+}) {
+  let accessToken;
+  if (account.accessToken && account.tokenExpiry && account.tokenExpiry.getTime() > Date.now() + 3e5) {
+    accessToken = openMicrosoftValue(account.accessToken, "token");
+  } else {
+    if (!account.refreshToken) throw new Error("OneDrive-Anmeldung abgelaufen. Bitte Konto erneut verbinden.");
+    const tokens = await refreshMicrosoftTokens(openMicrosoftValue(account.refreshToken, "token"));
+    accessToken = tokens.access_token;
+    const refreshed = await persist({
+      accessToken: sealMicrosoftValue(accessToken, "token"),
+      refreshToken: tokens.refresh_token ? sealMicrosoftValue(tokens.refresh_token, "token") : account.refreshToken,
+      tokenExpiry: new Date(Date.now() + tokens.expires_in * 1e3),
+      scopes: tokens.scope ?? account.scopes
+    });
+    if (!refreshed) throw new Error("OneDrive-Konto wurde zwischenzeitlich getrennt.");
+  }
+  const storage = await getMicrosoftStorage(accessToken);
+  const updated = await persist({
+    storageUsedBytes: storage.storageUsedBytes,
+    storageTotalBytes: storage.storageTotalBytes,
+    metadata: { ...account.metadata, ...storage.metadata },
+    updatedAt: /* @__PURE__ */ new Date()
+  });
+  if (!updated) throw new Error("OneDrive-Konto wurde zwischenzeitlich getrennt.");
+  return updated;
+}
+
+// server/public-account.ts
+function publicAccount(account) {
+  return {
+    id: account.id,
+    userId: account.userId,
+    provider: account.provider,
+    email: account.email,
+    label: account.label,
+    avatarUrl: account.avatarUrl,
+    storageUsedBytes: account.storageUsedBytes,
+    storageTotalBytes: account.storageTotalBytes,
+    metadata: account.metadata,
+    hasRefreshToken: Boolean(account.refreshToken),
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt
+  };
+}
+
+// server/routes/integrations.ts
 init_client();
 init_schema();
-import { and as and11, desc as desc6, eq as eq13 } from "drizzle-orm";
-import { Hono as Hono12 } from "hono";
-import { z as z11 } from "zod";
+import { z as z12 } from "zod";
 
 // server/mega-auth.ts
 import { Storage } from "megajs";
@@ -1711,23 +1919,43 @@ async function syncMegaAccount(sessionJson) {
 }
 
 // server/routes/integrations.ts
-var createAccountInput = z11.object({
-  provider: z11.enum(["google", "mega"]),
-  email: z11.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
-  password: z11.string().optional(),
+var createAccountInput = z12.object({
+  provider: z12.enum(["google", "mega"]),
+  email: z12.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
+  password: z12.string().optional(),
   // Für Live-MEGA-Login
-  label: z11.string().trim().max(100).optional(),
-  accessToken: z11.string().trim().optional(),
-  refreshToken: z11.string().trim().optional(),
-  storageUsedBytes: z11.string().optional(),
-  storageTotalBytes: z11.string().optional(),
-  metadata: z11.record(z11.string(), z11.unknown()).optional()
+  label: z12.string().trim().max(100).optional(),
+  accessToken: z12.string().trim().optional(),
+  refreshToken: z12.string().trim().optional(),
+  storageUsedBytes: z12.string().optional(),
+  storageTotalBytes: z12.string().optional(),
+  metadata: z12.record(z12.string(), z12.unknown()).optional()
 });
-var updateAccountInput = z11.object({
-  label: z11.string().trim().max(100).optional(),
-  metadata: z11.record(z11.string(), z11.unknown()).optional()
+var updateAccountInput = z12.object({
+  label: z12.string().trim().max(100).optional(),
+  metadata: z12.record(z12.string(), z12.unknown()).optional()
 });
 var integrationsRoute = new Hono12();
+integrationsRoute.get("/microsoft/auth-url", (c) => {
+  c.header("Cache-Control", "no-store");
+  try {
+    const config = microsoftConfig();
+    if (new URL(c.req.url).origin !== config.origin) {
+      return c.json({ error: "Bitte OneDrive auf der in MICROSOFT_REDIRECT_URI konfigurierten App-Adresse verbinden." }, 400);
+    }
+    const authorization = startMicrosoftAuthorization(c.get("userId"), c.req.query("returnTo"));
+    setCookie(c, MICROSOFT_COOKIE, authorization.cookie, {
+      path: MICROSOFT_COOKIE_PATH,
+      httpOnly: true,
+      secure: config.secure,
+      sameSite: "Lax",
+      maxAge: OAUTH_MAX_AGE
+    });
+    return c.json({ url: authorization.url });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "OneDrive-Anmeldung konnte nicht gestartet werden." }, 503);
+  }
+});
 integrationsRoute.get("/google/auth-url", (c) => {
   const returnTo = c.req.query("returnTo") || "/settings";
   try {
@@ -1754,7 +1982,7 @@ integrationsRoute.get("/accounts", async (c) => {
     hasRefreshToken: connectedAccounts.refreshToken,
     createdAt: connectedAccounts.createdAt,
     updatedAt: connectedAccounts.updatedAt
-  }).from(connectedAccounts).where(eq13(connectedAccounts.userId, c.get("userId"))).orderBy(desc6(connectedAccounts.createdAt));
+  }).from(connectedAccounts).where(eq14(connectedAccounts.userId, c.get("userId"))).orderBy(desc6(connectedAccounts.createdAt));
   const sanitized = rows.map((r) => ({
     ...r,
     hasRefreshToken: Boolean(r.hasRefreshToken)
@@ -1764,7 +1992,7 @@ integrationsRoute.get("/accounts", async (c) => {
 integrationsRoute.post("/accounts", async (c) => {
   const parsed = createAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z11.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
   }
   const {
     provider,
@@ -1830,15 +2058,15 @@ integrationsRoute.post("/accounts", async (c) => {
 integrationsRoute.put("/accounts/:id", async (c) => {
   const parsed = updateAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z11.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(connectedAccounts).set({
     ...parsed.data,
     updatedAt: /* @__PURE__ */ new Date()
   }).where(
-    and11(
-      eq13(connectedAccounts.id, c.req.param("id")),
-      eq13(connectedAccounts.userId, c.get("userId"))
+    and12(
+      eq14(connectedAccounts.id, c.req.param("id")),
+      eq14(connectedAccounts.userId, c.get("userId"))
     )
   ).returning({
     id: connectedAccounts.id,
@@ -1856,9 +2084,9 @@ integrationsRoute.put("/accounts/:id", async (c) => {
 });
 integrationsRoute.delete("/accounts/:id", async (c) => {
   const [row] = await db.delete(connectedAccounts).where(
-    and11(
-      eq13(connectedAccounts.id, c.req.param("id")),
-      eq13(connectedAccounts.userId, c.get("userId"))
+    and12(
+      eq14(connectedAccounts.id, c.req.param("id")),
+      eq14(connectedAccounts.userId, c.get("userId"))
     )
   ).returning({ id: connectedAccounts.id });
   if (!row) return c.json({ error: "Konto nicht gefunden" }, 404);
@@ -1866,12 +2094,19 @@ integrationsRoute.delete("/accounts/:id", async (c) => {
 });
 integrationsRoute.post("/accounts/:id/sync", async (c) => {
   const [account] = await db.select().from(connectedAccounts).where(
-    and11(
-      eq13(connectedAccounts.id, c.req.param("id")),
-      eq13(connectedAccounts.userId, c.get("userId"))
+    and12(
+      eq14(connectedAccounts.id, c.req.param("id")),
+      eq14(connectedAccounts.userId, c.get("userId"))
     )
   );
   if (!account) return c.json({ error: "Konto nicht gefunden" }, 404);
+  if (account.provider === "microsoft") {
+    try {
+      return c.json(publicAccount(await syncMicrosoftAccount(account)));
+    } catch {
+      return c.json({ error: "OneDrive-Synchronisation fehlgeschlagen. Die bisherigen Messwerte bleiben erhalten. Bitte Microsoft-Berechtigungen pr\xFCfen oder das Konto erneut verbinden." }, 502);
+    }
+  }
   if (account.provider === "google" && (account.accessToken || account.refreshToken)) {
     try {
       const validToken = await getValidGoogleAccessToken(account);
@@ -1895,8 +2130,8 @@ integrationsRoute.post("/accounts/:id/sync", async (c) => {
               liveConnected: true
             },
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq13(connectedAccounts.id, account.id)).returning();
-          return c.json(updated2);
+          }).where(eq14(connectedAccounts.id, account.id)).returning();
+          return c.json(publicAccount(updated2));
         }
       }
     } catch {
@@ -1915,8 +2150,8 @@ integrationsRoute.post("/accounts/:id/sync", async (c) => {
           liveConnected: true
         },
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq13(connectedAccounts.id, account.id)).returning();
-      return c.json(updated2);
+      }).where(eq14(connectedAccounts.id, account.id)).returning();
+      return c.json(publicAccount(updated2));
     } catch {
     }
   }
@@ -1926,16 +2161,85 @@ integrationsRoute.post("/accounts/:id/sync", async (c) => {
       lastSyncedAt: (/* @__PURE__ */ new Date()).toISOString()
     },
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq13(connectedAccounts.id, account.id)).returning();
-  return c.json(updated);
+  }).where(eq14(connectedAccounts.id, account.id)).returning();
+  return c.json(publicAccount(updated));
 });
 
+// server/routes/microsoft-callback.ts
+init_client();
+init_integrations();
+import { and as and13, eq as eq15 } from "drizzle-orm";
+import { Hono as Hono13 } from "hono";
+import { deleteCookie, getCookie } from "hono/cookie";
+async function persistMicrosoftConnection(connection) {
+  const accounts = await db.select().from(connectedAccounts).where(and13(
+    eq15(connectedAccounts.userId, connection.userId),
+    eq15(connectedAccounts.provider, "microsoft")
+  ));
+  const existing = accounts.find((account) => account.metadata?.microsoftUserId === connection.metadata?.microsoftUserId);
+  if (existing) {
+    await db.update(connectedAccounts).set({
+      ...connection,
+      label: existing.label || connection.label,
+      refreshToken: connection.refreshToken ?? existing.refreshToken
+    }).where(and13(eq15(connectedAccounts.id, existing.id), eq15(connectedAccounts.userId, connection.userId)));
+  } else {
+    await db.insert(connectedAccounts).values(connection);
+  }
+}
+function createMicrosoftCallbackRoute(persist = persistMicrosoftConnection) {
+  const route = new Hono13();
+  route.get("/callback", async (c) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    let origin;
+    try {
+      origin = microsoftConfig().origin;
+    } catch {
+      return c.json({ error: "OneDrive ist noch nicht vollst\xE4ndig konfiguriert." }, 503);
+    }
+    const redirect = (destination, key, value) => {
+      const url = new URL(destination, origin);
+      url.searchParams.set(key, value);
+      return c.redirect(url.toString());
+    };
+    try {
+      const transaction = readMicrosoftTransaction(getCookie(c, MICROSOFT_COOKIE), c.req.query("state"));
+      deleteCookie(c, MICROSOFT_COOKIE, { path: MICROSOFT_COOKIE_PATH, secure: microsoftConfig().secure, httpOnly: true, sameSite: "Lax" });
+      if (c.req.query("error")) return redirect(transaction.returnTo, "error", "Microsoft-Anmeldung abgebrochen oder nicht erlaubt.");
+      const code = c.req.query("code");
+      if (!code) return redirect(transaction.returnTo, "error", "Microsoft hat keinen Anmeldecode zur\xFCckgegeben.");
+      const tokens = await exchangeMicrosoftCode(code, transaction.verifier);
+      const [profile, storage] = await Promise.all([getMicrosoftProfile(tokens.access_token), getMicrosoftStorage(tokens.access_token)]);
+      await persist({
+        userId: transaction.userId,
+        provider: "microsoft",
+        email: profile.email,
+        label: profile.displayName || "OneDrive",
+        accessToken: sealMicrosoftValue(tokens.access_token, "token"),
+        refreshToken: tokens.refresh_token ? sealMicrosoftValue(tokens.refresh_token, "token") : null,
+        tokenExpiry: new Date(Date.now() + tokens.expires_in * 1e3),
+        scopes: tokens.scope ?? null,
+        storageUsedBytes: storage.storageUsedBytes,
+        storageTotalBytes: storage.storageTotalBytes,
+        metadata: { ...storage.metadata, microsoftUserId: profile.id },
+        updatedAt: /* @__PURE__ */ new Date()
+      });
+      return redirect(transaction.returnTo, "connected", "microsoft");
+    } catch {
+      return redirect("/settings", "error", "OneDrive konnte nicht verbunden werden. Bitte Anmeldung erneut starten und Microsoft-Konfiguration sowie Speicherberechtigungen pr\xFCfen.");
+    }
+  });
+  return route;
+}
+var microsoftCallbackRoute = createMicrosoftCallbackRoute();
+
 // server/routes/cloud-monitor.ts
+import { and as and14, desc as desc7, eq as eq16 } from "drizzle-orm";
+import { Hono as Hono14 } from "hono";
 init_client();
 init_schema();
-import { and as and12, desc as desc7, eq as eq14 } from "drizzle-orm";
-import { Hono as Hono13 } from "hono";
-var cloudMonitorRoute = new Hono13();
+var cloudMonitorRoute = new Hono14();
 var defaultDemoAccounts = [
   {
     provider: "google",
@@ -2001,7 +2305,7 @@ cloudMonitorRoute.get("/overview", async (c) => {
     metadata: connectedAccounts.metadata,
     createdAt: connectedAccounts.createdAt,
     updatedAt: connectedAccounts.updatedAt
-  }).from(connectedAccounts).where(eq14(connectedAccounts.userId, userId)).orderBy(desc7(connectedAccounts.createdAt));
+  }).from(connectedAccounts).where(eq16(connectedAccounts.userId, userId)).orderBy(desc7(connectedAccounts.createdAt));
   if (accounts.length === 0) {
     const inserted = await db.insert(connectedAccounts).values(
       defaultDemoAccounts.map((acc) => ({
@@ -2031,6 +2335,8 @@ cloudMonitorRoute.get("/overview", async (c) => {
   let totalCapacity = BigInt(0);
   let googleUsed = BigInt(0);
   let googleCapacity = BigInt(0);
+  let microsoftUsed = BigInt(0);
+  let microsoftCapacity = BigInt(0);
   let megaUsed = BigInt(0);
   let megaCapacity = BigInt(0);
   for (const acc of accounts) {
@@ -2041,6 +2347,9 @@ cloudMonitorRoute.get("/overview", async (c) => {
     if (acc.provider === "google") {
       googleUsed += used;
       googleCapacity += total;
+    } else if (acc.provider === "microsoft") {
+      microsoftUsed += used;
+      microsoftCapacity += total;
     } else if (acc.provider === "mega") {
       megaUsed += used;
       megaCapacity += total;
@@ -2054,6 +2363,9 @@ cloudMonitorRoute.get("/overview", async (c) => {
       googleCapacityBytes: googleCapacity.toString(),
       megaUsedBytes: megaUsed.toString(),
       megaCapacityBytes: megaCapacity.toString(),
+      microsoftUsedBytes: microsoftUsed.toString(),
+      microsoftCapacityBytes: microsoftCapacity.toString(),
+      microsoftCount: accounts.filter((a) => a.provider === "microsoft").length,
       accountsCount: accounts.length,
       googleCount: accounts.filter((a) => a.provider === "google").length,
       megaCount: accounts.filter((a) => a.provider === "mega").length
@@ -2063,35 +2375,35 @@ cloudMonitorRoute.get("/overview", async (c) => {
 });
 cloudMonitorRoute.get("/account/:id", async (c) => {
   const [account] = await db.select().from(connectedAccounts).where(
-    and12(
-      eq14(connectedAccounts.id, c.req.param("id")),
-      eq14(connectedAccounts.userId, c.get("userId"))
+    and14(
+      eq16(connectedAccounts.id, c.req.param("id")),
+      eq16(connectedAccounts.userId, c.get("userId"))
     )
   );
   if (!account) return c.json({ error: "Konto nicht gefunden" }, 404);
-  return c.json(account);
+  return c.json(publicAccount(account));
 });
 
 // server/routes/uptime.ts
 init_client();
 init_schema();
 init_uptime_check();
-import { and as and14, desc as desc8, eq as eq16, gte as gte2 } from "drizzle-orm";
-import { Hono as Hono14 } from "hono";
-import { z as z12 } from "zod";
-var monitorInput = z12.object({
-  name: z12.string().trim().min(1, "Name ist erforderlich").max(100),
-  type: z12.enum(MONITOR_TYPES).default("http"),
-  url: z12.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
-  port: z12.number().int().min(1).max(65535).nullable().optional(),
-  expectedStatus: z12.number().int().min(100).max(599).default(200),
-  timeoutMs: z12.number().int().min(1e3).max(3e4).default(1e4),
-  active: z12.boolean().default(true)
+import { and as and16, desc as desc8, eq as eq18, gte as gte2 } from "drizzle-orm";
+import { Hono as Hono15 } from "hono";
+import { z as z13 } from "zod";
+var monitorInput = z13.object({
+  name: z13.string().trim().min(1, "Name ist erforderlich").max(100),
+  type: z13.enum(MONITOR_TYPES).default("http"),
+  url: z13.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
+  port: z13.number().int().min(1).max(65535).nullable().optional(),
+  expectedStatus: z13.number().int().min(100).max(599).default(200),
+  timeoutMs: z13.number().int().min(1e3).max(3e4).default(1e4),
+  active: z13.boolean().default(true)
 });
-var uptimeRoute = new Hono14();
+var uptimeRoute = new Hono15();
 uptimeRoute.get("/", async (c) => {
   const userId = c.get("userId");
-  const monitors = await db.select().from(uptimeMonitors).where(eq16(uptimeMonitors.userId, userId)).orderBy(desc8(uptimeMonitors.createdAt));
+  const monitors = await db.select().from(uptimeMonitors).where(eq18(uptimeMonitors.userId, userId)).orderBy(desc8(uptimeMonitors.createdAt));
   if (monitors.length === 0) {
     return c.json([]);
   }
@@ -2167,7 +2479,7 @@ uptimeRoute.post("/", async (c) => {
   const userId = c.get("userId");
   const parsed = monitorInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(uptimeMonitors).values({
     ...parsed.data,
@@ -2185,22 +2497,22 @@ uptimeRoute.put("/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = monitorInput.partial().safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
   }
-  const [existing] = await db.select().from(uptimeMonitors).where(and14(eq16(uptimeMonitors.id, id), eq16(uptimeMonitors.userId, userId)));
+  const [existing] = await db.select().from(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId)));
   if (!existing) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
   const [updated] = await db.update(uptimeMonitors).set({
     ...parsed.data,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and14(eq16(uptimeMonitors.id, id), eq16(uptimeMonitors.userId, userId))).returning();
+  }).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId))).returning();
   return c.json(updated);
 });
 uptimeRoute.delete("/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(uptimeMonitors).where(and14(eq16(uptimeMonitors.id, id), eq16(uptimeMonitors.userId, userId))).returning();
+  const [deleted] = await db.delete(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
@@ -2214,7 +2526,7 @@ uptimeRoute.post("/refresh-all", async (c) => {
 uptimeRoute.post("/:id/check", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [monitor] = await db.select().from(uptimeMonitors).where(and14(eq16(uptimeMonitors.id, id), eq16(uptimeMonitors.userId, userId)));
+  const [monitor] = await db.select().from(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId)));
   if (!monitor) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
@@ -2224,21 +2536,21 @@ uptimeRoute.post("/:id/check", async (c) => {
 uptimeRoute.get("/:id/checks", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [monitor] = await db.select().from(uptimeMonitors).where(and14(eq16(uptimeMonitors.id, id), eq16(uptimeMonitors.userId, userId)));
+  const [monitor] = await db.select().from(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId)));
   if (!monitor) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
-  const checks = await db.select().from(uptimeChecks).where(eq16(uptimeChecks.monitorId, id)).orderBy(desc8(uptimeChecks.checkedAt)).limit(20);
+  const checks = await db.select().from(uptimeChecks).where(eq18(uptimeChecks.monitorId, id)).orderBy(desc8(uptimeChecks.checkedAt)).limit(20);
   return c.json(checks);
 });
 
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and15, asc as asc5, desc as desc9, eq as eq17 } from "drizzle-orm";
-import { Hono as Hono15 } from "hono";
-import { z as z13 } from "zod";
-var chatRoute = new Hono15();
+import { and as and17, asc as asc5, desc as desc9, eq as eq19 } from "drizzle-orm";
+import { Hono as Hono16 } from "hono";
+import { z as z14 } from "zod";
+var chatRoute = new Hono16();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -2250,18 +2562,18 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z13.object({
-  title: z13.string().trim().max(200).optional()
+var createSessionSchema = z14.object({
+  title: z14.string().trim().max(200).optional()
 });
-var updateSessionSchema = z13.object({
-  title: z13.string().trim().min(1).max(200)
+var updateSessionSchema = z14.object({
+  title: z14.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z13.object({
-  content: z13.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z14.object({
+  content: z14.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq17(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq19(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -2280,12 +2592,12 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z14.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and15(eq17(chatSessions.id, id), eq17(chatSessions.userId, userId))).returning();
+  }).where(and17(eq19(chatSessions.id, id), eq19(chatSessions.userId, userId))).returning();
   if (!updated) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2294,7 +2606,7 @@ chatRoute.put("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
-  const [deleted] = await db.delete(chatSessions).where(and15(eq17(chatSessions.id, id), eq17(chatSessions.userId, userId))).returning();
+  const [deleted] = await db.delete(chatSessions).where(and17(eq19(chatSessions.id, id), eq19(chatSessions.userId, userId))).returning();
   if (!deleted) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
@@ -2303,23 +2615,23 @@ chatRoute.delete("/sessions/:id", async (c) => {
 chatRoute.get("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and15(eq17(chatSessions.id, sessionId), eq17(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and17(eq19(chatSessions.id, sessionId), eq19(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
-  const messages = await db.select().from(chatMessages).where(eq17(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
+  const messages = await db.select().from(chatMessages).where(eq19(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt));
   return c.json(messages);
 });
 chatRoute.post("/sessions/:id/messages", async (c) => {
   const userId = c.get("userId");
   const sessionId = c.req.param("id");
-  const [session] = await db.select().from(chatSessions).where(and15(eq17(chatSessions.id, sessionId), eq17(chatSessions.userId, userId)));
+  const [session] = await db.select().from(chatSessions).where(and17(eq19(chatSessions.id, sessionId), eq19(chatSessions.userId, userId)));
   if (!session) {
     return c.json({ error: "Chat nicht gefunden" }, 404);
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z14.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -2329,11 +2641,11 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }).returning();
   if (session.title === "Neuer Chat") {
     const cleanTitle = userContent.length > 35 ? `${userContent.slice(0, 35).trim()}\u2026` : userContent;
-    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq17(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ title: cleanTitle, updatedAt: /* @__PURE__ */ new Date() }).where(eq19(chatSessions.id, sessionId));
   } else {
-    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq17(chatSessions.id, sessionId));
+    await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq19(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq17(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq19(chatMessages.sessionId, sessionId)).orderBy(asc5(chatMessages.createdAt)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -2450,7 +2762,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono16().basePath("/api");
+  const app = new Hono17().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -2462,6 +2774,7 @@ function createApp() {
   app.get("/health", (c) => c.json({ ok: true, ts: Date.now() }));
   app.route("/public/booking", publicBookingRoute);
   app.route("/integrations/google", googleCallbackRoute);
+  app.route("/integrations/microsoft", microsoftCallbackRoute);
   app.get("/cron/uptime-refresh", async (c) => {
     const secret = process.env.CRON_SECRET;
     if (!secret) {

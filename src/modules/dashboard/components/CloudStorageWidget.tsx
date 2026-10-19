@@ -24,7 +24,7 @@ function getPercent(usedStr: string, totalStr: string): number {
   return Math.min(100, Math.round((used / total) * 1000) / 10)
 }
 
-/** Bento-Widget: Aggregierte Cloud-Speicherauslastung (Google Drive & MEGA). */
+/** Bento-Widget: Aggregierte Cloud-Speicherauslastung (Google Drive, OneDrive & MEGA). */
 export function CloudStorageWidget() {
   const { data, isLoading } = useCloudOverview()
   const syncMutation = useSyncAccount()
@@ -126,11 +126,12 @@ export function CloudStorageWidget() {
 
           {/* Provider-Übersicht & Mini-Sync */}
           <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
-            <div className="flex items-center gap-3 text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
               <span className="flex items-center gap-1">
                 <HardDrive className="size-3 text-blue-400" />
                 Drive: {formatBytes(summary?.googleUsedBytes ?? '0')}
               </span>
+              <span className="flex items-center gap-1"><Cloud className="size-3 text-sky-400" />OneDrive: {formatBytes(summary?.microsoftUsedBytes ?? '0')}</span>
               <span className="flex items-center gap-1">
                 <Cloud className="size-3 text-red-400" />
                 MEGA: {formatBytes(summary?.megaUsedBytes ?? '0')}

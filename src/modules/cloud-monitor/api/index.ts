@@ -3,7 +3,7 @@ import { useApiFetch } from '@/hooks/use-api'
 
 export interface ConnectedAccountDto {
   id: string
-  provider: 'google' | 'mega'
+  provider: 'google' | 'mega' | 'microsoft'
   email: string
   label: string
   avatarUrl: string | null
@@ -30,6 +30,9 @@ export interface CloudOverviewDto {
     megaCapacityBytes: string
     accountsCount: number
     googleCount: number
+    microsoftUsedBytes: string
+    microsoftCapacityBytes: string
+    microsoftCount: number
     megaCount: number
   }
   accounts: ConnectedAccountDto[]
@@ -53,6 +56,15 @@ export function useGoogleAuthUrl() {
       apiFetch<{ url: string }>(
         `/api/integrations/google/auth-url${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`,
       ),
+  })
+}
+
+export function useMicrosoftAuthUrl() {
+  const apiFetch = useApiFetch()
+  return useMutation({
+    mutationFn: (returnTo?: string) => apiFetch<{ url: string }>(
+      `/api/integrations/microsoft/auth-url${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`,
+    ),
   })
 }
 

@@ -12,6 +12,7 @@ import { bookingRoute } from './routes/booking'
 import { publicBookingRoute } from './routes/public-booking'
 import { googleCallbackRoute } from './routes/google-callback'
 import { integrationsRoute } from './routes/integrations'
+import { microsoftCallbackRoute } from './routes/microsoft-callback'
 import { cloudMonitorRoute } from './routes/cloud-monitor'
 import { uptimeRoute } from './routes/uptime'
 import { chatRoute } from './routes/chat'
@@ -45,6 +46,7 @@ export function createApp() {
   // Öffentliche Routen VOR der Auth-Middleware registrieren
   app.route('/public/booking', publicBookingRoute)
   app.route('/integrations/google', googleCallbackRoute)
+  app.route('/integrations/microsoft', microsoftCallbackRoute)
 
   // Vercel-Cron-Endpunkt: Uptime-Auto-Check alle 5 Minuten (vercel.json).
   // Ersetzt den 5-Minuten-Ticker aus server/index.ts, der im Serverless-

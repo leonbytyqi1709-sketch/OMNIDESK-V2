@@ -1,5 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { publicAccount } from '../public-account'
 import { db } from '../../src/db/client'
 import { connectedAccounts } from '../../src/db/schema/index'
 
@@ -117,6 +118,8 @@ cloudMonitorRoute.get('/overview', async (c) => {
   let totalCapacity = BigInt(0)
   let googleUsed = BigInt(0)
   let googleCapacity = BigInt(0)
+  let microsoftUsed = BigInt(0)
+  let microsoftCapacity = BigInt(0)
   let megaUsed = BigInt(0)
   let megaCapacity = BigInt(0)
 
@@ -129,6 +132,9 @@ cloudMonitorRoute.get('/overview', async (c) => {
     if (acc.provider === 'google') {
       googleUsed += used
       googleCapacity += total
+    } else if (acc.provider === 'microsoft') {
+      microsoftUsed += used
+      microsoftCapacity += total
     } else if (acc.provider === 'mega') {
       megaUsed += used
       megaCapacity += total
@@ -143,6 +149,9 @@ cloudMonitorRoute.get('/overview', async (c) => {
       googleCapacityBytes: googleCapacity.toString(),
       megaUsedBytes: megaUsed.toString(),
       megaCapacityBytes: megaCapacity.toString(),
+      microsoftUsedBytes: microsoftUsed.toString(),
+      microsoftCapacityBytes: microsoftCapacity.toString(),
+      microsoftCount: accounts.filter((a) => a.provider === 'microsoft').length,
       accountsCount: accounts.length,
       googleCount: accounts.filter((a) => a.provider === 'google').length,
       megaCount: accounts.filter((a) => a.provider === 'mega').length,
@@ -164,5 +173,5 @@ cloudMonitorRoute.get('/account/:id', async (c) => {
     )
 
   if (!account) return c.json({ error: 'Konto nicht gefunden' }, 404)
-  return c.json(account)
+  return c.json(publicAccount(account))
 })

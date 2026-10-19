@@ -16,6 +16,10 @@ Historischer V1-Entwicklungsstand: `DOKUMENTATION.txt`.
 - Bereits bei Google erteilte Gmail-Berechtigungen werden durch die Codeänderung nicht automatisch widerrufen. Eine erneute Autorisierung ist für die bisherigen Drive-Funktionen nicht erforderlich.
 - Für V2 eine separate Entwicklungsdatenbank verwenden. Dieser Schritt benötigt keine Datenbankmigration.
 
+## OneDrive in V2
+
+OneDrive lässt sich zusätzlich zu Google Drive und MEGA verbinden (private Microsoft-Konten sowie Geschäfts-/Schulkonten, abhängig von Organisationsrichtlinien). Kontoanmeldung, Quotenanzeige, Synchronisation und Trennen sind vorbereitet. Vor dem ersten echten Kontotest müssen Microsoft-App-Registrierung und Vercel-Variablen eingerichtet werden: [OneDrive-Einrichtung](docs/ONEDRIVE-SETUP.md).
+
 ## Stack
 
 - **Frontend:** Vite 8 + React 19 + TypeScript (strict), React Router v7,

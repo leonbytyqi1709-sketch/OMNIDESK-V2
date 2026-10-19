@@ -31,7 +31,7 @@ function getUsagePercent(usedStr: string, totalStr: string): number {
 export default function CloudMonitorPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data, isLoading, error } = useCloudOverview()
-  const [providerFilter, setProviderFilter] = useState<'all' | 'google' | 'mega'>('all')
+  const [providerFilter, setProviderFilter] = useState<'all' | 'google' | 'mega' | 'microsoft'>('all')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
 
   // Benachrichtigung bei OAuth Rückkehr
@@ -40,8 +40,8 @@ export default function CloudMonitorPage() {
     const err = searchParams.get('error')
     const email = searchParams.get('email')
 
-    if (connected === 'google') {
-      toast.success(`Google-Konto ${email ? `(${email})` : ''} erfolgreich verknüpft!`)
+    if (connected === 'google' || connected === 'microsoft') {
+      toast.success(`${connected === 'microsoft' ? 'Microsoft' : 'Google'}-Konto ${email ? `(${email})` : ''} erfolgreich verknüpft!`)
       searchParams.delete('connected')
       if (email) searchParams.delete('email')
       setSearchParams(searchParams, { replace: true })
@@ -95,7 +95,7 @@ export default function CloudMonitorPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live-Überwachung von Speicherkapazitäten über Google Drive und MEGA.
+            Live-Überwachung von Speicherkapazitäten über Google Drive, OneDrive und MEGA.
           </p>
         </div>
 
@@ -136,13 +136,13 @@ export default function CloudMonitorPage() {
 
       {/* Aggregierte Statistik-Kacheln */}
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Skeleton className="h-28 rounded-xl" />
           <Skeleton className="h-28 rounded-xl" />
           <Skeleton className="h-28 rounded-xl" />
         </div>
       ) : summary ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Gesamtspeicher */}
           <Card className="border-border bg-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -199,6 +199,18 @@ export default function CloudMonitorPage() {
             </CardContent>
           </Card>
 
+          <Card className="border-border bg-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">OneDrive</CardTitle>
+              <Cloud className="size-4 text-sky-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-foreground">{formatBytes(summary.microsoftUsedBytes)} <span className="text-xs font-normal text-muted-foreground">/ {formatBytes(summary.microsoftCapacityBytes)}</span></div>
+              <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{summary.microsoftCount} Accounts konfiguriert</span><span>{getUsagePercent(summary.microsoftUsedBytes, summary.microsoftCapacityBytes)}%</span></div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-sky-500" style={{ width: `${getUsagePercent(summary.microsoftUsedBytes, summary.microsoftCapacityBytes)}%` }} /></div>
+            </CardContent>
+          </Card>
+
           {/* MEGA Cloud Konten */}
           <Card className="border-border bg-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -234,15 +246,18 @@ export default function CloudMonitorPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Tabs
             value={providerFilter}
-            onValueChange={(val) => setProviderFilter(val as 'all' | 'google' | 'mega')}
+            onValueChange={(val) => setProviderFilter(val as 'all' | 'google' | 'mega' | 'microsoft')}
             className="w-full sm:w-auto"
           >
-            <TabsList className="grid w-full grid-cols-3 sm:w-auto">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 sm:w-auto">
               <TabsTrigger value="all">
                 Alle ({accounts.length})
               </TabsTrigger>
               <TabsTrigger value="google">
                 Google Drive ({accounts.filter((a) => a.provider === 'google').length})
+              </TabsTrigger>
+              <TabsTrigger value="microsoft">
+                OneDrive ({accounts.filter((a) => a.provider === 'microsoft').length})
               </TabsTrigger>
               <TabsTrigger value="mega">
                 MEGA ({accounts.filter((a) => a.provider === 'mega').length})
@@ -273,7 +288,7 @@ export default function CloudMonitorPage() {
               Keine Konten in dieser Ansicht
             </h3>
             <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-              Verknüpfe neue Konten für Google Drive oder MEGA, um deinen Cloud-Speicherplatz hier in Echtzeit zu überwachen.
+              Verknüpfe neue Konten für Google Drive, OneDrive oder MEGA, um deinen Cloud-Speicherplatz hier in Echtzeit zu überwachen.
             </p>
             <Button
               variant="outline"

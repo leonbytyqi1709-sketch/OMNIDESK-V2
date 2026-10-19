@@ -313,3 +313,11 @@ Erster Umsetzungsschritt ausschließlich in OMNIDESK-V2:
 Der Nutzer meldet, dass Monitore vor Commit 81199e1 in V2 sichtbar waren, nach dessen Deployment aber nicht mehr; im Original sind sie weiterhin sichtbar. Es wurden keine Monitor-Löschungen oder Migrationen ausgeführt. Als erste isolierte Korrektur wird die Änderung der API-Bereitstellung zurückgenommen: bundle:api erzeugt wieder das versionierte api/[[...route]].js wie im zuvor funktionierenden Deployment. Das Bundle wird aus den aktuellen Quellen ohne Mail-Modul neu generiert; die Vercel-Rewrites bleiben unverändert. Mail-Entfernung und Uptime-Abstände bleiben bestehen.
 
 Die Ursache ist ohne Zugriff auf die Live-Antworten noch nicht abschließend nachgewiesen. Die Wiederherstellung der Anzeige muss nach dem erneuten Deployment geprüft werden. Weitere Featureentwicklung pausiert bis zur Klärung.
+
+### OneDrive – Implementierung vorbereitet, echter Kontotest ausstehend
+
+19. Oktober 2026: Nr. 8 wurde im Code ergänzt. Der Nutzer wünscht sowohl private Microsoft-Konten als auch Geschäfts-/Schulkonten. Neue lesende Microsoft-OAuth-Verbindung mit PKCE, browsergebundener verschlüsselter Transaktion, verschlüsselten Microsoft-Tokens und Token-Erneuerung. OneDrive erscheint in Einstellungen, Verknüpfungsdialog, Cloud-Monitoring mit Anbieterfilter und aggregierten Werten sowie Dashboard-Widget. Fehlerhafte Quotenabrufe erzeugen keine fiktiven OneDrive-Daten.
+
+Die bestehende Kontentabelle wird weiterverwendet, keine Schema-Migration oder produktiven Datenbankoperationen. Bestehende API-Bereitstellung und Vercel-Rewrites bleiben unverändert. Konto-Detail-/Sync-Antworten verwenden eine öffentliche Projektion ohne Tokenfelder; dies schließt auch eine bisherige Token-Rückgabe bei anderen Cloud-Anbietern.
+
+Einrichtung und Testschritte: docs/ONEDRIVE-SETUP.md. Client-ID, Client-Secret und Redirect-URI sind hier noch nicht vorhanden. Der Nutzer muss die Microsoft-App registrieren, die Werte sicher in Vercel eintragen und den echten privaten beziehungsweise Organisations-Login testen. Lokale Mock- und Regressionstests ersetzen diesen Kontotest nicht. Dieser Punkt ist implementiert, aber noch nicht vollständig live abgenommen.

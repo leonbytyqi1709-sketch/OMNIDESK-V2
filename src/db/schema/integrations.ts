@@ -7,7 +7,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-export const INTEGRATION_PROVIDERS = ['google', 'mega'] as const
+export const INTEGRATION_PROVIDERS = ['google', 'mega', 'microsoft'] as const
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number]
 
 export interface AccountStorageMetadata {
@@ -18,7 +18,7 @@ export interface AccountStorageMetadata {
   lastSyncedAt?: string
 }
 
-/** Verbundene externe Konten für Google Drive und MEGA (Spec Phase 4). */
+/** Verbundene externe Konten für Google Drive, OneDrive und MEGA (Spec Phase 4). */
 export const connectedAccounts = pgTable(
   'connected_accounts',
   {

@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useConnectAccount, useGoogleAuthUrl } from '../api'
+import { useConnectAccount, useGoogleAuthUrl, useMicrosoftAuthUrl } from '../api'
 
 interface AddAccountDialogProps {
   open: boolean
@@ -26,7 +26,7 @@ interface AddAccountDialogProps {
 }
 
 export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
-  const [provider, setProvider] = useState<'google' | 'mega'>('google')
+  const [provider, setProvider] = useState<'google' | 'mega' | 'microsoft'>('google')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [label, setLabel] = useState('')
@@ -36,6 +36,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
 
   const connectMutation = useConnectAccount()
   const googleAuthMutation = useGoogleAuthUrl()
+  const microsoftAuthMutation = useMicrosoftAuthUrl()
 
   const handleGoogleOAuth = async () => {
     setError(null)
@@ -49,9 +50,22 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
     }
   }
 
+  const handleMicrosoftOAuth = async () => {
+    setError(null)
+    setIsOAuthRedirecting(true)
+    try {
+      const { url } = await microsoftAuthMutation.mutateAsync(window.location.pathname)
+      window.location.href = url
+    } catch (err) {
+      setIsOAuthRedirecting(false)
+      setError(err instanceof Error ? err.message : 'Microsoft-Anmeldung konnte nicht gestartet werden.')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    if (provider === 'microsoft') return
 
     if (!email.trim() || !email.includes('@')) {
       setError('Bitte eine gültige E-Mail-Adresse eingeben.')
@@ -82,7 +96,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {provider === 'google' ? (
+            {provider !== 'mega' ? (
               <HardDrive className="size-5 text-blue-500" />
             ) : (
               <Cloud className="size-5 text-red-500" />
@@ -90,7 +104,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
             Cloud-Konto verknüpfen
           </DialogTitle>
           <DialogDescription>
-            Füge ein Google Drive oder MEGA Konto für das Speicherkapazitäts-Monitoring hinzu.
+            Füge ein Google Drive-, OneDrive- oder MEGA-Konto für das Speicherkapazitäts-Monitoring hinzu.
           </DialogDescription>
         </DialogHeader>
 
@@ -106,10 +120,12 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
             <Select
               value={provider}
               onValueChange={(val) => {
-                const nextProvider = val as 'google' | 'mega'
+                const nextProvider = val as 'google' | 'mega' | 'microsoft'
                 setProvider(nextProvider)
                 setCapacityGb(nextProvider === 'google' ? '15' : '20')
                 setPassword('')
+                setError(null)
+                setIsOAuthRedirecting(false)
               }}
             >
               <SelectTrigger id="provider">
@@ -117,6 +133,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="google">Google Drive (OAuth2)</SelectItem>
+                <SelectItem value="microsoft">Microsoft OneDrive (privat / geschäftlich)</SelectItem>
                 <SelectItem value="mega">MEGA Cloud (20 GB Live & Demo)</SelectItem>
               </SelectContent>
             </Select>
@@ -161,7 +178,19 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {provider === 'microsoft' && (
+            <div className="space-y-3 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3.5 text-xs">
+              <p className="font-semibold">Microsoft OneDrive verbinden</p>
+              <p className="text-muted-foreground">Für private Microsoft-Konten sowie Geschäfts- und Schulkonten. Die Anmeldung erfolgt bei Microsoft. OMNIDESK erhält lesenden Zugriff auf Profil und Speicherwerte, keinen Schreibzugriff auf Dateien.</p>
+              <Button type="button" className="w-full gap-2" onClick={handleMicrosoftOAuth} disabled={isOAuthRedirecting}>
+                <ExternalLink className="size-4" />
+                {isOAuthRedirecting ? 'Weiterleitung zu Microsoft…' : 'Mit Microsoft verbinden'}
+              </Button>
+              <p className="text-muted-foreground">Bei Organisationskonten kann eine Administratorfreigabe erforderlich sein. Persönliche Konten können die gemeinsame Microsoft-Speicherquote melden.</p>
+            </div>
+          )}
+
+          {provider !== 'microsoft' && <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="account-email">Account-E-Mail</Label>
               <Input
@@ -235,7 +264,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
                 {connectMutation.isPending ? 'Wird verknüpft...' : 'Konto hinzufügen'}
               </Button>
             </DialogFooter>
-          </form>
+          </form>}
         </div>
       </DialogContent>
     </Dialog>

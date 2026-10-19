@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { AlertTriangle, Cloud, HardDrive, RefreshCw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,13 +36,14 @@ export function AccountCard({ account }: AccountCardProps) {
 
   const percent = getUsagePercent(account.storageUsedBytes, account.storageTotalBytes)
   const isGoogle = account.provider === 'google'
+  const isMicrosoft = account.provider === 'microsoft'
 
   // Farblogik nach Auslastung (Schwellenwert-Alarme)
   const isCritical = percent >= 90
   const isWarning = percent >= 80 && percent < 90
 
   const handleSync = () => {
-    syncMutation.mutate(account.id)
+    syncMutation.mutate(account.id, { onError: (error) => toast.error(error.message), onSuccess: () => toast.success('Speicherdaten synchronisiert') })
   }
 
   const handleDelete = () => {
@@ -50,7 +52,7 @@ export function AccountCard({ account }: AccountCardProps) {
       setTimeout(() => setConfirmDelete(false), 4000)
       return
     }
-    deleteMutation.mutate(account.id)
+    deleteMutation.mutate(account.id, { onError: (error) => toast.error(error.message) })
   }
 
   return (
@@ -63,7 +65,7 @@ export function AccountCard({ account }: AccountCardProps) {
                 'flex size-9 shrink-0 items-center justify-center rounded-lg border',
                 isGoogle
                   ? 'border-blue-500/20 bg-blue-500/10 text-blue-400'
-                  : 'border-red-500/20 bg-red-500/10 text-red-400',
+                  : isMicrosoft ? 'border-sky-500/20 bg-sky-500/10 text-sky-400' : 'border-red-500/20 bg-red-500/10 text-red-400',
               )}
             >
               {isGoogle ? (
@@ -176,11 +178,17 @@ export function AccountCard({ account }: AccountCardProps) {
               Anbieter
             </span>
             <span className="font-medium text-foreground">
-              {isGoogle ? 'Google Drive' : 'MEGA'}
+              {isGoogle ? 'Google Drive' : isMicrosoft ? 'OneDrive' : 'MEGA'}
             </span>
           </div>
         </div>
 
+        {isMicrosoft && account.metadata.quotaScope === 'microsoft-unified' && (
+          <p className="text-[11px] text-muted-foreground">Gemeinsame Microsoft-Speicherquote; kann neben OneDrive weitere Microsoft-Dienste enthalten.</p>
+        )}
+        {account.metadata.lastSyncedAt && (
+          <p className="text-[11px] text-muted-foreground">Letzter Abruf: {new Date(String(account.metadata.lastSyncedAt)).toLocaleString('de-DE')}</p>
+        )}
         {/* Footer Actions */}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <Button
