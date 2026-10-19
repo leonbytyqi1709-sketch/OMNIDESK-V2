@@ -4,7 +4,8 @@ Stand: 19. Oktober 2026. Erste lesende Vercel-Anbindung als neues Modul **Deploy
 
 ## Was dieser Schritt anbietet
 
-- Projektzuordnung für den angemeldeten Benutzer.
+- Automatische Auswahl der über den Token erreichbaren Vercel-Projekte aus Konto und Teams.
+- Optionale Projektzuordnung für Karten innerhalb des OMNIDESK-Projektmanagements.
 - Aktuelle Produktionszuordnung aus Vercels `targets.production`. Ein erfolgreicher Verlaufseintrag wird nicht ersatzweise als aktuelle Produktion ausgegeben.
 - Bis zu 20 jüngste Deployments mit Status, Umgebung, Zeitpunkt und verfügbaren Git-Commit-Angaben.
 - Build-Logs auf ausdrücklichen Klick; bis zu 100 jüngste Ereignisse, anschließend chronologisch dargestellt. Kein dauerhaft geöffneter Stream.
@@ -24,9 +25,21 @@ DEPLOYMENT_API_TOKEN = der neue Token
 
 Für die feste Beta-Adresse gilt üblicherweise die Umgebung **Production**. Der Token hat keinen `VITE_`-Präfix und wird nicht an den Browser weitergegeben. Nicht in Git, Chat oder Screenshots veröffentlichen. Die bisherige Git-Authentifizierung der Entwicklungsumgebung ersetzt diesen Token für die produktive App nicht.
 
-## 2. Projektzuordnung hinterlegen
+## 2. Automatische Projektliste freischalten
 
-Eine zweite Variable `DEPLOYMENT_PROJECT_LINKS` anlegen. Wert ist eine JSON-Liste ohne Markdown-Zeichen und ohne zusätzliche äußere Anführungszeichen:
+Zusätzlich zum Token diese Variable für Production hinterlegen:
+
+```text
+DEPLOYMENT_ACCOUNT_USER_ID = deine vollständige Clerk-Benutzerkennung
+```
+
+Für den aktuellen Betreiber ist die Kennung `user_3GdGzbr7SYJGIUrypi8R7iQChWe`. Danach neu deployen und **Deployments** öffnen. Dort werden Vercel-Projekte direkt auswählbar; es sind weder OMNIDESK-Projekte noch JSON-Zuordnungen notwendig. Bestehende `DEPLOYMENT_PROJECT_LINKS` dürfen erhalten bleiben.
+
+Diese Freischaltung ist bewusst ausdrücklich: Nur dieser angemeldete Benutzer darf den gemeinsamen serverseitigen Token für die gesamte Projektliste verwenden. Andere Benutzer erhalten keinen Zugriff. Ein Token kann nur die Projekte anzeigen, für die er Rechte besitzt. Fehlgeschlagene Konto-/Teamabrufe werden als Teilfehler angezeigt. Pro Liste werden höchstens zehn Seiten mit jeweils 100 Einträgen und bis zu 30 Teams abgefragt; eine Begrenzung wird angezeigt. Es werden keine Vercel-Projekte angelegt oder kopiert.
+
+## Optional: Zuordnung im OMNIDESK-Projektmanagement
+
+Für die zusätzliche Karte innerhalb eines vorhandenen OMNIDESK-Projekts die Variable `DEPLOYMENT_PROJECT_LINKS` anlegen. Wert ist eine JSON-Liste ohne Markdown-Zeichen und ohne zusätzliche äußere Anführungszeichen:
 
 ```json
 [
@@ -51,7 +64,7 @@ Nach Änderung der Variablen ein **Redeploy** ausführen. Ohne Konfiguration ers
 ## 3. Prüfen
 
 1. Deployment „Ready“ abwarten. Den Healthcheck und die bisherigen Monitore prüfen.
-2. **Deployments** in der Sidebar öffnen und das zugeordnete OMNIDESK-Projekt wählen. Das Modul kann wie andere Werkzeuge im Modul-Manager ausgeblendet werden; die Projektkarte ist unabhängig davon Teil der Projektansicht.
+2. **Deployments** in der Sidebar öffnen und ein automatisch gefundenes Vercel-Projekt wählen. Das Modul kann wie andere Werkzeuge im Modul-Manager ausgeblendet werden; die Projektkarte ist unabhängig davon Teil der Projektansicht.
 3. Produktionskarte und Verlauf mit dem Vercel-Dashboard vergleichen. Eine Preview muss als Vorschau erkennbar bleiben. Fehlt Vercels ausdrückliche Produktionszuordnung, wird keine vermutet.
 4. Bei einem bekannten Build auf **Build-Logs** klicken. Ergebnis, Reihenfolge und Begrenzung prüfen. Vercel entscheidet nach Berechtigungen, Tarif und Aufbewahrung, welche Logs verfügbar sind.
 5. Andere Benutzer dürfen keine fremden Zuordnungen erhalten. Auch direkt aufgerufene Logadressen bleiben geschützt.
@@ -64,6 +77,8 @@ Nur Build-Ereignisse, keine Laufzeitlogs, werden angefordert. Die Antwort ist au
 API-Antworten erhalten `Cache-Control: no-store`. Kurzzeitige React-Query-Caches im Browser werden nach Benutzerkennung getrennt. Direkte Providerantworten mit privaten Feldern wie Vercel-Umgebungsvariablen werden nicht durchgereicht; angezeigt werden nur ausdrücklich ausgewählte Felder.
 
 ## Technische Referenz und Validierung
+
+Für die automatische Liste zusätzlich GET `/v10/projects` und GET `/v2/teams`, jeweils mit Pagination. Status und Logs werden nur für serverseitig gefundene Projekte im passenden Teamkontext abgerufen.
 
 Verwendete Schnittstellen des offiziellen `@vercel/sdk` 1.28.46 (nur außerhalb des Checkouts als Referenz gelesen, nicht als neue Laufzeitabhängigkeit installiert):
 

@@ -19,14 +19,14 @@ function CommitInfo({ deployment }: { deployment: DeploymentSummary }) {
 }
 
 export function DeploymentPanel({ projectId }: { projectId?: string }) {
-  const overview = useDeploymentsOverview()
+  const overview = useDeploymentsOverview(!projectId)
   const [selected, setSelected] = useState('')
   const [logSelection, setLogSelection] = useState<{ projectId: string; deploymentId: string } | null>(null)
   const links = overview.data?.links ?? []
   const current = links.find((link) => link.projectId === (projectId || selected)) ?? (!projectId ? links[0] : undefined)
-  const snapshot = useDeploymentSnapshot(current && overview.data?.configured ? current.projectId : null)
+  const snapshot = useDeploymentSnapshot(current && overview.data?.configured ? (projectId ? current.projectId : current.vercelProjectId) : null, !projectId, current?.teamId)
   const selectedLog = logSelection?.projectId === current?.projectId ? logSelection?.deploymentId ?? null : null
-  const logs = useDeploymentLogs(current?.projectId ?? null, selectedLog)
+  const logs = useDeploymentLogs(current ? (projectId ? current.projectId : current.vercelProjectId) : null, selectedLog, !projectId, current?.teamId)
   const data = snapshot.data
   const openLogs = (deploymentId: string) => { if (current) setLogSelection({ projectId: current.projectId, deploymentId }) }
 
@@ -39,8 +39,9 @@ export function DeploymentPanel({ projectId }: { projectId?: string }) {
       }}><RefreshCw className={`mr-2 size-3.5 ${overview.isFetching || snapshot.isFetching ? 'animate-spin' : ''}`} />Aktualisieren</Button>
     </CardHeader>
     <CardContent className="space-y-4">
-      {overview.isLoading ? <p className="text-sm text-muted-foreground">Projektzuordnungen werden geladen…</p> : overview.error ? <p role="alert" className="text-sm text-destructive">{overview.error.message}</p> : !overview.data?.configured || !current ? (
-        <div className="space-y-2 text-sm text-muted-foreground"><p>Für {projectId ? 'dieses Projekt' : 'deine Projekte'} ist noch keine Vercel-Verbindung eingerichtet.</p>
+      {overview.data?.warning && <p role="status" className="text-sm text-amber-400">{overview.data.warning}</p>}
+      {overview.isLoading ? <p className="text-sm text-muted-foreground">Vercel-Projekte werden geladen…</p> : overview.error ? <p role="alert" className="text-sm text-destructive">{overview.error.message}</p> : !overview.data?.configured || !current ? (
+        <div className="space-y-2 text-sm text-muted-foreground"><p>{overview.data?.configured && !projectId ? 'Keine zugänglichen Vercel-Projekte gefunden.' : `Für ${projectId ? 'dieses Projekt' : 'dein Konto'} ist noch keine Vercel-Verbindung eingerichtet.`}</p>
           <a href="https://github.com/leonbytyqi1709-sketch/OMNIDESK-V2/blob/main/docs/VERCEL-MONITORING.md" target="_blank" rel="noreferrer" className="underline underline-offset-4">Einrichtung ansehen</a>
           <details className="break-all text-xs"><summary className="cursor-pointer">Kennungen für die Einrichtung</summary><p className="mt-2">Benutzer: {overview.data?.userId}</p>{projectId && <p>OMNIDESK-Projekt: {projectId}</p>}</details>
         </div>

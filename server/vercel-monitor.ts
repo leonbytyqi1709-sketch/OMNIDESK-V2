@@ -51,7 +51,7 @@ async function boundedJson(response: Response, maxBytes = 2_000_000): Promise<un
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
-async function vercelGet(path: string, link: VercelLink, query: Record<string, string> = {}) {
+async function vercelGet(path: string, link: Pick<VercelLink, 'teamId'>, query: Record<string, string> = {}) {
   const token = process.env.DEPLOYMENT_API_TOKEN?.trim()
   if (!token) throw new VercelMonitorError('VERCEL_NOT_CONFIGURED', 'Vercel ist noch nicht eingerichtet: DEPLOYMENT_API_TOKEN fehlt.', 503)
   const url = new URL(path, 'https://api.vercel.com')
@@ -148,4 +148,49 @@ export async function fetchVercelLogs(link: VercelLink, deploymentId: string): P
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError('VERCEL_DEPLOYMENT_FORBIDDEN', 'Log-Zuordnung stimmt nicht mit dem Deployment überein.', 404)
   return { deploymentId, checkedAt: new Date().toISOString(), limit: 100, truncated: events.length >= 100 || events.some((event) => (event.text?.length ?? 0) > 8000),
     entries: events.slice(0, 100).filter((event) => event.text).map((event) => ({ text: redactBuildLog(event.text!), type: event.type ?? 'log', timestamp: event.created ?? event.date ?? null })).reverse() }
+}
+
+
+export async function fetchVercelProjects() {
+  const projects: Array<{ id: string; name: string; teamId: string | null; scope: string }> = []
+  const unavailable: string[] = []
+  let limited = false
+  const pageSchema = z.object({ pagination: z.object({ next: z.number().nullable().optional() }).optional() })
+  async function pages(path: string, field: string, teamId?: string) {
+    const items: unknown[] = []
+    let until: string | undefined
+    for (let page = 0; page < 10; page++) {
+      const raw = await vercelGet(path, { teamId }, { limit: '100', ...(until ? { until } : {}) })
+      const parsed = pageSchema.parse(raw)
+      items.push(...z.array(z.unknown()).parse(z.record(z.string(), z.unknown()).parse(raw)[field]))
+      const next = parsed.pagination?.next
+      if (next == null) return items
+      if (String(next) === until) { limited = true; return items }
+      until = String(next)
+    }
+    limited = true
+    return items
+  }
+  const teams: Array<{ id: string; name: string }> = []
+  try {
+    teams.push(...z.array(z.object({ id: identifier, name: z.string() })).parse(await pages('/v2/teams', 'teams')))
+  } catch { unavailable.push('Team-Liste') }
+  if (teams.length > 30) limited = true
+  const scopes = [{ id: undefined as string | undefined, name: 'Konto' }, ...teams.slice(0, 30)]
+  // Small batches keep large accounts from opening unbounded concurrent API requests.
+  for (let i = 0; i < scopes.length; i += 4) {
+    await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
+      try {
+        const items = z.array(z.object({ id: identifier, name: z.string(), accountId: identifier.optional() }))
+          .parse(await pages('/v10/projects', 'projects', scope.id))
+        for (const item of items) {
+          const teamId = item.accountId?.startsWith('team_') ? item.accountId : scope.id ?? null
+          if (!projects.some((project) => project.id === item.id && project.teamId === teamId)) {
+            projects.push({ id: item.id, name: item.name, teamId, scope: teams.find((team) => team.id === teamId)?.name ?? scope.name })
+          }
+        }
+      } catch { unavailable.push(scope.name) }
+    }))
+  }
+  return { projects: projects.sort((a, b) => a.name.localeCompare(b.name)), unavailable, limited }
 }

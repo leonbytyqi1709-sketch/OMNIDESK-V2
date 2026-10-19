@@ -2929,6 +2929,54 @@ async function fetchVercelLogs(link, deploymentId) {
     entries: events.slice(0, 100).filter((event) => event.text).map((event) => ({ text: redactBuildLog(event.text), type: event.type ?? "log", timestamp: event.created ?? event.date ?? null })).reverse()
   };
 }
+async function fetchVercelProjects() {
+  const projects2 = [];
+  const unavailable = [];
+  let limited = false;
+  const pageSchema = z15.object({ pagination: z15.object({ next: z15.number().nullable().optional() }).optional() });
+  async function pages(path, field, teamId) {
+    const items = [];
+    let until;
+    for (let page = 0; page < 10; page++) {
+      const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
+      const parsed = pageSchema.parse(raw);
+      items.push(...z15.array(z15.unknown()).parse(z15.record(z15.string(), z15.unknown()).parse(raw)[field]));
+      const next = parsed.pagination?.next;
+      if (next == null) return items;
+      if (String(next) === until) {
+        limited = true;
+        return items;
+      }
+      until = String(next);
+    }
+    limited = true;
+    return items;
+  }
+  const teams = [];
+  try {
+    teams.push(...z15.array(z15.object({ id: identifier, name: z15.string() })).parse(await pages("/v2/teams", "teams")));
+  } catch {
+    unavailable.push("Team-Liste");
+  }
+  if (teams.length > 30) limited = true;
+  const scopes = [{ id: void 0, name: "Konto" }, ...teams.slice(0, 30)];
+  for (let i = 0; i < scopes.length; i += 4) {
+    await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
+      try {
+        const items = z15.array(z15.object({ id: identifier, name: z15.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        for (const item of items) {
+          const teamId = item.accountId?.startsWith("team_") ? item.accountId : scope.id ?? null;
+          if (!projects2.some((project) => project.id === item.id && project.teamId === teamId)) {
+            projects2.push({ id: item.id, name: item.name, teamId, scope: teams.find((team) => team.id === teamId)?.name ?? scope.name });
+          }
+        }
+      } catch {
+        unavailable.push(scope.name);
+      }
+    }));
+  }
+  return { projects: projects2.sort((a, b) => a.name.localeCompare(b.name)), unavailable, limited };
+}
 
 // server/routes/deployments.ts
 async function listOwnedProjects2(userId) {
@@ -2943,6 +2991,39 @@ function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedPro
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
+  });
+  route.use("/account/*", async (c, next) => {
+    const owner = process.env.DEPLOYMENT_ACCOUNT_USER_ID?.trim();
+    if (!owner || owner !== c.get("userId")) return c.json({ error: "Vercel-Konto nicht freigeschaltet. DEPLOYMENT_ACCOUNT_USER_ID muss deine OMNIDESK-Benutzerkennung enthalten." }, 403);
+    await next();
+  });
+  route.get("/account/projects", async (c) => {
+    try {
+      if (!process.env.DEPLOYMENT_API_TOKEN?.trim()) throw new VercelMonitorError("VERCEL_NOT_CONFIGURED", "DEPLOYMENT_API_TOKEN fehlt.", 503);
+      return c.json(await fetchVercelProjects());
+    } catch (error) {
+      return c.json({ error: error instanceof VercelMonitorError ? error.message : "Vercel-Projekte konnten nicht geladen werden." }, 502);
+    }
+  });
+  async function accountLink(userId, id, teamId) {
+    const catalogue = await fetchVercelProjects();
+    const project = catalogue.projects.find((item) => item.id === id && (item.teamId ?? "") === (teamId ?? ""));
+    if (!project) throw new VercelMonitorError("VERCEL_PROJECT_FORBIDDEN", "Dieses Vercel-Projekt ist f\xFCr dein Konto nicht verf\xFCgbar.", 404);
+    return { userId, projectId: "00000000-0000-4000-8000-000000000000", vercelProjectId: project.id, ...project.teamId ? { teamId: project.teamId } : {} };
+  }
+  route.get("/account/projects/:id", async (c) => {
+    try {
+      return c.json(await dependencies.fetchVercelSnapshot(await accountLink(c.get("userId"), c.req.param("id"), c.req.query("teamId"))));
+    } catch (error) {
+      return c.json({ error: error instanceof VercelMonitorError ? error.message : "Deployments konnten nicht geladen werden." }, error instanceof VercelMonitorError ? error.status : 502);
+    }
+  });
+  route.get("/account/projects/:id/:deploymentId/logs", async (c) => {
+    try {
+      return c.json(await dependencies.fetchVercelLogs(await accountLink(c.get("userId"), c.req.param("id"), c.req.query("teamId")), c.req.param("deploymentId")));
+    } catch (error) {
+      return c.json({ error: error instanceof VercelMonitorError ? error.message : "Logs konnten nicht geladen werden." }, error instanceof VercelMonitorError ? error.status : 502);
+    }
   });
   route.get("/", async (c) => {
     try {
