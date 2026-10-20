@@ -15,6 +15,7 @@ export interface RadarFeedEntry {
   publishedAt: string | null
 }
 export interface FeedResponse {
+  url?: string
   status: number
   body: string
   etag: string | null
@@ -65,6 +66,8 @@ const array = (value: unknown): Record<string, unknown>[] =>
           typeof v === 'object' && v !== null,
       )
 export function parseRadarFeed(xml: string, base: string): RadarFeedEntry[] {
+  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(xml))
+    throw new RadarError('Diese Adresse ist eine Website. Bitte „Feeds suchen“ verwenden und einen gefundenen Feed auswählen.')
   if (/<!DOCTYPE|<!ENTITY/i.test(xml))
     throw new RadarError(
       'Dieser Feed enthält nicht unterstützte XML-Deklarationen.',
@@ -172,7 +175,7 @@ export async function requestRadarFeed(
           signal: AbortSignal.timeout(4000),
           headers: {
             Accept:
-              'application/rss+xml, application/atom+xml, application/xml, text/xml',
+              'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8',
             'Accept-Encoding': 'identity',
             'User-Agent': 'OmniDesk-Radar/2.0',
             ...(conditional.etag ? { 'If-None-Match': conditional.etag } : {}),
@@ -223,6 +226,7 @@ export async function requestRadarFeed(
           res.on('end', () =>
             resolve({
               status: res.statusCode ?? 500,
+              url: url.href,
               body: Buffer.concat(chunks).toString('utf8'),
               etag: res.headers.etag?.slice(0, 500) ?? null,
               modified: res.headers['last-modified']?.slice(0, 100) ?? null,

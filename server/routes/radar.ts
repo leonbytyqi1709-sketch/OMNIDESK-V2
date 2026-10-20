@@ -13,6 +13,7 @@ import {
 } from '../radar-storage'
 import { refreshRadar } from '../radar-runner'
 import { saveRadarMemory, explainRadarItem } from '../radar-actions'
+import { discoverRadarFeeds } from '../radar-discovery'
 export function createRadarRoute(
   deps = {
     initializeRadar,
@@ -49,6 +50,11 @@ export function createRadarRoute(
       await deps.readRadar(c.get('userId'), c.req.query('view') === 'saved'),
     ),
   )
+  route.post('/discover', async (c) => {
+    const p = z.object({ url: z.string().min(1).max(2048) }).strict().safeParse(await c.req.json().catch(() => null))
+    if (!p.success) return c.json({ error: 'Öffentliche HTTPS-Adresse erforderlich.' }, 400)
+    return c.json(await discoverRadarFeeds(p.data.url))
+  })
   route.post('/topics', async (c) => {
     const p = radarTopicInput.safeParse(await c.req.json().catch(() => null))
     if (!p.success)

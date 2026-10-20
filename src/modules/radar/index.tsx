@@ -74,6 +74,18 @@ function RadarWorkspace() {
     }),
     [showSource, setShowSource] = useState(false)
   const attempted = useRef(new Set<string>())
+  const [feedChoices, setFeedChoices] = useState<{ title: string; url: string }[]>([])
+  const [resolvedFeed, setResolvedFeed] = useState('')
+  const findFeeds = () => {
+    const address = source.url
+    setFeedChoices([])
+    action.mutate({ path: '/discover', body: { url: address } }, {
+      onSuccess: (result) => {
+        const feeds = (result as { feeds: { title: string; url: string }[] }).feeds
+        setFeedChoices(feeds)
+      },
+    })
+  }
   const due = overview?.sources.filter((s) => s.due) ?? []
   const lastSchedulerAt = overview?.sources
     .map((s) => s.lastSchedulerAt)
@@ -388,6 +400,7 @@ function RadarWorkspace() {
               className="space-y-3 rounded-lg border border-border p-4"
               onSubmit={(e) => {
                 e.preventDefault()
+                if (resolvedFeed !== source.url) { findFeeds(); return }
                 action.mutate(
                   { path: '/sources', body: source },
                   { onSuccess: () => setShowSource(false) },
@@ -398,10 +411,11 @@ function RadarWorkspace() {
                 {presets.map((p) => (
                   <Button
                     key={p.name}
+                    disabled={action.isPending}
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setSource({ ...source, ...p })}
+                    onClick={() => { setSource({ ...source, ...p }); setResolvedFeed(p.url); setFeedChoices([]) }}
                   >
                     {p.name}
                   </Button>
@@ -437,15 +451,18 @@ function RadarWorkspace() {
                   />
                 </label>
                 <label className="space-y-1 text-xs sm:col-span-2">
-                  Öffentliche RSS-/Atom-Feed-Adresse
+                  Website oder RSS-/Atom-Feed-Adresse
                   <Input
                     type="url"
+                    disabled={action.isPending}
                     required
                     maxLength={2048}
                     value={source.url}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setSource({ ...source, url: e.target.value })
-                    }
+                      setResolvedFeed('')
+                      setFeedChoices([])
+                    }}
                     placeholder="https://github.com/owner/repo/releases.atom"
                   />
                 </label>
@@ -469,14 +486,28 @@ function RadarWorkspace() {
                   </select>
                 </label>
               </div>
+              {!!feedChoices.length && (
+                <div className="space-y-2" aria-live="polite">
+                  <p className="text-sm font-medium">Gefundene Feeds – bitte auswählen:</p>
+                  {feedChoices.map((feed) => (
+                    <Button key={feed.url} type="button" variant="outline" className="h-auto max-w-full whitespace-normal break-all text-left" onClick={() => {
+                      setSource({ ...source, url: feed.url })
+                      setResolvedFeed(feed.url)
+                      setFeedChoices([])
+                    }}>
+                      {feed.title} · {feed.url}
+                    </Button>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Feed-Adresse verwenden, keine normale HTML-Seite und keine
-                privaten Feed-URLs mit Zugangstokens. Die Kategorie beschreibt
+                Website eingeben, Feeds suchen und einen Feed auswählen. Keine
+                privaten Feed-URLs mit Zugangstokens verwenden. Die Kategorie beschreibt
                 die Quelle, keine nachgewiesene Sicherheitsbetroffenheit.
               </p>
               <div className="flex gap-2">
                 <Button size="sm" disabled={action.isPending}>
-                  Quelle speichern
+                  {resolvedFeed === source.url ? 'Quelle speichern' : 'Feeds suchen'}
                 </Button>
                 <Button
                   type="button"
@@ -513,6 +544,14 @@ function RadarWorkspace() {
                   <p className="text-xs text-amber-400">
                     {s.error} Frühere Funde bleiben erhalten.
                   </p>
+                )}
+                {s.error && (
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setSource({ topicId: s.topicId, name: s.name, url: s.url, category: s.category })
+                    setResolvedFeed('')
+                    setFeedChoices([])
+                    setShowSource(true)
+                  }}>Feed für diese Website suchen</Button>
                 )}
                 <div className="flex flex-wrap gap-2">
                   <Button

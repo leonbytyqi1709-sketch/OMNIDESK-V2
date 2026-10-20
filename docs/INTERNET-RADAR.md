@@ -55,3 +55,10 @@ Der Server akzeptiert nur öffentliche HTTPS-Ziele ohne URL-Zugangsdaten und ohn
 Automatisierte Tests nutzen echte parametrisierte SQL-Abfragen gegen isoliertes PostgreSQL/WASM: Besitzer-/Projektgrenzen, Versionskonflikte, Abruf-Leases und Mindestabstand, Quellenausfälle, HTTP 304, URL-Deduplikation und Erhalt von Lese-/Merkstatus, individuelle Projektzuordnung, Gedächtnisübernahme, KI-Kontext, Scheduler-Zeit und Löschverhalten. Parser-/Netzwerkregeln prüfen RSS/Atom, XML-Sicherheit, Link- und Adressvalidierung. Browserprüfungen mit Beispieldaten prüfen Einrichtung, Voreinstellungen, automatischen Abruf, Gruppierung, Filter, KI-Anzeige, Gedächtnisübernahme, Projektwahl, Scheduler-Status und Mobilansicht.
 
 Ein echter GitHub-Feedabruf war aus der lokalen Arbeitsumgebung wegen DNS-Auflösungsfehler nicht möglich. Der produktive Quellenabruf und ein echter KI-Aufruf müssen nach Deployment geprüft werden. Der externe Scheduler ist bis zur Einrichtung und einem bestätigten erfolgreichen Abruf nicht live abgenommen.
+
+### Website-Adressen und automatische Feed-Erkennung
+
+Beim Hinzufügen einer Quelle kann eine öffentliche HTTPS-Website eingegeben werden.
+„Feeds suchen“ liest deren HTML und bietet als RSS/Atom ausgewiesene `link rel="alternate"`-Adressen zur Auswahl an. Relative Links werden gegen die endgültige Adresse nach Weiterleitungen aufgelöst. Direkte RSS-/Atom-Adressen werden ebenfalls erkannt. Erst die Auswahl und „Quelle speichern“ legen eine Quelle an; die vorhandene Quelle wird nicht überschrieben. Bei zuvor falsch hinterlegten Websites kann über „Feed für diese Website suchen“ eine korrigierte Quelle angelegt und die alte anschließend entfernt werden.
+
+Die Erkennung führt keine Skripte aus und durchsucht keine beliebigen Unterseiten. Fehlen veröffentlichte Feed-Links, ist weiterhin eine Feed-Adresse des Anbieters nötig. Gefundene Links sind Angebote der Website; ihre Erreichbarkeit und Inhalte prüft der normale Quellenabruf mit denselben DNS-, HTTPS-, Größen- und Weiterleitungsgrenzen. Die Erkennung liegt hinter der bestehenden Anmeldung (`POST /api/radar/discover`, ausschließlich `{url}`).

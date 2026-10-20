@@ -1899,6 +1899,8 @@ function feedText(raw, max = 700) {
   }).replace(/\s+/g, " ").trim().slice(0, max);
 }
 function parseRadarFeed(xml, base) {
+  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(xml))
+    throw new RadarError("Diese Adresse ist eine Website. Bitte \u201EFeeds suchen\u201C verwenden und einen gefundenen Feed ausw\xE4hlen.");
   if (/<!DOCTYPE|<!ENTITY/i.test(xml))
     throw new RadarError(
       "Dieser Feed enth\xE4lt nicht unterst\xFCtzte XML-Deklarationen."
@@ -1985,7 +1987,7 @@ async function requestRadarFeed(address, conditional = {}, redirects = 0) {
           agent: false,
           signal: AbortSignal.timeout(4e3),
           headers: {
-            Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
+            Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8",
             "Accept-Encoding": "identity",
             "User-Agent": "OmniDesk-Radar/2.0",
             ...conditional.etag ? { "If-None-Match": conditional.etag } : {},
@@ -2029,6 +2031,7 @@ async function requestRadarFeed(address, conditional = {}, redirects = 0) {
             "end",
             () => resolve({
               status: res.statusCode ?? 500,
+              url: url2.href,
               body: Buffer.concat(chunks).toString("utf8"),
               etag: res.headers.etag?.slice(0, 500) ?? null,
               modified: res.headers["last-modified"]?.slice(0, 100) ?? null
@@ -7202,6 +7205,43 @@ async function explainRadarItem(userId, id) {
   }
 }
 
+// server/radar-discovery.ts
+init_radar_feed();
+init_radar_policy();
+import { XMLParser as XMLParser2 } from "fast-xml-parser";
+function advertisedRadarFeeds(html, address) {
+  const clean = html.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script\s*>|<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
+  const choices = /* @__PURE__ */ new Map();
+  const parser = new XMLParser2({ ignoreAttributes: false, processEntities: true });
+  for (const match of clean.matchAll(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+    const attrs = {};
+    for (const attribute of match[0].matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+      const raw = attribute[2] ?? attribute[3] ?? attribute[4];
+      attrs[attribute[1].toLowerCase()] = String(parser.parse(`<v>${raw.replace(/</g, "&lt;")}</v>`).v ?? "");
+    }
+    if (!attrs.rel?.toLowerCase().split(/\s+/).includes("alternate") || !/^(application\/(rss|atom)\+xml|application\/rdf\+xml)(?:\s*;|$)/i.test(attrs.type ?? "") || !attrs.href) continue;
+    try {
+      const url2 = radarUrl(new URL(attrs.href, address).href).href;
+      if (!choices.has(url2)) choices.set(url2, { title: (attrs.title || "RSS-/Atom-Feed").slice(0, 120), url: url2 });
+      if (choices.size >= 12) break;
+    } catch {
+    }
+  }
+  return [...choices.values()];
+}
+async function discoverRadarFeeds(address, fetchPage = requestRadarFeed) {
+  const response = await fetchPage(radarUrl(address).href);
+  if (response.status !== 200) throw new RadarError(`Website antwortet mit HTTP ${response.status}.`);
+  const base = response.url ?? address;
+  if (/<(?:rss|feed|(?:\w+:)?RDF)\b/i.test(response.body.slice(0, 4e3))) {
+    parseRadarFeed(response.body, base);
+    return { feeds: [{ title: "RSS-/Atom-Feed", url: base }] };
+  }
+  const feeds = advertisedRadarFeeds(response.body, base);
+  if (!feeds.length) throw new RadarError("Diese Website ver\xF6ffentlicht keine automatisch erkennbaren RSS-/Atom-Links. Bitte eine Feed-Adresse des Anbieters eintragen.");
+  return { feeds };
+}
+
 // server/routes/radar.ts
 function createRadarRoute(deps = {
   initializeRadar,
@@ -7235,6 +7275,11 @@ function createRadarRoute(deps = {
       await deps.readRadar(c.get("userId"), c.req.query("view") === "saved")
     )
   );
+  route.post("/discover", async (c) => {
+    const p = z37.object({ url: z37.string().min(1).max(2048) }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!p.success) return c.json({ error: "\xD6ffentliche HTTPS-Adresse erforderlich." }, 400);
+    return c.json(await discoverRadarFeeds(p.data.url));
+  });
   route.post("/topics", async (c) => {
     const p = radarTopicInput.safeParse(await c.req.json().catch(() => null));
     if (!p.success)
