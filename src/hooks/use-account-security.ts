@@ -11,5 +11,5 @@ export function useSecurityMutation() {
   const api = useApiFetch(); const cache = useQueryClient(); const { userId } = useAuth()
   return useMutation({ mutationFn: ({ path = '', method, body }: { path?: string; method: 'POST' | 'PUT' | 'DELETE'; body?: unknown }) =>
     api<{ id?: string; ok?: boolean }>(`/api/account-security${path}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) }),
-    onSettled: () => cache.invalidateQueries({ queryKey: ['account-security', userId] }) })
+    onSettled: async () => { await Promise.all([cache.invalidateQueries({ queryKey: ['account-security', userId] }), cache.invalidateQueries({ queryKey: ['account-map', userId] })]) } })
 }

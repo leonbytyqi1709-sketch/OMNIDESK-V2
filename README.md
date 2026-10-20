@@ -107,3 +107,4 @@ Das Repo ist Vercel-ready: `server/vercel-entry.ts` wird beim Build zu `api/inde
 
 GitHub-Zentrale: [Einrichtung und Berechtigungen](docs/GITHUB-ZENTRALE.md).
 Kontosicherheit: [Einrichtung, Selbstauskunft und Prüfablauf](docs/KONTOSICHERHEIT.md).
+Kontenkarte: [Einrichtung, Pfeilrichtung und Abhängigkeiten](docs/KONTENKARTE.md).

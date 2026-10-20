@@ -499,6 +499,34 @@ var init_account_security = __esm({
   }
 });
 
+// src/db/schema/account-map.ts
+import { check as check2, index as index14, integer as integer5, pgTable as pgTable16, text as text16, timestamp as timestamp16, uniqueIndex as uniqueIndex4, uuid as uuid15 } from "drizzle-orm/pg-core";
+import { sql as sql3 } from "drizzle-orm";
+var accountRelations;
+var init_account_map = __esm({
+  "src/db/schema/account-map.ts"() {
+    init_account_security();
+    accountRelations = pgTable16("v2_account_relations", {
+      id: uuid15("id").primaryKey().defaultRandom(),
+      userId: text16("user_id").notNull(),
+      fromAccountId: uuid15("from_account_id").notNull().references(() => accountSecurity.id, { onDelete: "cascade" }),
+      toAccountId: uuid15("to_account_id").notNull().references(() => accountSecurity.id, { onDelete: "cascade" }),
+      type: text16("type").$type().notNull(),
+      loginDependency: text16("login_dependency").$type(),
+      manualReviewedAt: timestamp16("manual_reviewed_at", { withTimezone: true }),
+      version: integer5("version").notNull().default(1),
+      createdAt: timestamp16("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp16("updated_at", { withTimezone: true }).notNull().defaultNow()
+    }, (t) => [
+      index14("v2_account_relations_user").on(t.userId),
+      uniqueIndex4("v2_account_relations_pair").on(t.userId, t.fromAccountId, t.toAccountId, t.type),
+      check2("v2_account_relations_no_self", sql3`${t.fromAccountId} <> ${t.toAccountId}`),
+      check2("v2_account_relations_type", sql3`${t.type} IN ('login','recovery_email','recovery_other')`),
+      check2("v2_account_relations_dependency", sql3`(${t.type} = 'login' AND ${t.loginDependency} IS NOT NULL AND ${t.loginDependency} IN ('only_known','alternative_known','unknown')) OR (${t.type} <> 'login' AND ${t.loginDependency} IS NULL)`)
+    ]);
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -511,6 +539,7 @@ __export(schema_exports, {
   TASK_PRIORITIES: () => TASK_PRIORITIES,
   TASK_STATUSES: () => TASK_STATUSES,
   VAULT_CATEGORIES: () => VAULT_CATEGORIES,
+  accountRelations: () => accountRelations,
   accountSecurity: () => accountSecurity,
   appointments: () => appointments,
   bookingSettings: () => bookingSettings,
@@ -551,6 +580,7 @@ var init_schema = __esm({
     init_neon_monitoring();
     init_github();
     init_account_security();
+    init_account_map();
   }
 });
 
@@ -845,7 +875,7 @@ async function fetchNeonSnapshot(link) {
       periodStart: project2.consumption_period_start ?? null,
       periodEnd: project2.consumption_period_end ?? null
     } : null,
-    unavailable: results.flatMap((result, index14) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index14]] : [])
+    unavailable: results.flatMap((result, index15) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index15]] : [])
   };
 }
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
@@ -901,7 +931,7 @@ var init_neon_monitor = __esm({
 
 // server/neon-policy.ts
 import { z as z15 } from "zod";
-function evaluateNeonAlerts(settings, snapshot, failures, sql3) {
+function evaluateNeonAlerts(settings, snapshot, failures, sql4) {
   const over = (value, limit, divisor = 1) => limit === null ? false : value == null ? null : value / divisor >= limit;
   const conditions = [
     { code: "api_failures", active: failures >= settings.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
@@ -909,8 +939,8 @@ function evaluateNeonAlerts(settings, snapshot, failures, sql3) {
     { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
     { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
     { code: "compute_disabled", active: snapshot?.endpoints == null ? null : snapshot.endpoints.some((endpoint) => endpoint.disabled), severity: "warning", message: "Ein zugeordneter Compute-Endpunkt ist deaktiviert." },
-    { code: "sql_failure", active: !settings.sqlEnabled ? false : sql3 == null ? null : sql3.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
-    { code: "sql_latency", active: !settings.sqlEnabled ? false : sql3?.status !== "up" ? null : over(sql3.latencyMs, settings.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
+    { code: "sql_failure", active: !settings.sqlEnabled ? false : sql4 == null ? null : sql4.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
+    { code: "sql_latency", active: !settings.sqlEnabled ? false : sql4?.status !== "up" ? null : over(sql4.latencyMs, settings.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
   ];
   return conditions;
 }
@@ -978,9 +1008,9 @@ async function checkNeonSql(link, snapshot) {
     const { raw, url: url2 } = targetUrl(link);
     const hostname = url2.hostname.split(".")[0];
     if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
-    const sql3 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
+    const sql4 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
     const started = performance.now();
-    const [rows] = await sql3.transaction([sql3`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
+    const [rows] = await sql4.transaction([sql4`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
     if (rows[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
     return { checkedAt, status: "up", latencyMs: Math.round(performance.now() - started), message: null };
   } catch {
@@ -1007,24 +1037,24 @@ function monitoringSql() {
   return neon3(process.env.DATABASE_URL, { fetchOptions: { signal: AbortSignal.timeout(15e3) } });
 }
 async function initializeNeonStorage() {
-  const sql3 = monitoringSql();
-  const [existing] = await sql3`SELECT to_regclass('v2_neon_config') IS NOT NULL AND to_regclass('v2_neon_samples') IS NOT NULL
+  const sql4 = monitoringSql();
+  const [existing] = await sql4`SELECT to_regclass('v2_neon_config') IS NOT NULL AND to_regclass('v2_neon_samples') IS NOT NULL
     AND to_regclass('v2_neon_alerts') IS NOT NULL AND to_regclass('v2_neon_samples_unique') IS NOT NULL
     AND to_regclass('v2_neon_alerts_open') IS NOT NULL AS ready`;
   if (existing?.ready === true) return;
-  await sql3.transaction([sql3`SELECT pg_advisory_xact_lock(184730019)`, ...neonDdl.map((statement) => sql3.query(statement))]);
+  await sql4.transaction([sql4`SELECT pg_advisory_xact_lock(184730019)`, ...neonDdl.map((statement) => sql4.query(statement))]);
 }
 function missingNeonStorage(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "42P01";
 }
 async function loadNeonConfig(link) {
-  const sql3 = monitoringSql();
-  const [config] = await sql3`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
+  const sql4 = monitoringSql();
+  const [config] = await sql4`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
   return config ?? null;
 }
 async function saveNeonSettings(link, settings) {
-  const sql3 = monitoringSql();
-  const [config] = await sql3`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
+  const sql4 = monitoringSql();
+  const [config] = await sql4`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
     VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings)}::jsonb)
     ON CONFLICT (project_id) DO UPDATE SET user_id=EXCLUDED.user_id, resource_key=EXCLUDED.resource_key,
       settings=EXCLUDED.settings, updated_at=now(), lease_token=NULL, lease_until=NULL,
@@ -1038,9 +1068,9 @@ async function saveNeonSettings(link, settings) {
   return config;
 }
 async function claimNeonCheck(link, source) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const token = randomUUID();
-  const [config] = await sql3`UPDATE v2_neon_config SET lease_token=${token}, lease_until=now()+interval '90 seconds'
+  const [config] = await sql4`UPDATE v2_neon_config SET lease_token=${token}, lease_until=now()+interval '90 seconds'
     WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}
       AND (lease_until IS NULL OR lease_until<now())
       AND (${source}='manual' OR (settings->>'enabled')::boolean)
@@ -1050,37 +1080,37 @@ async function claimNeonCheck(link, source) {
   return config ? { config, token } : null;
 }
 async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, source, checkedAt) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const complete = Boolean(snapshot && !snapshot.unavailable.length);
   const key = resourceKey(link);
-  const guard = sql3`SELECT 1 FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`;
+  const guard = sql4`SELECT 1 FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`;
   const statements = [
     // Lock the lease row for the full transaction so settings changes cannot race a completed sample.
-    sql3`SELECT project_id FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND lease_token=${token} FOR UPDATE`,
-    sql3`INSERT INTO v2_neon_samples (project_id,user_id,resource_key,checked_at,bucket,source,snapshot,sql_check,complete)
+    sql4`SELECT project_id FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND lease_token=${token} FOR UPDATE`,
+    sql4`INSERT INTO v2_neon_samples (project_id,user_id,resource_key,checked_at,bucket,source,snapshot,sql_check,complete)
       SELECT ${link.projectId},${link.userId},${key},${checkedAt}::timestamptz,date_trunc('minute',${checkedAt}::timestamptz),${source},
       ${snapshot ? JSON.stringify(snapshot) : null}::jsonb,${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,${complete}
       WHERE EXISTS (${guard}) ON CONFLICT (project_id,user_id,resource_key,bucket) DO NOTHING`,
-    ...conditions.filter((condition) => condition.active !== null).map((condition) => condition.active ? sql3`INSERT INTO v2_neon_alerts (project_id,user_id,resource_key,code,message,severity)
+    ...conditions.filter((condition) => condition.active !== null).map((condition) => condition.active ? sql4`INSERT INTO v2_neon_alerts (project_id,user_id,resource_key,code,message,severity)
           SELECT ${link.projectId},${link.userId},${key},${condition.code},${condition.message},${condition.severity} WHERE EXISTS (${guard})
-          ON CONFLICT (project_id,user_id,resource_key,code) WHERE resolved_at IS NULL DO NOTHING` : sql3`UPDATE v2_neon_alerts SET resolved_at=now() WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+          ON CONFLICT (project_id,user_id,resource_key,code) WHERE resolved_at IS NULL DO NOTHING` : sql4`UPDATE v2_neon_alerts SET resolved_at=now() WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
           AND code=${condition.code} AND resolved_at IS NULL AND EXISTS (${guard})`),
-    sql3`DELETE FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId}
+    sql4`DELETE FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId}
       AND checked_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
-    sql3`DELETE FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resolved_at IS NOT NULL
+    sql4`DELETE FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resolved_at IS NOT NULL
       AND resolved_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
-    sql3`UPDATE v2_neon_config SET last_attempt_at=${checkedAt}::timestamptz,
+    sql4`UPDATE v2_neon_config SET last_attempt_at=${checkedAt}::timestamptz,
       last_success_at=CASE WHEN ${complete} THEN ${checkedAt}::timestamptz ELSE last_success_at END,
       last_scheduler_at=CASE WHEN ${source}='scheduler' THEN now() ELSE last_scheduler_at END,
       last_snapshot=COALESCE(${snapshot ? JSON.stringify(snapshot) : null}::jsonb,last_snapshot),
       last_sql=COALESCE(${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,last_sql), failures=CASE WHEN ${complete} THEN 0 ELSE failures+1 END,
       lease_token=NULL, lease_until=NULL WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`
   ];
-  await sql3.transaction(statements);
+  await sql4.transaction(statements);
 }
 async function monitoringMonitors(link, settings) {
-  const sql3 = monitoringSql();
-  const rows = await sql3`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
+  const sql4 = monitoringSql();
+  const rows = await sql4`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
     LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     WHERE m.user_id=${link.userId} ORDER BY m.name LIMIT 500`;
   return rows.map((row) => ({
@@ -1094,7 +1124,7 @@ async function monitoringMonitors(link, settings) {
   }));
 }
 async function readNeonMonitoring(link, days) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   let config = null;
   let setupRequired = false;
   try {
@@ -1122,7 +1152,7 @@ async function readNeonMonitoring(link, days) {
   const key = resourceKey(link);
   const bucketSeconds = days === 1 ? 300 : days === 7 ? 3600 : days === 30 ? 21600 : 86400;
   const [history, alerts] = await Promise.all([
-    sql3`SELECT to_timestamp(floor(extract(epoch FROM checked_at)/${bucketSeconds})*${bucketSeconds}) AS at, snapshot->'consumption'->>'periodStart' AS "periodStart",
+    sql4`SELECT to_timestamp(floor(extract(epoch FROM checked_at)/${bucketSeconds})*${bucketSeconds}) AS at, snapshot->'consumption'->>'periodStart' AS "periodStart",
       avg((snapshot->'consumption'->>'projectStorageBytes')::double precision)/1073741824 AS "storageGiB",
       avg((snapshot->'branch'->>'logicalSizeBytes')::double precision)/1073741824 AS "branchGiB",
       max((snapshot->'consumption'->>'computeCuSeconds')::double precision)/3600 AS "computeHours",
@@ -1131,15 +1161,15 @@ async function readNeonMonitoring(link, days) {
       count(*) FILTER (WHERE NOT complete)::int AS failures
       FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
       AND checked_at>=now()-${days}*interval '1 day' GROUP BY 1,2 ORDER BY 1 LIMIT 800`,
-    sql3`SELECT id,code,message,severity,started_at AS "startedAt",resolved_at AS "resolvedAt",acknowledged_at AS "acknowledgedAt"
+    sql4`SELECT id,code,message,severity,started_at AS "startedAt",resolved_at AS "resolvedAt",acknowledged_at AS "acknowledgedAt"
       FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
       ORDER BY (resolved_at IS NULL) DESC,started_at DESC LIMIT 100`
   ]);
   return { ...base, history, alerts };
 }
 async function acknowledgeNeonAlert(link, id) {
-  const sql3 = monitoringSql();
-  const rows = await sql3`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
+  const sql4 = monitoringSql();
+  const rows = await sql4`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
     WHERE id=${id} AND project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)} RETURNING id`;
   return rows.length > 0;
 }
@@ -1219,17 +1249,17 @@ function createNeonRunner(dependencies = { ownsProject, claimNeonCheck, fetchNeo
   };
 }
 async function runNeonScheduler(projectId) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const links2 = readNeonLinks();
   const permitted = JSON.stringify(links2);
   let rows;
   try {
-    await sql3`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
+    await sql4`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
       WHERE p.id=c.project_id AND p.user_id=c.user_id AND (c.settings->>'enabled')::boolean
       AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
         AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)`;
-    rows = await sql3`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
+    rows = await sql4`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
       JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
       WHERE (c.settings->>'enabled')::boolean AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
@@ -1246,9 +1276,9 @@ async function runNeonScheduler(projectId) {
     return link ? [link] : [];
   });
   const results = await Promise.allSettled(eligible.map((link) => runNeonCheck(link, "scheduler")));
-  await sql3.transaction([
-    sql3`DELETE FROM v2_neon_samples s USING v2_neon_config c WHERE s.project_id=c.project_id AND s.checked_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`,
-    sql3`DELETE FROM v2_neon_alerts a USING v2_neon_config c WHERE a.project_id=c.project_id AND a.resolved_at IS NOT NULL AND a.resolved_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`
+  await sql4.transaction([
+    sql4`DELETE FROM v2_neon_samples s USING v2_neon_config c WHERE s.project_id=c.project_id AND s.checked_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`,
+    sql4`DELETE FROM v2_neon_alerts a USING v2_neon_config c WHERE a.project_id=c.project_id AND a.resolved_at IS NOT NULL AND a.resolved_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`
   ]);
   return {
     setupRequired: false,
@@ -1275,8 +1305,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono22 } from "hono";
-import { z as z24 } from "zod";
+import { Hono as Hono23 } from "hono";
+import { z as z26 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -3130,8 +3160,8 @@ uptimeRoute.post("/:id/check", async (c) => {
   if (!monitor) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
-  const check2 = await checkSingleMonitor(monitor);
-  return c.json(check2);
+  const check3 = await checkSingleMonitor(monitor);
+  return c.json(check3);
 });
 uptimeRoute.get("/:id/checks", async (c) => {
   const userId = c.get("userId");
@@ -3276,43 +3306,9 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject:
 }
 var neonMonitorRoute = createNeonMonitorRoute();
 
-// server/routes/account-security.ts
+// server/routes/account-map.ts
 import { Hono as Hono18 } from "hono";
-import { z as z19 } from "zod";
-
-// src/lib/account-security.ts
-function assessSecurityAccount(account, now = Date.now()) {
-  const actions = [];
-  const priority = account.importance === "normal" ? "normal" : "high";
-  const add = (code, title, kind, important = priority) => actions.push({ code, title, kind, priority: important });
-  if (account.passkey === "unknown") add("passkey_unknown", "Passkey-Unterst\xFCtzung und Einrichtung pr\xFCfen", "unknown");
-  if (account.twoFactor === "unknown") add("two_factor_unknown", "Zwei-Faktor-Anmeldung pr\xFCfen", "unknown");
-  if (account.recovery === "unknown") add("recovery_unknown", "Wiederherstellungswege pr\xFCfen", "unknown");
-  if (account.recoveryCodes === "unknown") add("codes_unknown", "Verf\xFCgbarkeit und Sicherung von Wiederherstellungscodes pr\xFCfen", "unknown");
-  if (account.twoFactor === "disabled" && account.passkey !== "enabled") add("two_factor_missing", "Zus\xE4tzliche Anmeldeabsicherung einrichten", "gap");
-  if (account.recovery === "disabled") add("recovery_missing", "Wiederherstellungsweg einrichten", "gap");
-  if (account.recoveryCodes === "disabled") add("codes_missing", "Wiederherstellungscodes erzeugen und sicher ablegen", "gap");
-  if (account.passkey === "disabled") add("passkey_suggested", "Passkey als zus\xE4tzliche Anmeldem\xF6glichkeit pr\xFCfen", "recommendation", "normal");
-  if (account.recovery === "enabled" && account.recoveryMethods.length === 0) add("recovery_method_unknown", "Art des Wiederherstellungswegs dokumentieren", "unknown");
-  const reviewDueAt = account.manualReviewedAt ? new Date(Date.parse(account.manualReviewedAt) + account.reviewIntervalDays * 864e5).toISOString() : null;
-  if (!reviewDueAt) add("review_missing", "Angaben selbst pr\xFCfen und Pr\xFCfdatum best\xE4tigen", "review");
-  else if (Date.parse(reviewDueAt) <= now) add("review_due", "Dokumentierte Sicherheitsangaben erneut pr\xFCfen", "review");
-  const status = actions.some((action) => action.kind === "gap") ? "gaps" : actions.some((action) => action.kind === "unknown") ? "unknown" : actions.some((action) => action.kind === "review") ? "review" : "documented";
-  return { status, actions, reviewDueAt };
-}
-function summarizeSecurity(overview) {
-  const now = Date.parse(overview.checkedAt);
-  const assessed = overview.accounts.map((account) => ({ account, assessment: assessSecurityAccount(account, now) }));
-  return {
-    available: !overview.setupRequired,
-    checkedAt: overview.checkedAt,
-    total: overview.accounts.length,
-    accountsWithGaps: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "gap")).length,
-    accountsWithUnknowns: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "unknown")).length,
-    reviewDue: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "review")).length,
-    actions: assessed.flatMap(({ account, assessment }) => assessment.actions.map((action) => ({ ...action, accountId: account.id, accountName: account.name, source: "manual", href: `/account-security?account=${encodeURIComponent(account.id)}` }))).sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high") || a.accountName.localeCompare(b.accountName))
-  };
-}
+import { z as z20 } from "zod";
 
 // server/account-security-policy.ts
 import { z as z18 } from "zod";
@@ -3355,6 +3351,21 @@ var SecurityAccountError = class extends Error {
   }
 };
 
+// server/account-map-policy.ts
+import { z as z19 } from "zod";
+var accountRelationSchema = z19.object({
+  fromAccountId: z19.uuid(),
+  toAccountId: z19.uuid(),
+  type: z19.enum(["login", "recovery_email", "recovery_other"]),
+  loginDependency: z19.enum(["only_known", "alternative_known", "unknown"]).nullable(),
+  reviewed: z19.boolean()
+}).strict().refine((value) => value.fromAccountId !== value.toAccountId, "Ein Konto kann nicht auf sich selbst verweisen.").refine((value) => value.type === "login" ? value.loginDependency !== null : value.loginDependency === null, "Anmeldeabh\xE4ngigkeit passt nicht zum Verbindungstyp.");
+var relationVersionSchema = z19.object({ version: z19.number().int().positive() }).strict();
+var relationUpdateSchema = z19.object({ relation: accountRelationSchema, version: z19.number().int().positive() }).strict();
+
+// server/account-map-store.ts
+init_neon_storage();
+
 // server/account-security-store.ts
 init_neon_storage();
 var securityDdl = [
@@ -3368,10 +3379,10 @@ var securityDdl = [
 ];
 var missing = (error) => error?.code === "42P01";
 async function initializeSecurityStorage() {
-  const sql3 = monitoringSql();
-  const [existing] = await sql3`SELECT to_regclass('v2_account_security') IS NOT NULL AND to_regclass('v2_account_security_connection') IS NOT NULL AND to_regclass('v2_account_security_user') IS NOT NULL AS ready`;
+  const sql4 = monitoringSql();
+  const [existing] = await sql4`SELECT to_regclass('v2_account_security') IS NOT NULL AND to_regclass('v2_account_security_connection') IS NOT NULL AND to_regclass('v2_account_security_user') IS NOT NULL AS ready`;
   if (existing?.ready) return;
-  await sql3.transaction([sql3`SELECT pg_advisory_xact_lock(184730021)`, ...securityDdl.map((ddl) => sql3.query(ddl))]);
+  await sql4.transaction([sql4`SELECT pg_advisory_xact_lock(184730021)`, ...securityDdl.map((ddl) => sql4.query(ddl))]);
 }
 var iso = (value) => new Date(value).toISOString();
 function publicSecurityAccount(row, connections) {
@@ -3388,17 +3399,17 @@ function publicSecurityAccount(row, connections) {
   };
 }
 async function securityConnections(userId) {
-  const sql3 = monitoringSql();
-  return await sql3`SELECT id,provider,email,label FROM connected_accounts WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 500`;
+  const sql4 = monitoringSql();
+  return await sql4`SELECT id,provider,email,label FROM connected_accounts WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 500`;
 }
 async function readSecurityOverview(userId) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const connectionsResult = await Promise.allSettled([securityConnections(userId)]);
   const connections = connectionsResult[0].status === "fulfilled" ? connectionsResult[0].value : [];
   let rows = [];
   let setupRequired = false;
   try {
-    rows = await sql3`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
+    rows = await sql4`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
   } catch (error) {
     if (!missing(error)) throw error;
     setupRequired = true;
@@ -3427,12 +3438,12 @@ function translateStorageError(error) {
   throw error;
 }
 async function createSecurityAccount(userId, input) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const value = await validatedDetails(userId, input);
   try {
-    const results = await sql3.transaction([
-      sql3`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730022))`,
-      sql3`INSERT INTO v2_account_security(user_id,connected_account_id,details,manual_reviewed_at)
+    const results = await sql4.transaction([
+      sql4`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730022))`,
+      sql4`INSERT INTO v2_account_security(user_id,connected_account_id,details,manual_reviewed_at)
         SELECT ${userId},${value.connectedAccountId}::uuid,${JSON.stringify(value.details)}::jsonb,CASE WHEN ${value.reviewed} THEN now() END
         WHERE (SELECT count(*) FROM v2_account_security WHERE user_id=${userId})<500
           AND (${value.connectedAccountId}::uuid IS NULL OR EXISTS (SELECT 1 FROM connected_accounts WHERE id=${value.connectedAccountId}::uuid AND user_id=${userId})) RETURNING id`
@@ -3444,10 +3455,10 @@ async function createSecurityAccount(userId, input) {
   }
 }
 async function updateSecurityAccount(userId, id, version, input) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   const value = await validatedDetails(userId, input);
   try {
-    const rows = await sql3`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
+    const rows = await sql4`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
       manual_reviewed_at=CASE WHEN ${value.reviewed} THEN now() END, updated_at=now(),version=version+1
       WHERE id=${id} AND user_id=${userId} AND version=${version}
         AND (${value.connectedAccountId}::uuid IS NULL OR EXISTS (SELECT 1 FROM connected_accounts WHERE id=${value.connectedAccountId}::uuid AND user_id=${userId})) RETURNING id`;
@@ -3458,21 +3469,186 @@ async function updateSecurityAccount(userId, id, version, input) {
   }
 }
 async function reviewSecurityAccount(userId, id, version) {
-  const sql3 = monitoringSql();
-  const rows = await sql3`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  const sql4 = monitoringSql();
+  const rows = await sql4`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
   if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 async function deleteSecurityAccount(userId, id, version) {
-  const sql3 = monitoringSql();
-  const rows = await sql3`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  const sql4 = monitoringSql();
+  const rows = await sql4`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
   if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 
+// server/account-map-store.ts
+var accountMapDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_account_relations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL,
+    from_account_id uuid NOT NULL REFERENCES v2_account_security(id) ON DELETE CASCADE,
+    to_account_id uuid NOT NULL REFERENCES v2_account_security(id) ON DELETE CASCADE,
+    type text NOT NULL, login_dependency text,
+    manual_reviewed_at timestamptz,version integer NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT v2_account_relations_no_self CHECK(from_account_id <> to_account_id),
+    CONSTRAINT v2_account_relations_type CHECK(type IN ('login','recovery_email','recovery_other')),
+    CONSTRAINT v2_account_relations_dependency CHECK((type='login' AND login_dependency IS NOT NULL AND login_dependency IN ('only_known','alternative_known','unknown')) OR (type<>'login' AND login_dependency IS NULL)))`,
+  `CREATE INDEX IF NOT EXISTS v2_account_relations_user ON v2_account_relations(user_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS v2_account_relations_pair ON v2_account_relations(user_id,from_account_id,to_account_id,type)`
+];
+async function initializeAccountMap() {
+  await initializeSecurityStorage();
+  const sql4 = monitoringSql();
+  const [exists] = await sql4`SELECT to_regclass('v2_account_relations') IS NOT NULL AND to_regclass('v2_account_relations_pair') IS NOT NULL AND to_regclass('v2_account_relations_user') IS NOT NULL AS ready`;
+  if (exists?.ready) return;
+  await sql4.transaction([sql4`SELECT pg_advisory_xact_lock(184730023)`, ...accountMapDdl.map((ddl) => sql4.query(ddl))]);
+}
+var iso2 = (value) => new Date(value).toISOString();
+async function readAccountMap(userId) {
+  const accounts = await readSecurityOverview(userId);
+  let relations = [];
+  let setupRequired = false;
+  try {
+    const sql4 = monitoringSql();
+    const rows = await sql4`SELECT r.* FROM v2_account_relations r
+      JOIN v2_account_security a ON a.id=r.from_account_id AND a.user_id=r.user_id
+      JOIN v2_account_security b ON b.id=r.to_account_id AND b.user_id=r.user_id
+      WHERE r.user_id=${userId} ORDER BY r.created_at DESC LIMIT 1001`;
+    relations = rows.map((row) => ({
+      id: String(row.id),
+      fromAccountId: String(row.from_account_id),
+      toAccountId: String(row.to_account_id),
+      type: row.type,
+      loginDependency: row.login_dependency,
+      version: Number(row.version),
+      manualReviewedAt: row.manual_reviewed_at ? iso2(row.manual_reviewed_at) : null,
+      createdAt: iso2(row.created_at),
+      updatedAt: iso2(row.updated_at)
+    }));
+  } catch (error) {
+    if (error.code !== "42P01") throw error;
+    setupRequired = true;
+  }
+  return { accounts: accounts.accounts, relations, setupRequired: setupRequired || accounts.setupRequired, accountsSetupRequired: accounts.setupRequired, checkedAt: (/* @__PURE__ */ new Date()).toISOString() };
+}
+function translate(error) {
+  if (error.code === "23505") throw new SecurityAccountError("Diese gerichtete Verbindung mit diesem Typ ist bereits vorhanden.", 409);
+  if (error.code === "42P01") throw new SecurityAccountError("Bitte zuerst die Kontenkarte einrichten.", 503);
+  throw error;
+}
+async function createAccountRelation(userId, relation) {
+  const sql4 = monitoringSql();
+  try {
+    const results = await sql4.transaction([
+      sql4`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730024))`,
+      sql4`INSERT INTO v2_account_relations(user_id,from_account_id,to_account_id,type,login_dependency,manual_reviewed_at)
+        SELECT ${userId},a.id,b.id,${relation.type},${relation.loginDependency},CASE WHEN ${relation.reviewed} THEN now() END
+        FROM v2_account_security a,v2_account_security b WHERE a.id=${relation.fromAccountId} AND b.id=${relation.toAccountId}
+          AND a.user_id=${userId} AND b.user_id=${userId} AND a.id<>b.id
+          AND (SELECT count(*) FROM v2_account_relations WHERE user_id=${userId})<1000 RETURNING id`
+    ]);
+    if (!results[1].length) throw new SecurityAccountError("Beide Konten m\xFCssen dir geh\xF6ren. H\xF6chstens 1000 Verbindungen sind m\xF6glich.", 409);
+    return { id: String(results[1][0].id) };
+  } catch (error) {
+    return translate(error);
+  }
+}
+async function updateAccountRelation(userId, id, version, relation) {
+  const sql4 = monitoringSql();
+  try {
+    const rows = await sql4`UPDATE v2_account_relations r SET from_account_id=a.id,to_account_id=b.id,type=${relation.type},login_dependency=${relation.loginDependency},
+      manual_reviewed_at=CASE WHEN ${relation.reviewed} THEN now() END,updated_at=now(),version=r.version+1
+      FROM v2_account_security a,v2_account_security b WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version}
+        AND a.id=${relation.fromAccountId} AND b.id=${relation.toAccountId} AND a.user_id=${userId} AND b.user_id=${userId} AND a.id<>b.id RETURNING r.id`;
+    if (!rows.length) throw new SecurityAccountError("Verbindung oder Konten nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+    return { id };
+  } catch (error) {
+    return translate(error);
+  }
+}
+async function deleteAccountRelation(userId, id, version) {
+  const sql4 = monitoringSql();
+  const rows = await sql4`DELETE FROM v2_account_relations r USING v2_account_security a,v2_account_security b
+    WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version} AND a.id=r.from_account_id AND b.id=r.to_account_id AND a.user_id=${userId} AND b.user_id=${userId} RETURNING r.id`;
+  if (!rows.length) throw new SecurityAccountError("Verbindung nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+  return { id };
+}
+
+// server/routes/account-map.ts
+function createAccountMapRoute(dependencies = { createAccountRelation, deleteAccountRelation, initializeAccountMap, readAccountMap, updateAccountRelation }) {
+  const route = new Hono18();
+  route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Kontenkarte nicht verf\xFCgbar. Einrichtung und Datenbankrechte pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.get("/", async (c) => c.json(await dependencies.readAccountMap(c.get("userId"))));
+  route.post("/setup", async (c) => {
+    await dependencies.initializeAccountMap();
+    return c.json({ ok: true });
+  });
+  route.post("/", async (c) => {
+    const parsed = accountRelationSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Zwei unterschiedliche Konten und passenden Verbindungstyp w\xE4hlen. Anmeldeabh\xE4ngigkeit nur f\xFCr Anmeldung angeben." }, 400);
+    return c.json(await dependencies.createAccountRelation(c.get("userId"), parsed.data), 201);
+  });
+  route.put("/:id", async (c) => {
+    if (!z20.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    const parsed = relationUpdateSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Ung\xFCltige Verbindung oder Eintragsversion." }, 400);
+    return c.json(await dependencies.updateAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.relation));
+  });
+  route.delete("/:id", async (c) => {
+    if (!z20.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    const parsed = relationVersionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
+    return c.json(await dependencies.deleteAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version));
+  });
+  return route;
+}
+var accountMapRoute = createAccountMapRoute();
+
+// server/routes/account-security.ts
+import { Hono as Hono19 } from "hono";
+import { z as z21 } from "zod";
+
+// src/lib/account-security.ts
+function assessSecurityAccount(account, now = Date.now()) {
+  const actions = [];
+  const priority = account.importance === "normal" ? "normal" : "high";
+  const add = (code, title, kind, important = priority) => actions.push({ code, title, kind, priority: important });
+  if (account.passkey === "unknown") add("passkey_unknown", "Passkey-Unterst\xFCtzung und Einrichtung pr\xFCfen", "unknown");
+  if (account.twoFactor === "unknown") add("two_factor_unknown", "Zwei-Faktor-Anmeldung pr\xFCfen", "unknown");
+  if (account.recovery === "unknown") add("recovery_unknown", "Wiederherstellungswege pr\xFCfen", "unknown");
+  if (account.recoveryCodes === "unknown") add("codes_unknown", "Verf\xFCgbarkeit und Sicherung von Wiederherstellungscodes pr\xFCfen", "unknown");
+  if (account.twoFactor === "disabled" && account.passkey !== "enabled") add("two_factor_missing", "Zus\xE4tzliche Anmeldeabsicherung einrichten", "gap");
+  if (account.recovery === "disabled") add("recovery_missing", "Wiederherstellungsweg einrichten", "gap");
+  if (account.recoveryCodes === "disabled") add("codes_missing", "Wiederherstellungscodes erzeugen und sicher ablegen", "gap");
+  if (account.passkey === "disabled") add("passkey_suggested", "Passkey als zus\xE4tzliche Anmeldem\xF6glichkeit pr\xFCfen", "recommendation", "normal");
+  if (account.recovery === "enabled" && account.recoveryMethods.length === 0) add("recovery_method_unknown", "Art des Wiederherstellungswegs dokumentieren", "unknown");
+  const reviewDueAt = account.manualReviewedAt ? new Date(Date.parse(account.manualReviewedAt) + account.reviewIntervalDays * 864e5).toISOString() : null;
+  if (!reviewDueAt) add("review_missing", "Angaben selbst pr\xFCfen und Pr\xFCfdatum best\xE4tigen", "review");
+  else if (Date.parse(reviewDueAt) <= now) add("review_due", "Dokumentierte Sicherheitsangaben erneut pr\xFCfen", "review");
+  const status = actions.some((action) => action.kind === "gap") ? "gaps" : actions.some((action) => action.kind === "unknown") ? "unknown" : actions.some((action) => action.kind === "review") ? "review" : "documented";
+  return { status, actions, reviewDueAt };
+}
+function summarizeSecurity(overview) {
+  const now = Date.parse(overview.checkedAt);
+  const assessed = overview.accounts.map((account) => ({ account, assessment: assessSecurityAccount(account, now) }));
+  return {
+    available: !overview.setupRequired,
+    checkedAt: overview.checkedAt,
+    total: overview.accounts.length,
+    accountsWithGaps: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "gap")).length,
+    accountsWithUnknowns: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "unknown")).length,
+    reviewDue: assessed.filter(({ assessment }) => assessment.actions.some((action) => action.kind === "review")).length,
+    actions: assessed.flatMap(({ account, assessment }) => assessment.actions.map((action) => ({ ...action, accountId: account.id, accountName: account.name, source: "manual", href: `/account-security?account=${encodeURIComponent(account.id)}` }))).sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high") || a.accountName.localeCompare(b.accountName))
+  };
+}
+
 // server/routes/account-security.ts
 function createAccountSecurityRoute(dependencies = { createSecurityAccount, deleteSecurityAccount, initializeSecurityStorage, readSecurityOverview, reviewSecurityAccount, updateSecurityAccount }) {
-  const route = new Hono18();
+  const route = new Hono19();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Sicherheits\xFCbersicht nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -3490,11 +3666,11 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.createSecurityAccount(c.get("userId"), parsed.data), 201);
   });
   route.use("/:id/*", async (c, next) => {
-    if (!z19.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z21.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     await next();
   });
   route.put("/:id", async (c) => {
-    if (!z19.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z21.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Kontodaten oder Eintragsversion." }, 400);
     return c.json(await dependencies.updateSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.account));
@@ -3505,7 +3681,7 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.reviewSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
   });
   route.delete("/:id", async (c) => {
-    if (!z19.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z21.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityVersionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
     return c.json(await dependencies.deleteSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
@@ -3515,14 +3691,14 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
 var accountSecurityRoute = createAccountSecurityRoute();
 
 // server/routes/github.ts
-import { Hono as Hono19 } from "hono";
-import { z as z21 } from "zod";
+import { Hono as Hono20 } from "hono";
+import { z as z23 } from "zod";
 
 // server/github-monitor.ts
-import { z as z20 } from "zod";
-var githubOwner = z20.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
-var githubRepo = z20.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
-var repositoryName = z20.string().refine((value) => {
+import { z as z22 } from "zod";
+var githubOwner = z22.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
+var githubRepo = z22.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
+var repositoryName = z22.string().refine((value) => {
   const parts = value.split("/");
   return parts.length === 2 && githubOwner.safeParse(parts[0]).success && githubRepo.safeParse(parts[1]).success;
 });
@@ -3533,9 +3709,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text16 = z20.string();
-var nullableDate = z20.string().nullable().optional();
-var repoSchema = z20.object({ id: z20.number(), full_name: text16, name: text16, private: z20.boolean(), default_branch: text16, updated_at: nullableDate, html_url: text16 });
+var text17 = z22.string();
+var nullableDate = z22.string().nullable().optional();
+var repoSchema = z22.object({ id: z22.number(), full_name: text17, name: text17, private: z22.boolean(), default_branch: text17, updated_at: nullableDate, html_url: text17 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -3597,7 +3773,7 @@ async function githubGet(path, query = {}) {
 async function listGitHubRepositories() {
   const repositories = [];
   for (let page = 1; page <= 10; page++) {
-    const items = z20.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
+    const items = z22.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
     for (const item of items) if (!repositories.some((repo) => repo.id === item.id)) repositories.push(project(item));
     if (items.length < 100) return { repositories, limited: false };
   }
@@ -3609,14 +3785,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item = (id, title, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z20.object({ id: z20.number(), number: z20.number(), title: text16, html_url: text16, state: text16, updated_at: nullableDate, draft: z20.boolean().optional(), pull_request: z20.unknown().optional() });
+  const issueSchema = z22.object({ id: z22.number(), number: z22.number(), title: text17, html_url: text17, state: text17, updated_at: nullableDate, draft: z22.boolean().optional(), pull_request: z22.unknown().optional() });
   const loaders = {
-    branches: async () => z20.array(z20.object({ name: text16, protected: z20.boolean(), commit: z20.object({ sha: text16 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z20.array(z20.object({ sha: text16, html_url: text16, commit: z20.object({ message: text16, committer: z20.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
-    issues: async () => z20.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
-    pulls: async () => z20.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z20.object({ workflow_runs: z20.array(z20.object({ id: z20.number(), name: text16.nullable(), html_url: text16, status: text16, conclusion: text16.nullable(), updated_at: nullableDate, head_sha: text16, head_branch: text16.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z20.array(z20.object({ id: z20.number(), name: text16.nullable(), tag_name: text16, html_url: text16, published_at: nullableDate, draft: z20.boolean(), prerelease: z20.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    branches: async () => z22.array(z22.object({ name: text17, protected: z22.boolean(), commit: z22.object({ sha: text17 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z22.array(z22.object({ sha: text17, html_url: text17, commit: z22.object({ message: text17, committer: z22.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    issues: async () => z22.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
+    pulls: async () => z22.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
+    runs: async () => z22.object({ workflow_runs: z22.array(z22.object({ id: z22.number(), name: text17.nullable(), html_url: text17, status: text17, conclusion: text17.nullable(), updated_at: nullableDate, head_sha: text17, head_branch: text17.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z22.array(z22.object({ id: z22.number(), name: text17.nullable(), tag_name: text17, html_url: text17, published_at: nullableDate, draft: z22.boolean(), prerelease: z22.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders);
   const results = await Promise.allSettled(keys.map((key) => loaders[key]()));
@@ -3637,9 +3813,9 @@ async function ownsGitHubProject(userId, projectId) {
   return Boolean(row);
 }
 async function listGitHubLinks(userId) {
-  const sql3 = monitoringSql();
+  const sql4 = monitoringSql();
   try {
-    const rows = await sql3`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
+    const rows = await sql4`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
       JOIN projects p ON p.id=l.project_id AND p.user_id=l.user_id WHERE l.user_id=${userId}`;
     return rows;
   } catch (error) {
@@ -3651,22 +3827,22 @@ var githubLinksDdl = `CREATE TABLE IF NOT EXISTS v2_github_links (
   project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   user_id text NOT NULL, repository text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
 async function saveGitHubLink(userId, projectId, repository) {
-  const sql3 = monitoringSql();
-  const [exists] = await sql3`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
-  if (!exists?.ready) await sql3.transaction([sql3`SELECT pg_advisory_xact_lock(184730020)`, sql3.query(githubLinksDdl)]);
-  const rows = await sql3`INSERT INTO v2_github_links(project_id,user_id,repository)
+  const sql4 = monitoringSql();
+  const [exists] = await sql4`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
+  if (!exists?.ready) await sql4.transaction([sql4`SELECT pg_advisory_xact_lock(184730020)`, sql4.query(githubLinksDdl)]);
+  const rows = await sql4`INSERT INTO v2_github_links(project_id,user_id,repository)
     SELECT id,user_id,${repository} FROM projects WHERE id=${projectId} AND user_id=${userId}
     ON CONFLICT(project_id) DO UPDATE SET user_id=EXCLUDED.user_id,repository=EXCLUDED.repository,updated_at=now() RETURNING project_id`;
   return rows.length > 0;
 }
 async function deleteGitHubLink(userId, projectId) {
-  const sql3 = monitoringSql();
-  await sql3`DELETE FROM v2_github_links l USING projects p WHERE l.project_id=${projectId} AND l.user_id=${userId} AND p.id=l.project_id AND p.user_id=${userId}`;
+  const sql4 = monitoringSql();
+  await sql4`DELETE FROM v2_github_links l USING projects p WHERE l.project_id=${projectId} AND l.user_id=${userId} AND p.id=l.project_id AND p.user_id=${userId}`;
 }
 
 // server/routes/github.ts
 function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepositories, githubProjects, ownsGitHubProject, listGitHubLinks, saveGitHubLink, deleteGitHubLink }) {
-  const route = new Hono19();
+  const route = new Hono20();
   route.onError((error, c) => c.json({ error: error instanceof GitHubError ? error.message : "GitHub-Daten konnten nicht geladen werden. Einrichtung und Datenbankrechte pr\xFCfen." }, error instanceof GitHubError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -3691,8 +3867,8 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.put("/links/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
     const userId = c.get("userId");
-    const parsed = z21.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!z21.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
+    const parsed = z23.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!z23.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, projectId)) return c.json({ error: "Eigenes OMNIDESK-Projekt nicht gefunden." }, 404);
     await dependencies.fetchGitHubSnapshot(parsed.data.repository);
     if (!await dependencies.saveGitHubLink(userId, projectId, parsed.data.repository)) return c.json({ error: "Projekt nicht mehr verf\xFCgbar." }, 404);
@@ -3701,7 +3877,7 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.delete("/links/:projectId", async (c) => {
     const id = c.req.param("projectId");
     const userId = c.get("userId");
-    if (!z21.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (!z23.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, id)) return c.json({ error: "Projekt nicht gefunden." }, 404);
     await dependencies.deleteGitHubLink(userId, id);
     return c.json({ ok: true });
@@ -3714,14 +3890,14 @@ var githubRoute = createGitHubRoute();
 init_client();
 init_projects();
 import { and as and21, eq as eq23 } from "drizzle-orm";
-import { Hono as Hono20 } from "hono";
+import { Hono as Hono21 } from "hono";
 
 // server/vercel-monitor.ts
-import { z as z22 } from "zod";
-var identifier = z22.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
-var linkSchema = z22.object({
-  userId: z22.string().min(1),
-  projectId: z22.uuid(),
+import { z as z24 } from "zod";
+var identifier = z24.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z24.object({
+  userId: z24.string().min(1),
+  projectId: z24.uuid(),
   vercelProjectId: identifier,
   teamId: identifier.optional()
 });
@@ -3744,7 +3920,7 @@ function readVercelLinks() {
   } catch {
     throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
   }
-  const result = z22.array(linkSchema).max(100).safeParse(parsed);
+  const result = z24.array(linkSchema).max(100).safeParse(parsed);
   if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
   const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
   if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
@@ -3791,23 +3967,23 @@ async function vercelGet(path, link, query = {}) {
   if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
   return boundedJson(response);
 }
-var deploymentSchema = z22.object({
-  id: z22.string().optional(),
-  uid: z22.string().optional(),
-  projectId: z22.string().optional(),
-  url: z22.string().optional().nullable(),
-  state: z22.string().optional(),
-  readyState: z22.string().optional(),
-  target: z22.string().optional().nullable(),
-  createdAt: z22.number().optional(),
-  created: z22.number().optional(),
-  meta: z22.record(z22.string(), z22.unknown()).optional()
+var deploymentSchema = z24.object({
+  id: z24.string().optional(),
+  uid: z24.string().optional(),
+  projectId: z24.string().optional(),
+  url: z24.string().optional().nullable(),
+  state: z24.string().optional(),
+  readyState: z24.string().optional(),
+  target: z24.string().optional().nullable(),
+  createdAt: z24.number().optional(),
+  created: z24.number().optional(),
+  meta: z24.record(z24.string(), z24.unknown()).optional()
 }).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
-var projectSchema2 = z22.object({
-  id: z22.string(),
-  name: z22.string(),
-  link: z22.object({ type: z22.string().optional(), org: z22.string().optional(), repo: z22.string().optional() }).nullable().optional(),
-  targets: z22.object({ production: deploymentSchema.nullable().optional() }).optional()
+var projectSchema2 = z24.object({
+  id: z24.string(),
+  name: z24.string(),
+  link: z24.object({ type: z24.string().optional(), org: z24.string().optional(), repo: z24.string().optional() }).nullable().optional(),
+  targets: z24.object({ production: deploymentSchema.nullable().optional() }).optional()
 });
 function safeDeploymentUrl(value) {
   if (!value) return null;
@@ -3820,7 +3996,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text17 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text18 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -3828,16 +4004,16 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text17("githubCommitSha") || text17("gitlabCommitSha") || text17("bitbucketCommitSha"),
-      message: text17("githubCommitMessage") || text17("gitlabCommitMessage") || text17("bitbucketCommitMessage"),
-      branch: text17("githubCommitRef") || text17("gitlabCommitRef") || text17("bitbucketCommitRef")
+      sha: text18("githubCommitSha") || text18("gitlabCommitSha") || text18("bitbucketCommitSha"),
+      message: text18("githubCommitMessage") || text18("gitlabCommitMessage") || text18("bitbucketCommitMessage"),
+      branch: text18("githubCommitRef") || text18("gitlabCommitRef") || text18("bitbucketCommitRef")
     }
   };
 }
 async function fetchVercelSnapshot(link) {
   const [projectResult, deploymentsResult] = await Promise.allSettled([
     vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
-    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z22.object({ deployments: z22.array(deploymentSchema) }).parse(value).deployments)
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z24.object({ deployments: z24.array(deploymentSchema) }).parse(value).deployments)
   ]);
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
     throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
@@ -3865,9 +4041,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item) => Boolean(item))
   };
 }
-function redactBuildLog(text17) {
+function redactBuildLog(text18) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text17.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text18.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -3876,19 +4052,19 @@ function redactBuildLog(text17) {
 }
 async function fetchVercelLogs(link, deploymentId) {
   if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
-  const detail = z22.object({ id: z22.string(), projectId: z22.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  const detail = z24.object({ id: z24.string(), projectId: z24.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
   if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
   const raw = await vercelGet(
     `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
     link,
     { follow: "0", builds: "1", direction: "backward", limit: "100" }
   );
-  const parsedEvents = z22.array(z22.object({
-    text: z22.string().nullable().optional(),
-    type: z22.string().optional(),
-    created: z22.number().optional(),
-    date: z22.number().optional(),
-    deploymentId: z22.string().optional()
+  const parsedEvents = z24.array(z24.object({
+    text: z24.string().nullable().optional(),
+    type: z24.string().optional(),
+    created: z24.number().optional(),
+    date: z24.number().optional(),
+    deploymentId: z24.string().optional()
   }).nullable()).parse(raw);
   const events = parsedEvents.filter((event) => event !== null);
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
@@ -3904,14 +4080,14 @@ async function fetchVercelProjects() {
   const projects2 = [];
   const unavailable = [];
   let limited = false;
-  const pageSchema = z22.object({ pagination: z22.object({ next: z22.number().nullable().optional() }).optional() });
+  const pageSchema = z24.object({ pagination: z24.object({ next: z24.number().nullable().optional() }).optional() });
   async function pages(path, field, teamId) {
     const items = [];
     let until;
     for (let page = 0; page < 10; page++) {
       const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
       const parsed = pageSchema.parse(raw);
-      items.push(...z22.array(z22.unknown()).parse(z22.record(z22.string(), z22.unknown()).parse(raw)[field]));
+      items.push(...z24.array(z24.unknown()).parse(z24.record(z24.string(), z24.unknown()).parse(raw)[field]));
       const next = parsed.pagination?.next;
       if (next == null) return items;
       if (String(next) === until) {
@@ -3925,7 +4101,7 @@ async function fetchVercelProjects() {
   }
   const teams = [];
   try {
-    teams.push(...z22.array(z22.object({ id: identifier, name: z22.string() })).parse(await pages("/v2/teams", "teams")));
+    teams.push(...z24.array(z24.object({ id: identifier, name: z24.string() })).parse(await pages("/v2/teams", "teams")));
   } catch {
     unavailable.push("Team-Liste");
   }
@@ -3934,7 +4110,7 @@ async function fetchVercelProjects() {
   for (let i = 0; i < scopes.length; i += 4) {
     await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
       try {
-        const items = z22.array(z22.object({ id: identifier, name: z22.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        const items = z24.array(z24.object({ id: identifier, name: z24.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
         for (const item of items) {
           const teamId = item.accountId?.startsWith("team_") ? item.accountId : scope.id ?? null;
           if (!projects2.some((project2) => project2.id === item.id && project2.teamId === teamId)) {
@@ -3958,7 +4134,7 @@ async function ownsProject4(userId, projectId) {
   return Boolean(project2);
 }
 function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject4, fetchVercelSnapshot, fetchVercelLogs }) {
-  const route = new Hono20();
+  const route = new Hono21();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -4048,9 +4224,9 @@ var deploymentsRoute = createDeploymentsRoute();
 init_client();
 init_schema();
 import { and as and22, asc as asc5, desc as desc9, eq as eq24 } from "drizzle-orm";
-import { Hono as Hono21 } from "hono";
-import { z as z23 } from "zod";
-var chatRoute = new Hono21();
+import { Hono as Hono22 } from "hono";
+import { z as z25 } from "zod";
+var chatRoute = new Hono22();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -4062,14 +4238,14 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z23.object({
-  title: z23.string().trim().max(200).optional()
+var createSessionSchema = z25.object({
+  title: z25.string().trim().max(200).optional()
 });
-var updateSessionSchema = z23.object({
-  title: z23.string().trim().min(1).max(200)
+var updateSessionSchema = z25.object({
+  title: z25.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z23.object({
-  content: z23.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
+var sendMessageSchema = z25.object({
+  content: z25.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4)
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
@@ -4092,7 +4268,7 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z23.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z25.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
@@ -4131,7 +4307,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z23.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z25.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const [userMsg] = await db.insert(chatMessages).values({
@@ -4262,7 +4438,7 @@ ${lastError}`;
 
 // server/app.ts
 function createApp() {
-  const app = new Hono22().basePath("/api");
+  const app = new Hono23().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -4297,7 +4473,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z24.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z26.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -4323,6 +4499,7 @@ function createApp() {
   app.route("/deployments", deploymentsRoute);
   app.route("/github", githubRoute);
   app.route("/account-security", accountSecurityRoute);
+  app.route("/account-map", accountMapRoute);
   app.route("/chat", chatRoute);
   return app;
 }

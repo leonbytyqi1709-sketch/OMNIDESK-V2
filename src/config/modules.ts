@@ -11,6 +11,7 @@ import {
   Link2,
   ListTodo,
   NotebookPen,
+  Network,
   Rocket,
   Settings,
   ShieldCheck,
@@ -169,6 +170,15 @@ export const moduleRegistry: ModuleDefinition[] = [
     category: 'it-tools',
   },
   // 🔒 Sicherheit & Kontakte
+  {
+    id: 'account-map',
+    title: 'Kontenkarte',
+    path: '/account-map',
+    icon: Network,
+    component: lazy(() => import('@/modules/account-map')),
+    toggleable: true,
+    category: 'security',
+  },
   {
     id: 'account-security',
     title: 'Kontosicherheit',

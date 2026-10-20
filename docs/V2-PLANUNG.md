@@ -365,3 +365,13 @@ Nach vollständiger Live-Bestätigung der GitHub-Zentrale und neuem ausdrücklic
 Ein auswählbares Dashboard-Widget und eine quellenbezogene Zusammenfassungs-API bereiten das spätere Omni-Briefing vor; kein KI-Datenversand und noch kein fertiges Startbriefing. Versionen schützen veraltete Tabs. Die zusätzlich einrichtbare Tabelle v2_account_security verändert keine vorhandenen Konten, Vault-Daten oder bestehenden Tabellen. Keine zusätzlichen Provider-API-Schlüssel, keine Datenleck-Prüfung und keine automatische Änderung von Anbieter-Einstellungen. Die Kontenkarte bleibt separat geplant.
 
 Einrichtung und Abnahme: docs/KONTOSICHERHEIT.md. PostgreSQL-Integrationstests und Browserprüfung mit Beispieldaten werden durchgeführt. Produktive Einrichtung und Live-Abnahme bleiben bis zur Rückmeldung des Nutzers offen. Die Bestätigung der GitHub-Zentrale ersetzt keine weiterhin ausstehende Neon-Scheduler-Abnahme; der optionale Neon-SQL-Test bleibt auf Wunsch des Nutzers ausgeschaltet.
+
+### Kontosicherheit live bestätigt; Kontenkarte · 20.10.2026
+
+Der Nutzer bestätigt den erfolgreichen Funktionstest der Kontosicherheit mit seinem Google-Konto und autorisiert die Fortsetzung. Nr. 11 ist damit für den getesteten eigenen Kontoablauf live bestätigt.
+
+Nr. 13 wird als Kontenkarte umgesetzt: gemeinsames Kontenmodell aus Kontosicherheit, private typisierte und gerichtete Beziehungen für Anmeldung und Wiederherstellung, explizite Angabe weiterer Anmeldewege, interaktive Karte mit Zoom und Tastaturauswahl sowie zugängliche filterbare Verbindungsliste. Eine Betrachtung des ausgewählten Kontos zeigt direkte/indirekte Pfade und zirkuläre Strukturen, ohne Wiederherstellungsadressen oder dokumentierte Alternativen als sicheren Zugangsverlust zu behandeln. Keine automatische Abfrage fremder Kontoeinstellungen, keine Anbieter-Änderungen, keine Vault-Inhalte und keine KI-Übertragung.
+
+Die neue Tabelle v2_account_relations wird additiv über die App eingerichtet. Beide Endkonten werden in Lese- und Schreibabfragen auf Besitzer geprüft; Versionen verhindern Überschreiben aus veralteten Tabs. Beim Entfernen eines gemeinsamen Kontoeintrags werden dessen dokumentierte Beziehungen ebenfalls entfernt; der bestehende Bestätigungsdialog weist darauf hin. Keine neuen API-Schlüssel oder Scheduler erforderlich.
+
+Einrichtung: docs/KONTENKARTE.md. Lokale PostgreSQL- und Pfadtests sowie Desktop-/Mobil-Browserprüfung mit Beispieldaten werden durchgeführt. Die neue Kontenkarte ist bis zur produktiven Einrichtung und Rückmeldung noch nicht live abgenommen.
