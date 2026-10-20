@@ -854,8 +854,8 @@ function MissionWorkspace() {
         </Card>
       )}
       {!projects.isPending && all.length > 0 && (
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]">
-          <aside className="space-y-3" aria-label="Live-Lagebild">
+        <div className="space-y-6">
+          <section className="space-y-3" aria-label="Live-Lagebild">
             <p className="text-xs text-muted-foreground">
               {filtered.length} passende Projekte · Quellen der sichtbaren
               Projekte werden alle zwei Minuten abgerufen. Messzeiten stehen an
@@ -866,14 +866,18 @@ function MissionWorkspace() {
                 Keine Projekte für diesen Filter.
               </p>
             )}
-            {visible.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                selected={selected === project.id}
-                onSelect={() => setParams({ project: project.id })}
-              />
-            ))}
+            <div
+              className={`grid items-stretch gap-3 ${visible.length > 1 ? 'sm:grid-cols-2' : ''} ${visible.length > 2 ? 'xl:grid-cols-3' : ''}`}
+            >
+              {visible.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  selected={selected === project.id}
+                  onSelect={() => setParams({ project: project.id })}
+                />
+              ))}
+            </div>
             {pages > 1 && (
               <div className="flex items-center justify-between gap-2">
                 <Button
@@ -901,7 +905,7 @@ function MissionWorkspace() {
               Unauffällig gilt nur für die erfassten Quellen. Fehlende
               Verbindungen sind kein gesunder Zustand.
             </p>
-          </aside>
+          </section>
           {selected ? (
             <Cockpit key={selected} projectId={selected} />
           ) : (
