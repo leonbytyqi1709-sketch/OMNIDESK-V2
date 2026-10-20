@@ -182,6 +182,19 @@ function RadarWorkspace() {
       {data.isLoading && (
         <p className="text-sm text-muted-foreground">Radar wird geladen…</p>
       )}
+      {!!overview?.sources.some((source) => source.error) && (
+        <div role="alert" className="space-y-2 rounded-xl border border-amber-400/40 bg-amber-400/5 p-4 text-sm">
+          <p className="font-medium text-amber-400">Nicht alle Quellen konnten geladen werden</p>
+          {overview.sources.filter((source) => source.error).map((source) => (
+            <p key={source.id} className="break-words">
+              <strong>{source.name}:</strong> {source.error}
+            </p>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            Details stehen unter „Themen & Quellen einrichten“. Zwischen Abrufen liegen mindestens 15 Minuten. Bereits geladene Meldungen bleiben erhalten.
+          </p>
+        </div>
+      )}
       <details
         className="rounded-xl border border-border bg-card p-4"
         open={!overview?.sources.length}
@@ -589,8 +602,19 @@ function RadarWorkspace() {
       )}
       {overview && !groups.size && (
         <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          Noch keine Funde für diese Auswahl. Quellen einrichten oder Filter
-          anpassen.
+          {!overview.sources.length
+            ? 'Dein Radar braucht eine Nachrichtenquelle: Lege oben ein Thema an und füge anschließend eine RSS-/Atom-Quelle hinzu. Ein Thema allein startet noch keine Internetsuche.'
+            : action.isPending
+              ? 'Die Quellen werden gerade geprüft. Neue Meldungen erscheinen nach Abschluss des Abrufs.'
+              : overview.sources.some((source) => source.error)
+                ? 'Beim Quellenabruf gab es Fehler. Die betroffenen Quellen und ihre Fehlermeldungen stehen oben.'
+                : search || topicFilter !== 'all' || view !== 'all' || matchesOnly
+                  ? 'Keine Meldungen für diese Filter. Wähle „Alle Themen“ und „Alle Meldungen“, leere die Suche und deaktiviere gegebenenfalls „Nur Suchbegriff-Treffer“.'
+                  : !overview.sources.some((source) => source.enabled && overview.topics.some((topic) => topic.id === source.topicId && topic.enabled && !topic.projectMissing))
+                    ? 'Es gibt keine aktive Quelle mit aktivem Thema. Prüfe die Pausen und Projektzuordnungen unter „Themen & Quellen einrichten“.'
+                    : !overview.sources.some((source) => source.lastAttempt)
+                      ? 'Die Quellen wurden noch nicht abgerufen. Aktiviere den automatischen Abruf oder klicke auf „Quellen prüfen“.'
+                      : 'Der bisherige Abruf hat keine verwendbaren Meldungen geliefert. Prüfe, ob die Quelle einen RSS-/Atom-Feed mit Artikellinks enthält. Ein neuer Abruf ist frühestens nach 15 Minuten möglich.'}
         </p>
       )}
       <div className="grid gap-4 xl:grid-cols-2">
