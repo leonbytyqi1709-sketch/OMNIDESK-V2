@@ -1,0 +1,7 @@
+# OMNIDESK V2 – Fortsetzung und Abschluss
+
+- Ausschließlich dieses V2-Repository bearbeiten; das produktive Original OMNIDESK bleibt unberührt.
+- Auf Deutsch kommunizieren. Den aktuellen verbindlichen Planungsstand in `docs/V2-PLANUNG.md` lesen; historische Vorschläge sind keine neuen Aufträge.
+- Nach Nutzerabgleich vom 20.10.2026 sind Kommandoebene im Browser, temporäre gemeinsame Räume und das übergreifende Arbeitsgedächtnis/Missionsarchiv noch offen. OneDrive ist pausiert; nicht ungefragt wieder aufnehmen. Mission Control wurde vom Nutzer live bestätigt. Es existiert kein Radar-Cronjob; nicht erneut danach fragen. Der optionale Neon-SQL-Test bleibt ausgeschaltet.
+- **Sobald alle vereinbarten Änderungen fertig sind, den Nutzer ausdrücklich an den vollständigen Test seiner gesamten App erinnern und diesen als nächsten gemeinsamen Schritt anstoßen.** Alle Module, ihre Verbindungen und die zentralen Abläufe auf Fehler, Auffälligkeiten und Verbesserungsmöglichkeiten prüfen. Auffälligkeiten festhalten und gemeinsam priorisieren. Diesen abschließenden Gesamttest nicht vergessen und nicht durch erfolgreiche Builds oder einzelne Modultests als erledigt behandeln.
+- Implementierung, lokale Tests mit Beispieldaten, Vercel-Bereitstellung und tatsächliche Live-Abnahme des Nutzers klar unterscheiden. Keine automatische oder zeitgesteuerte Erinnerung behaupten; die Erinnerung gehört zum Abschlussgespräch über die Änderungen.

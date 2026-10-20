@@ -2,6 +2,14 @@
 
 Stand: 17. Oktober 2026. Analyse des bereitgestellten Checkouts, keine Änderung am Anwendungscode und kein Deployment. Grundlage: Modul-Registry, Frontend-Einstiegspunkte und gemeinsame Bedienoberflächen, API-Routen, Datenbankschemas, Integrationen, Build-/Deployment-Konfiguration, Spezifikation und Entwicklungsdokumentation. Keine vollständige authentifizierte Live-Prüfung und kein abgeschlossener Sicherheitsaudit. V2 bezeichnet hier das nächste Produktrelease; das bestehende Spezifikations-PDF heißt bereits V2.
 
+## Verbindlicher Abschluss und verbleibende Arbeiten · 20.10.2026
+
+Aktueller Nutzerabgleich nach Mission Control: Drei größere aktive Arbeitspakete bleiben – Kommandoebene im Browser, temporäre gemeinsame Räume sowie das übergreifende Arbeitsgedächtnis/Missionsarchiv. Das bereits implementierte persönliche Omni-Gedächtnis und der begrenzte Mission-Control-Besuchsvergleich ersetzen das gesamte übergreifende Gedächtnis-/Archivkonzept nicht. OneDrive bleibt als viertes offenes Paket auf ausdrücklichen Nutzerwunsch pausiert; es wird nicht ungefragt wieder aufgenommen. Das Internet-Radar ist zurückgenommen und entfernt, keine offene Funktion.
+
+Der Nutzer hat Mission Control nach Anmeldung live geprüft und bestätigt, dass Projekte und Verbindungen vollständig erscheinen. Die anschließende Layoutkorrektur wurde bereitgestellt und vom Nutzer mit „Perfekt gemacht“ bestätigt. Dies ersetzt keine separate, bisher unbestätigte Neon-Scheduler-Abnahme oder sonstige ausstehende Provider-Prüfungen. Der optionale Neon-SQL-Test bleibt auf Nutzerwunsch aus.
+
+**Wichtige dauerhafte Nutzeranweisung:** Sobald alle vereinbarten Änderungen abgeschlossen sind, den Nutzer ausdrücklich an einen vollständigen Test der gesamten App erinnern. Gemeinsam alle Module, Modulverbindungen und zentralen Abläufe auf Fehler, Auffälligkeiten und Verbesserungsmöglichkeiten prüfen. Dies ist ein verpflichtender abschließender Arbeitspunkt, kein optionaler Nebensatz. Ein erfolgreicher Build oder einzelne Modultests ersetzen diesen Gesamttest nicht. Gefundene Auffälligkeiten dokumentieren und gemeinsam priorisieren. Den V2-Abschluss nicht mit einer vollständigen App-Abnahme gleichsetzen. Die Erinnerung erfolgt beim Abschluss der Änderungen im Gespräch; es ist kein zeitgesteuerter Benachrichtigungsdienst eingerichtet.
+
 ## Bestand und Chancen
 
 | Bereich | Vorhanden | Ausbauchance |
