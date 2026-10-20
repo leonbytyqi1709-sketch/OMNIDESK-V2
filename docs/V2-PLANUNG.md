@@ -4,7 +4,7 @@ Stand: 17. Oktober 2026. Analyse des bereitgestellten Checkouts, keine Änderung
 
 ## Verbindlicher Abschluss und verbleibende Arbeiten · 20.10.2026
 
-Aktueller Nutzerabgleich nach Mission Control: Drei größere aktive Arbeitspakete bleiben – Kommandoebene im Browser, temporäre gemeinsame Räume sowie das übergreifende Arbeitsgedächtnis/Missionsarchiv. Das bereits implementierte persönliche Omni-Gedächtnis und der begrenzte Mission-Control-Besuchsvergleich ersetzen das gesamte übergreifende Gedächtnis-/Archivkonzept nicht. OneDrive bleibt als viertes offenes Paket auf ausdrücklichen Nutzerwunsch pausiert; es wird nicht ungefragt wieder aufgenommen. Das Internet-Radar ist zurückgenommen und entfernt, keine offene Funktion.
+Aktueller Nutzerabgleich nach Mission Control: Drei größere aktive Arbeitspakete bleiben – Kommandoebene im Browser, temporäre gemeinsame Räume sowie das übergreifende Arbeitsgedächtnis/Missionsarchiv. Das bereits implementierte persönliche Omni-Gedächtnis und der begrenzte Mission-Control-Besuchsvergleich ersetzen das gesamte übergreifende Gedächtnis-/Archivkonzept nicht. OneDrive wurde auf ausdrücklichen Nutzerwunsch aus der weiteren V2-Planung gestrichen und ist kein viertes offenes Paket mehr. Es bleiben genau drei größere offene Arbeitspakete. Vorhandener Integrationscode wird durch diese Planungsentscheidung nicht automatisch entfernt. Das Internet-Radar ist zurückgenommen und entfernt, keine offene Funktion.
 
 Der Nutzer hat Mission Control nach Anmeldung live geprüft und bestätigt, dass Projekte und Verbindungen vollständig erscheinen. Die anschließende Layoutkorrektur wurde bereitgestellt und vom Nutzer mit „Perfekt gemacht“ bestätigt. Dies ersetzt keine separate, bisher unbestätigte Neon-Scheduler-Abnahme oder sonstige ausstehende Provider-Prüfungen. Der optionale Neon-SQL-Test bleibt auf Nutzerwunsch aus.
 
@@ -144,6 +144,8 @@ Am 20.10.2026 auf Nutzerwunsch aus der aktiven Anwendung entfernt. Bestehende Da
 
 ### 16. OneDrive als zusätzliche Cloud-Integration
 
+**Aktuelle Entscheidung vom 20.10.2026: aus der weiteren Planung gestrichen. Die folgenden Absätze dokumentieren die frühere Planung und sind kein aktueller Entwicklungsauftrag.**
+
 Vom Nutzer ausdrücklich für V2 ausgewählt: Ein eigenes OneDrive-Konto soll neben Google Drive und MEGA mit OMNIDESK verbunden werden können. Dies ist die achte ausgewählte größere V2-Funktion; die Nummerierung dieser Ideensammlung enthält zusätzlich nicht ausgewählte Vorschläge.
 
 Geplanter erster Umfang: Microsoft-Anmeldung über OAuth, Anzeige des verbundenen Kontos unter Integrationen, Abruf der verfügbaren Speicher-/Quota-Werte und Synchronisationsstatus im Cloud-Monitoring sowie Berücksichtigung im bestehenden Cloud-Speicher-Widget. Konto trennen und abgelaufene oder entzogene Berechtigungen verständlich behandeln. Microsoft Graph ist die vorgesehene Schnittstelle; unterstützte Kontotypen, tatsächliche Quota-Verfügbarkeit und minimale Berechtigungen sind anhand der aktuellen Dokumentation zu prüfen. Ziel ist zunächst das persönliche OneDrive-Konto des Nutzers; Organisationskonten sind nicht automatisch mit zugesagt.
@@ -235,7 +237,7 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 5. Arbeitsgedächtnis und Missionsarchiv.
 6. Omni-Briefing beim Öffnen der App.
 7. Internet-Radar: zurückgenommen und entfernt (20.10.2026).
-8. OneDrive-Integration.
+8. OneDrive-Integration: aus der weiteren Planung gestrichen (20.10.2026).
 9. Mail-Modul vollständig entfernen, Google Drive erhalten.
 10. Deployment-Zentrale.
 11. Persönliche Sicherheitsübersicht der Konten.
@@ -253,7 +255,6 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 | Kommandoebene im Browser | Hoch für Recherche und seitenbezogenes Wissen | Mittel bis groß | Vom Nutzer für V2 ausgewählt |
 | Temporäre gemeinsame Räume | Hoch für Zusammenarbeit privat und mit Kunden | Groß | Vom Nutzer für V2 ausgewählt; auf Freigabe- und Rollenmodell aufbauen |
 | Omni-Briefing beim Öffnen der App | Hoch, täglicher Einstieg | Mittel bis groß | Vom Nutzer für V2 ausgewählt; ersetzt die Live-Schreibtisch-Idee |
-| OneDrive-Integration | Hoch für die eigenen Cloud-Konten | Mittel | Vom Nutzer als achte V2-Funktion ausgewählt; zunächst Kontoverbindung und Cloud-Monitoring |
 | Mail-Modul entfernen | Vereinfachung der Anwendung | Klein bis mittel | Vom Nutzer als neunte V2-Änderung ausgewählt; Google Drive und gemeinsame OAuth-Infrastruktur erhalten |
 | Deployment-Zentrale | Hoch für den Betrieb eigener Projekte | Mittel bis groß | Vom Nutzer als zehnte V2-Änderung ausgewählt; zunächst lesende Vercel-Anbindung |
 | Persönliche Sicherheitsübersicht der Konten | Hoch für den persönlichen Überblick | Mittel bis groß | Vom Nutzer als elfte V2-Änderung ausgewählt; dokumentierte und verifizierte Angaben unterscheiden |
