@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router'
 import { useEffect, useState } from 'react'
 import { GitHubPanel } from '@/components/integrations/GitHubPanel'
 import { DeploymentPanel } from '@/components/integrations/DeploymentPanel'
@@ -47,6 +48,11 @@ function ProjectDetailView({
   onBack: () => void
 }) {
   const { data, isLoading, error } = useProjectDetail(projectId)
+  useEffect(() => {
+    if (!data || !/^#(?:project-task|milestone)-[0-9a-f-]{36}$/i.test(window.location.hash)) return
+    const frame = requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'center' }))
+    return () => cancelAnimationFrame(frame)
+  }, [data])
 
   if (isLoading) {
     return <Skeleton className="h-96 rounded-lg" />
@@ -119,7 +125,9 @@ export default function ProjectsPage() {
   const { data: projects, isLoading, error } = useProjects()
   const deleteProject = useDeleteProject()
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
+  const [selectedId, setSelectedId] = useState<string | null>(() => params.get('project'))
+  useEffect(() => { const id = params.get('project'); if (id) setSelectedId(id) }, [params])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editProject, setEditProject] = useState<ProjectDto | null>(null)
 
@@ -276,7 +284,7 @@ export default function ProjectsPage() {
       ) : (
         <ProjectDetailView
           projectId={selectedId}
-          onBack={() => setSelectedId(null)}
+          onBack={() => { setSelectedId(null); setParams({}) }}
         />
       )}
 

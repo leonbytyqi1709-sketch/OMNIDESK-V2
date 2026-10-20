@@ -375,3 +375,11 @@ Nr. 13 wird als Kontenkarte umgesetzt: gemeinsames Kontenmodell aus Kontosicherh
 Die neue Tabelle v2_account_relations wird additiv über die App eingerichtet. Beide Endkonten werden in Lese- und Schreibabfragen auf Besitzer geprüft; Versionen verhindern Überschreiben aus veralteten Tabs. Beim Entfernen eines gemeinsamen Kontoeintrags werden dessen dokumentierte Beziehungen ebenfalls entfernt; der bestehende Bestätigungsdialog weist darauf hin. Keine neuen API-Schlüssel oder Scheduler erforderlich.
 
 Einrichtung: docs/KONTENKARTE.md. Lokale PostgreSQL- und Pfadtests sowie Desktop-/Mobil-Browserprüfung mit Beispieldaten werden durchgeführt. Die neue Kontenkarte ist bis zur produktiven Einrichtung und Rückmeldung noch nicht live abgenommen.
+
+### Kontenkarte bestätigt; Omni-Startbriefing · 20.10.2026
+
+Der Nutzer bestätigt die Kontenkarte und autorisiert die Fortsetzung. Nr. 6 wird umgesetzt: persönliche Zusammenfassung beim App-Start, Aufgaben/Projekte/Termine mit getrennten Zählern, gespeicherte Uptime- und Neon-Warnungen, optional dokumentierte Kontosicherheit. Direktlinks öffnen passende Aufgaben und Termine sowie Projektkarten und Meilensteine. Kontosicherheit ist standardmäßig ausgeschlossen; Quellen, Zeitzone, automatisches Öffnen und KI sind einstellbar.
+
+Die Faktenübersicht ist von der KI-Auswahl nächster Schritte getrennt. Die bestehende Omni-KI wählt nur überprüfbare Quellen und Gründe; keine freien erfundenen Zahlen, keine Aktionen. Fehler führen zu gekennzeichneter regelbasierter Orientierung. Benutzerbezogener Cache, zehnminütige Generierungssperre und begrenzte Anbieter-Anfragen verhindern dauernde Generierung. Zwei additive Tabellen speichern Einstellungen, Besuchsvergleich und KI-Auswahl; keine bestehenden Datensätze werden umgeschrieben.
+
+Einrichtung und Grenzen: docs/OMNI-BRIEFING.md. Lokale automatisierte Tests und Desktop-/Mobil-Browserprüfung mit Beispieldaten; produktive Zahlen und echter KI-Anbieter bleiben nach dem Deployment gemeinsam zu prüfen. Keine vorgezogene Umsetzung von Mission Control, Gedächtnis oder ausführbaren Omni-Aktionen. Neon-Scheduler-Abnahme bleibt unbestätigt; SQL-Test bleibt auf Nutzerwunsch aus.

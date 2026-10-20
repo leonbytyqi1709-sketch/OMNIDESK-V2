@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
 import { addMonths, format, subMonths } from 'date-fns'
 import { de } from 'date-fns/locale'
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
@@ -12,6 +13,7 @@ import { useAppointments, type AppointmentDto } from './api'
 export default function CalendarPage() {
   const { data: appointments, isLoading, error } = useAppointments()
 
+  const [params] = useSearchParams(), location = useLocation(), handledLink = useRef('')
   const [month, setMonth] = useState(() => new Date())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [bookingOpen, setBookingOpen] = useState(false)
@@ -19,6 +21,14 @@ export default function CalendarPage() {
     null,
   )
   const [initialDate, setInitialDate] = useState(() => new Date())
+
+  useEffect(() => {
+    const id = params.get('appointment'), request = `${location.key}:${id}`
+    if (!id || !appointments || handledLink.current === request) return
+    handledLink.current = request
+    const appointment = appointments.find((entry) => entry.id === id)
+    if (appointment) { setMonth(new Date(appointment.startsAt)); setEditAppointment(appointment); setDialogOpen(true) }
+  }, [params, location.key, appointments])
 
   const openCreate = (day: Date) => {
     setEditAppointment(null)

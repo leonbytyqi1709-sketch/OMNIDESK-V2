@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react'
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
@@ -34,8 +35,10 @@ const QUERY_KEY = ['tasks'] as const
 
 export function useTasks() {
   const apiFetch = useApiFetch()
+  const { userId } = useAuth()
   return useQuery({
-    queryKey: QUERY_KEY,
+    queryKey: [...QUERY_KEY, userId],
+    enabled: Boolean(userId),
     queryFn: () => apiFetch<TaskDto[]>('/api/tasks'),
   })
 }

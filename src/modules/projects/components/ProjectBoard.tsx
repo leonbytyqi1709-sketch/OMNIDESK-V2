@@ -32,7 +32,8 @@ function BoardCard({
 
   return (
     <Card
-      className="group cursor-grab gap-2 p-2.5 active:cursor-grabbing"
+      id={`project-task-${task.id}`}
+      className="target:ring-2 target:ring-primary group cursor-grab gap-2 p-2.5 active:cursor-grabbing"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', task.id)

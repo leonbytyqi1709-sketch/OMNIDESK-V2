@@ -6,6 +6,7 @@ import { CommandPalette } from './CommandPalette'
 import { FloatingScratchpad } from './FloatingScratchpad'
 import { MobileHeader } from './MobileHeader'
 import { ModuleLoader } from './ModuleLoader'
+import { OmniBriefing } from '@/components/briefing/OmniBriefing'
 import { Sidebar } from './Sidebar'
 
 const SIDEBAR_STORAGE_KEY = 'omnidesk:sidebar-collapsed'
@@ -45,6 +46,7 @@ export function AppLayout() {
 
       {/* Hauptinhalt */}
       <main className="relative z-1 min-w-0 flex-1 overflow-x-auto">
+        <OmniBriefing />
         <Suspense fallback={<ModuleLoader />}>
           <Outlet />
         </Suspense>

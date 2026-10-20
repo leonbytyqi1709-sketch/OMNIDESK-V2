@@ -55,7 +55,7 @@ export function MilestonePanel({ projectId, milestones }: MilestonePanelProps) {
           const overdue =
             !m.done && m.dueDate !== null && new Date(m.dueDate) < new Date()
           return (
-            <li key={m.id} className="group flex items-center gap-2">
+            <li key={m.id} id={`milestone-${m.id}`} className="target:ring-2 target:ring-primary group flex items-center gap-2">
               <Checkbox
                 checked={m.done}
                 onCheckedChange={(checked) =>

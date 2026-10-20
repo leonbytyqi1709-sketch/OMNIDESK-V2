@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 import type { TaskPriority } from '@/db/schema'
@@ -30,8 +31,10 @@ const QUERY_KEY = ['appointments'] as const
 
 export function useAppointments() {
   const apiFetch = useApiFetch()
+  const { userId } = useAuth()
   return useQuery({
-    queryKey: QUERY_KEY,
+    queryKey: [...QUERY_KEY, userId],
+    enabled: Boolean(userId),
     queryFn: () => apiFetch<AppointmentDto[]>('/api/appointments'),
   })
 }

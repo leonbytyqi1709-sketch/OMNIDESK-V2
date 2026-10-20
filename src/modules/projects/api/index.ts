@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 import type {
@@ -57,8 +58,10 @@ const detailKey = (id: string) => ['projects', id] as const
 
 export function useProjects() {
   const apiFetch = useApiFetch()
+  const { userId } = useAuth()
   return useQuery({
-    queryKey: LIST_KEY,
+    queryKey: [...LIST_KEY, userId],
+    enabled: Boolean(userId),
     queryFn: () => apiFetch<ProjectDto[]>('/api/projects'),
   })
 }

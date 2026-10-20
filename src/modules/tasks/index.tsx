@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
 import { Columns3, List, ListTodo, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -22,8 +23,18 @@ export default function TasksPage() {
   const [view, setView] = useState<ViewMode>(() =>
     localStorage.getItem(VIEW_STORAGE_KEY) === 'board' ? 'board' : 'list',
   )
+  const [params] = useSearchParams(), location = useLocation(), handledLink = useRef('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTask, setEditTask] = useState<TaskDto | null>(null)
+
+  useEffect(() => {
+    const id = params.get('task'), request = `${location.key}:${id}`
+    if (!id || !tasks || handledLink.current === request) return
+    handledLink.current = request
+    const task = tasks.find((entry) => entry.id === id)
+    if (task) { setEditTask(task); setDialogOpen(true) }
+    else toast.info('Diese Aufgabe ist nicht mehr verfügbar.')
+  }, [params, location.key, tasks])
 
   const changeView = (v: string) => {
     setView(v as ViewMode)

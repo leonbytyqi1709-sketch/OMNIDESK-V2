@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -29,6 +30,15 @@ export default function UptimePage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingMonitor, setEditingMonitor] = useState<UptimeMonitorDto | null>(null)
   const [historyMonitor, setHistoryMonitor] = useState<UptimeMonitorDto | null>(null)
+
+  const [params] = useSearchParams(), location = useLocation(), handledLink = useRef('')
+  useEffect(() => {
+    const id = params.get('monitor'), request = `${location.key}:${id}`
+    if (!id || isLoading || handledLink.current === request) return
+    handledLink.current = request
+    const monitor = monitors.find((entry) => entry.id === id)
+    if (monitor) setHistoryMonitor(monitor)
+  }, [params, location.key, monitors, isLoading])
 
   // Statistiken
   const stats = useMemo(() => {

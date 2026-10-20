@@ -108,3 +108,7 @@ Das Repo ist Vercel-ready: `server/vercel-entry.ts` wird beim Build zu `api/inde
 GitHub-Zentrale: [Einrichtung und Berechtigungen](docs/GITHUB-ZENTRALE.md).
 Kontosicherheit: [Einrichtung, Selbstauskunft und Prüfablauf](docs/KONTOSICHERHEIT.md).
 Kontenkarte: [Einrichtung, Pfeilrichtung und Abhängigkeiten](docs/KONTENKARTE.md).
+
+## Omni-Startbriefing in V2
+
+Persönlicher Arbeitsstand beim App-Start mit Aufgaben, Projekten, Terminen, gespeicherten Monitorwarnungen und optionaler Kontosicherheit. Quellenlinks, Zeitzone, Besuchsvergleich und begrenzte KI-Empfehlungen: [Einrichtung und Funktionsumfang](docs/OMNI-BRIEFING.md).
