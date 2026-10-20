@@ -13,6 +13,7 @@ import {
   NotebookPen,
   Rocket,
   Settings,
+  ShieldCheck,
   SquareKanban,
   Terminal,
   Timer,
@@ -168,6 +169,15 @@ export const moduleRegistry: ModuleDefinition[] = [
     category: 'it-tools',
   },
   // 🔒 Sicherheit & Kontakte
+  {
+    id: 'account-security',
+    title: 'Kontosicherheit',
+    path: '/account-security',
+    icon: ShieldCheck,
+    component: lazy(() => import('@/modules/account-security')),
+    toggleable: true,
+    category: 'security',
+  },
   {
     id: 'passwords',
     title: 'Passwort-Manager',

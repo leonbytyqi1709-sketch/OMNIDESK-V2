@@ -9,10 +9,12 @@ import {
   NotebookPen,
   Sparkles,
   SquareKanban,
+  ShieldCheck,
   Timer,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
+import { AccountSecurityWidget } from './components/AccountSecurityWidget'
 import { AppointmentsWidget } from './components/AppointmentsWidget'
 import { CloudStorageWidget } from './components/CloudStorageWidget'
 import { GreetingWidget } from './components/GreetingWidget'
@@ -38,6 +40,14 @@ export interface DashboardWidgetMeta {
 }
 
 export const DASHBOARD_WIDGETS: DashboardWidgetMeta[] = [
+  {
+    id: 'account-security',
+    title: 'Kontosicherheit',
+    description: 'Dokumentierte Absicherung und offene Kontoprüfungen',
+    icon: ShieldCheck,
+    component: AccountSecurityWidget,
+    moduleId: 'account-security',
+  },
   {
     id: 'greeting',
     title: 'Begrüßung & Live-Uhr',

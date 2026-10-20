@@ -106,3 +106,4 @@ Das Repo ist Vercel-ready: `server/vercel-entry.ts` wird beim Build zu `api/inde
 | `npm run db:studio` | Drizzle Studio (DB-GUI) |
 
 GitHub-Zentrale: [Einrichtung und Berechtigungen](docs/GITHUB-ZENTRALE.md).
+Kontosicherheit: [Einrichtung, Selbstauskunft und Prüfablauf](docs/KONTOSICHERHEIT.md).
