@@ -49,7 +49,7 @@ function ProjectDetailView({
 }) {
   const { data, isLoading, error } = useProjectDetail(projectId)
   useEffect(() => {
-    if (!data || !/^#(?:project-task|milestone)-[0-9a-f-]{36}$/i.test(window.location.hash)) return
+    if (!data || !/^#(?:(?:project-task|milestone)-[0-9a-f-]{36}|mission-(?:neon|github|deployment))$/i.test(window.location.hash)) return
     const frame = requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'center' }))
     return () => cancelAnimationFrame(frame)
   }, [data])
@@ -116,7 +116,7 @@ function ProjectDetailView({
         <ProjectBoard projectId={projectId} tasks={data.tasks} />
         <MilestonePanel projectId={projectId} milestones={data.milestones} />
       </div>
-      <div className="mt-6 space-y-6"><NeonPanel projectId={projectId} /><DeploymentPanel projectId={projectId} /><GitHubPanel key={projectId} projectId={projectId} /></div>
+      <div className="mt-6 space-y-6"><div id="mission-neon" className="scroll-mt-6"><NeonPanel projectId={projectId} /></div><div id="mission-deployment" className="scroll-mt-6"><DeploymentPanel projectId={projectId} /></div><div id="mission-github" className="scroll-mt-6"><GitHubPanel key={projectId} projectId={projectId} /></div></div>
     </div>
   )
 }

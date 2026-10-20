@@ -130,20 +130,9 @@ Jede Aussage verlinkt auf die zugrunde liegenden Daten. Fakten wie Termine, Stat
 
 Beim Öffnen ist ein datiertes Briefing sichtbar. Datenfrische prüfen und bei relevanten Änderungen aktualisieren; keine neue kostenpflichtige KI-Anfrage bei jedem Modulwechsel. Manueller Refresh und eine verständliche Faktenübersicht bei KI-Ausfall sind vorzusehen. Private Inhalte aus gesperrten Räumen oder Vault-Klartexte bleiben ausgeschlossen. Status: ausgewählte V2-Funktion, noch nicht implementiert.
 
-### 15. Persönliches Internet-Radar
+### 15. Internet-Radar – zurückgenommen
 
-Vom Nutzer ausdrücklich für V2 ausgewählt und zur weiteren Ausarbeitung vorgesehen. Ein persönlicher Feed verfolgt bewusst gewählte Themen, Tools und Quellen: beispielsweise GitHub-Releases, Herstellerblogs, Sicherheitsmeldungen, RSS und Statusseiten. Quellenzugang, Aktualisierungsintervalle und verfügbare Schnittstellen sind vor Umsetzung zu prüfen.
-
-Erster sinnvoller Umfang: Quellen und Themen auswählen, neue Meldungen gesammelt lesen, nach Kategorien filtern und einzelne Meldungen speichern oder einer Mission zuordnen. Meldungen zeigen Originalquelle, Veröffentlichungsdatum, Abrufzeit und gegebenenfalls betroffene Versionen. Doppelte Berichte werden gruppiert, während unterschiedliche Quellen nachvollziehbar bleiben. Externe Inhalte gelten als untrusted Daten und dürfen keine Aktionen autorisieren.
-
-Vorschläge zur Erweiterung, noch nicht einzeln vom Nutzer bestätigt:
-
-- Relevanz zu Projekten und bewusst hinterlegten Tools anzeigen: „Warum betrifft mich diese Meldung?“ Für Versionsbezug werden tatsächlich eingesetzte Versionen benötigt; unbekannte Versionen dürfen nicht als nachweislich betroffen dargestellt werden.
-- Meldungen nach Sicherheitswarnung, Release, Störung und allgemeiner Neuigkeit unterscheiden; Themen stummschalten und Benachrichtigungsschwellen wählen.
-- Ausgewählte wichtige Radar-Meldungen in das Omni-Briefing aufnehmen, getrennt von eigenen Aufgaben und Terminen.
-- Interessante Inhalte mit Quellenbezug im Gedächtnis ablegen. Speichern eines Links und Archivieren eines vollständigen Inhalts klar unterscheiden.
-
-Keine pauschale Überwachung aller Webseiten und keine garantierte Vollständigkeit von Sicherheitsmeldungen. Status: Grundidee ausgewählt; Erweiterungen sind Planungsvorschläge, keine implementierten Funktionen.
+Am 20.10.2026 auf Nutzerwunsch aus der aktiven Anwendung entfernt. Bestehende Datenbanktabellen und bewusst gespeicherte Gedächtniseinträge bleiben erhalten.
 
 ### 16. OneDrive als zusätzliche Cloud-Integration
 
@@ -217,7 +206,7 @@ Am 18. Oktober 2026 vom Nutzer ausdrücklich als fünfzehnte V2-Änderung ausgew
 
 Erster sinnvoller Umfang: klar definierte Aktionen für Aufgaben, Termine und Notizen. Parameter werden gegen Schemas validiert; Berechtigungen prüft das Backend für jedes betroffene Objekt. Bei fehlenden oder mehrdeutigen Pflichtangaben fragt Omni gezielt nach. Datum und Uhrzeit berücksichtigen die Nutzerzeitzone. Ergebnisse verlinken auf die tatsächlich angelegten oder geänderten Einträge. Fehlgeschlagene beziehungsweise teilweise ausgeführte Aktionen werden als solche gemeldet; Wiederholungen dürfen nicht unbeabsichtigt Duplikate erzeugen.
 
-Eine eindeutige Nutzeranweisung kann eine unterstützte, risikoarme interne Aktion direkt auslösen. Vorschau und ausdrückliche Bestätigung sind für destruktive, umfangreiche oder externe Aktionen vorzusehen. Welche Aktionen dazugehören, wird vor Umsetzung festgelegt. Die Planung autorisiert weder produktive Deployments, GitHub-Merges, Datenbankadministration noch Freigaben an andere automatisch. Inhalte aus Webseiten, Radar-Meldungen oder Dokumenten sind Daten und dürfen selbst keine Aktionen autorisieren. Vault-Klartexte werden nicht an die KI übermittelt. Das entfernte Mail-Modul wird hierfür nicht wieder eingeführt.
+Eine eindeutige Nutzeranweisung kann eine unterstützte, risikoarme interne Aktion direkt auslösen. Vorschau und ausdrückliche Bestätigung sind für destruktive, umfangreiche oder externe Aktionen vorzusehen. Welche Aktionen dazugehören, wird vor Umsetzung festgelegt. Die Planung autorisiert weder produktive Deployments, GitHub-Merges, Datenbankadministration noch Freigaben an andere automatisch. Inhalte aus Webseiten oder Dokumenten sind Daten und dürfen selbst keine Aktionen autorisieren. Vault-Klartexte werden nicht an die KI übermittelt. Das entfernte Mail-Modul wird hierfür nicht wieder eingeführt.
 
 Status: fest für V2 ausgewählt, noch nicht implementiert. Die Anweisung in dieser Planungsrunde betrifft die Dokumentation der Fähigkeit, nicht deren jetzige Umsetzung oder Ausführung.
 
@@ -237,7 +226,7 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 4. Temporäre gemeinsame Räume.
 5. Arbeitsgedächtnis und Missionsarchiv.
 6. Omni-Briefing beim Öffnen der App.
-7. Persönliches Internet-Radar.
+7. Internet-Radar: zurückgenommen und entfernt (20.10.2026).
 8. OneDrive-Integration.
 9. Mail-Modul vollständig entfernen, Google Drive erhalten.
 10. Deployment-Zentrale.
@@ -256,7 +245,6 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 | Kommandoebene im Browser | Hoch für Recherche und seitenbezogenes Wissen | Mittel bis groß | Vom Nutzer für V2 ausgewählt |
 | Temporäre gemeinsame Räume | Hoch für Zusammenarbeit privat und mit Kunden | Groß | Vom Nutzer für V2 ausgewählt; auf Freigabe- und Rollenmodell aufbauen |
 | Omni-Briefing beim Öffnen der App | Hoch, täglicher Einstieg | Mittel bis groß | Vom Nutzer für V2 ausgewählt; ersetzt die Live-Schreibtisch-Idee |
-| Persönliches Internet-Radar | Hoch für individuell relevante Neuigkeiten | Mittel bis groß | Vom Nutzer für V2 ausgewählt; Erweiterungen gemeinsam konkretisieren |
 | OneDrive-Integration | Hoch für die eigenen Cloud-Konten | Mittel | Vom Nutzer als achte V2-Funktion ausgewählt; zunächst Kontoverbindung und Cloud-Monitoring |
 | Mail-Modul entfernen | Vereinfachung der Anwendung | Klein bis mittel | Vom Nutzer als neunte V2-Änderung ausgewählt; Google Drive und gemeinsame OAuth-Infrastruktur erhalten |
 | Deployment-Zentrale | Hoch für den Betrieb eigener Projekte | Mittel bis groß | Vom Nutzer als zehnte V2-Änderung ausgewählt; zunächst lesende Vercel-Anbindung |
@@ -410,10 +398,12 @@ Projektbereich kommt aus der ausdrücklichen Chatauswahl, nicht aus einer erfund
 
 Bedienung, Datenfluss und Grenzen: docs/OMNI-AUTO-GEDAECHTNIS.md. Automatisierte PostgreSQL-/Chat-Tests und Browserprüfung mit Beispieldaten; produktive Modellabnahme nach Deployment erforderlich. Das umfassende Arbeitsgedächtnis/Missionsarchiv und andere offene V2-Module werden dadurch nicht als abgeschlossen erklärt.
 
-### Persönlicher Internet-Radar · 20.10.2026
+### Entfernung Internet-Radar · 20.10.2026
 
-Der Nutzer autorisiert ausdrücklich die Umsetzung von Nr. 7. Neues Modul im bisherigen Design: private Themen mit Suchbegriffen und optionalem Projekt, bewusst gewählte öffentliche RSS-/Atom-Feeds einschließlich GitHub-Releases, Quellenstatus, Feed-Auszüge mit Original-URL/Quelldatum/Abrufzeit, Gruppierung gleicher Artikel-URLs, Filter, Lesestatus und Merkliste. Einzelne Funde können zusätzlich einem eigenen Projekt oder ausdrücklich dem persönlichen Bereich zugewiesen werden. Eine optionale Omni-Zusammenfassung verarbeitet nur den Feed-Auszug; Relevanz wird anhand tatsächlicher Texttreffer erklärt, keine bestätigte Versions- oder Sicherheitsbetroffenheit behauptet. Ausdrückliche Gedächtnisübernahme speichert den ungeprüften Auszug mit Quellenlink und wirksamer Projektzuordnung.
+Auf ausdrücklichen Nutzerwunsch wurden Modul, Registrierung, Feed-Verarbeitung, API, Browserautomatik, Scheduler-Endpunkt, Schema-Exporte und eigene Tests entfernt. Nur hierfür benötigte Abhängigkeiten entfallen. Bestehende Radar-Tabellen werden nicht gelöscht; ausdrücklich übernommene Gedächtniseinträge bleiben unverändert. Alte Modul-URLs fallen gemäß Router-Konvention auf das Dashboard zurück. Gemeinsam genutzte Cron-Secrets und Neon-/Uptime-Scheduler bleiben erhalten. Ein eventuell extern eingerichteter Radar-Cronjob muss separat deaktiviert werden; der Repository-Stand belegt keinen eingerichteten externen Auftrag.
 
-Fällige Quellen werden in der geöffneten Radaransicht automatisch abgerufen; Zeitbegrenzung und Lease verhindern parallele oder dauernde Abrufe. Ein geschützter Scheduler-Endpunkt ist vorbereitet, inklusive Anzeige des letzten tatsächlich erfolgreichen Hintergrundabrufs. Ein externer Scheduler auf dem bestehenden Hobby-Tarif muss noch eingerichtet und live bestätigt werden; der Code-Push ist kein Nachweis für Offline-Betrieb. Bestehende Vercel-Rewrites und Cronjobs bleiben unverändert.
+### Mission Control – erste zusammenhängende Version · 20.10.2026
 
-Drei additive Tabellen. Öffentliche Zielprüfung mit DNS-Bindung, begrenzte Weiterleitungen/Antwortgrößen und sichere Textverarbeitung externer Feeds. Die zwei neuen Parser-/Adressbibliotheken werden als Produktionsabhängigkeiten aufgenommen. Dokumentation und Grenzen: docs/INTERNET-RADAR.md. PostgreSQL-/Parser-/API-Tests und Browserprüfung mit Beispieldaten; echter GitHub-Abruf lokal wegen DNS-Auflösungsfehler nicht abschließbar. Produktive Feed-, KI- und Scheduler-Abnahme bleiben offen. Keine allgemeine Websuche, vollständige Sicherheitsüberwachung oder vorgezogene Umsetzung von Mission Control/Missionsarchiv.
+Eigenes Modul zusätzlich zum Dashboard im bestehenden Design. Projektlagebild mit Statusfilter/Suche, Projekt-Cockpit, bestehende explizite GitHub-/Vercel-/Neon-Verbindungen und über Neon-Einstellungen verknüpfte Uptime-Monitore. Quellenstatus, Messzeit und Abruffehler bleiben getrennt; fehlende/veraltete Daten gelten nicht als gesund. Begrenzte Ereigniszeitleiste, verlinkte Belege und vorhandene Detailansichten. Direktes Anlegen von Projektaufgaben und manuelle Uptime-Prüfung über vorhandene APIs. Kein Start des optionalen SQL-Tests, keine externen Schreibrechte und keine Änderungen an Vercel-Rewrites.
+
+Regelbasierter Omni-Lagebericht funktioniert ohne KI. Optional priorisiert der bestehende KI-Selektor ausschließlich vorhandene Fakten. Exakte Commit-Verknüpfung erfordert gleiche Repository-Zuordnung; zeitliche Nähe von Deployment und Warnung ist ausdrücklich keine Ursachenanalyse. Datenbankverbindungszahlen und durchgehende Antwortzeitreihen fehlen für weitergehende Aussagen. Allgemeine Projekt-Monitor-Zuordnung ohne Neon, dauerhaftes Missionsarchiv und umfassende Ursachenanalysen bleiben offen. Einrichtung und Abnahme: docs/MISSION-CONTROL.md. Lokale SQL-/API-/Policy-Tests und Browserprüfung verwenden Testdaten; echte Provider- und Nutzerabnahme wird dadurch nicht behauptet.
