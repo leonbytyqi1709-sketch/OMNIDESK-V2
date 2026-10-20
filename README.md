@@ -122,3 +122,7 @@ Omni schlägt interne Aufgabenänderungen, Termine und Projektnotizen mit genaue
 Gezielt gespeicherte Vorlieben, Wissen und Entscheidungen mit Projektbindung, Chatquellen, Versionen, Archiv und Löschen. Passender Kontext ist pro Antwort nachvollziehbar und abschaltbar: [Bedienung und Einrichtung](docs/OMNI-GEDAECHTNIS.md).
 
 Omni kann wichtige eigene Chatangaben jetzt auch automatisch merken, ausdrückliche Korrekturen versionieren und Unsicheres als Rückfrage anzeigen: [Automatisches Gedächtnis](docs/OMNI-AUTO-GEDAECHTNIS.md). Die Automatik lässt sich unter dem Chat abschalten.
+
+## Persönlicher Internet-Radar in V2
+
+Themen, öffentliche RSS-/Atom- und GitHub-Release-Feeds, gruppierte Funde, Lesestatus/Merkliste, Projektzuordnung, optionale Omni-Zusammenfassung und ausdrückliche Gedächtnisübernahme. Automatischer Abruf in der geöffneten Ansicht; Offline-Abruf über separat einzurichtenden geschützten Scheduler: [Bedienung und Einrichtung](docs/INTERNET-RADAR.md).

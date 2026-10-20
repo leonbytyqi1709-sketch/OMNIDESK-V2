@@ -27,6 +27,7 @@ import { autoMemoryRoute } from './routes/omni-memory-auto'
 import { omniMemoryRoute } from './routes/omni-memory'
 import { omniActionsRoute } from './routes/omni-actions'
 import { chatRoute } from './routes/chat'
+import { radarRoute } from './routes/radar'
 
 /**
  * Gemeinsame App-Factory für beide Laufzeiten:
@@ -94,6 +95,20 @@ export function createApp() {
     } catch { return c.json({ error: 'Neon-Hintergrundprüfung fehlgeschlagen. Speicher und Konfiguration prüfen.' }, 503) }
   })
 
+  app.get('/cron/radar-refresh', async (c) => {
+    c.header('Cache-Control', 'no-store')
+    const secret = process.env.CRON_SECRET
+    if (!secret || c.req.header('Authorization') !== `Bearer ${secret}`) {
+      return c.json({ error: 'Scheduler nicht autorisiert.' }, 401)
+    }
+    try {
+      const { runRadarScheduler } = await import('./radar-runner')
+      return c.json(await runRadarScheduler())
+    } catch {
+      return c.json({ error: 'Radar-Hintergrundabruf fehlgeschlagen.' }, 503)
+    }
+  })
+
   app.use('*', requireAuth)
   app.route('/links', linksRoute)
   app.route('/notes', notesRoute)
@@ -115,6 +130,7 @@ export function createApp() {
   app.route('/account-map', accountMapRoute)
   app.route('/briefing', briefingRoute)
   app.route('/chat', chatRoute)
+  app.route('/radar', radarRoute)
   app.route('/omni-actions', omniActionsRoute)
   app.route('/omni-memory', omniMemoryRoute)
   app.route('/omni-memory-auto', autoMemoryRoute)
