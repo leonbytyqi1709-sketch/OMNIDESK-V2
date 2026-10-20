@@ -1,5 +1,5 @@
 import { useAuth } from '@clerk/clerk-react'
-import type { ChatMemoryReceipt } from '@/types/omni-memory'
+import type { ChatMemoryReceipt, AutoMemoryState } from '@/types/omni-memory'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 
@@ -18,6 +18,7 @@ export interface ChatMessageDto {
   content: string
   createdAt: string
   memory?: ChatMemoryReceipt | null
+  autoMemory?: AutoMemoryState | null
 }
 export interface ChatUsageRatelimit {
   remainingRequests: number | null
@@ -123,13 +124,18 @@ export function useSendMessage() {
     }: {
       sessionId: string
       content: string
-      memory?: { enabled: boolean; projectId: string | null }
+      memory?: {
+        enabled: boolean
+        projectId: string | null
+        autoCapture?: boolean
+      }
     }) =>
       apiFetch<SendMessageResult>(`/api/chat/sessions/${sessionId}/messages`, {
         method: 'POST',
         body: JSON.stringify({ content, memory }),
       }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['omni-memory'] })
       queryClient.invalidateQueries({
         queryKey: ['chat-messages'],
       })

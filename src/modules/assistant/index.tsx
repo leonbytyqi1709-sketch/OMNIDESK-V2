@@ -56,6 +56,9 @@ function AssistantWorkspace({ userId }: { userId: string }) {
   const [memoryEnabled, setMemoryEnabled] = useState(
     () => localStorage.getItem(`omnidesk:chat-memory:${userId}`) !== 'off',
   )
+  const [autoCapture, setAutoCapture] = useState(
+    () => localStorage.getItem(`omnidesk:auto-memory:${userId}`) !== 'off',
+  )
   const [projectScopes, setProjectScopes] = useState<Record<string, string>>({})
   const projects = useProjects()
   const { data: sessions = [], isLoading: sessionsLoading } = useChatSessions()
@@ -213,7 +216,11 @@ function AssistantWorkspace({ userId }: { userId: string }) {
       const result = await sendMutation.mutateAsync({
         sessionId: currentId,
         content: textToSend.trim(),
-        memory: { enabled: memoryEnabled, projectId: projectScope || null },
+        memory: {
+          enabled: memoryEnabled,
+          projectId: projectScope || null,
+          autoCapture: memoryEnabled && autoCapture,
+        },
       })
       if (result.memoryReceiptSaved === false)
         toast.warning(
@@ -521,6 +528,24 @@ function AssistantWorkspace({ userId }: { userId: string }) {
             />
             Gedächtnis für neue Antworten nutzen
           </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={autoCapture}
+              disabled={!memoryEnabled || sendMutation.isPending}
+              onChange={(e) => {
+                setAutoCapture(e.target.checked)
+                localStorage.setItem(
+                  `omnidesk:auto-memory:${userId}`,
+                  e.target.checked ? 'on' : 'off',
+                )
+              }}
+            />
+            Wichtige Angaben automatisch merken
+          </label>
+          <span className="text-[11px] text-zinc-500">
+            Neue eigene Angaben prüfen lassen · ggf. zusätzlicher KI-Aufruf
+          </span>
           <label className="flex min-w-0 items-center gap-2">
             <span>Projektkontext</span>
             <select

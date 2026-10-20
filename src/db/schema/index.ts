@@ -22,3 +22,4 @@ export * from './briefing'
 
 export * from './omni-actions'
 export * from './omni-memory'
+export * from './omni-memory-auto'

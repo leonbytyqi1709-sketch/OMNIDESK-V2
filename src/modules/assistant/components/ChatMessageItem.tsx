@@ -1,3 +1,4 @@
+import { AutoMemoryNotice } from './AutoMemoryNotice'
 import { useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -116,6 +117,9 @@ export function ChatMessageItem({
           </div>
         )}
 
+        {!isUser && message.autoMemory && (
+          <AutoMemoryNotice state={message.autoMemory} onEdit={onShowMemory} />
+        )}
         {!isUser && message.memory && (
           <details className="mt-3 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
             <summary className="cursor-pointer">

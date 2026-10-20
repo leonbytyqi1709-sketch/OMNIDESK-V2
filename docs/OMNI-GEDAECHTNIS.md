@@ -1,10 +1,10 @@
 # Omnis persönliches Gedächtnis
 
-Das Gedächtnis speichert ausdrücklich ausgewählte Vorlieben, Wissen und Entscheidungen. Omni kann passende aktive Einträge in späteren Chatantworten berücksichtigen. Dies ist der erste Ausbau des größeren V2-Arbeitsgedächtnisses; eine automatische Aufgabenhistorie, Mission Control, ein vollständiges Missionsarchiv oder allgemeines Undo sind damit noch nicht umgesetzt.
+Das Gedächtnis speichert Vorlieben, Wissen und Entscheidungen manuell oder über das ergänzte [automatische Merken](OMNI-AUTO-GEDAECHTNIS.md). Omni kann passende aktive Einträge in späteren Chatantworten berücksichtigen. Dies ist der erste Ausbau des größeren V2-Arbeitsgedächtnisses; eine automatische Aufgabenhistorie, Mission Control, ein vollständiges Missionsarchiv oder allgemeines Undo sind damit noch nicht umgesetzt.
 
 ## Bedienung
 
-Im Modul **Omni** öffnet **Gedächtnis** (mobil **Wissen**) die private Übersicht. **Neue Erinnerung** erstellt einen Entwurf mit Titel, Inhalt, Art, optionaler Projektbindung und bevorzugter Berücksichtigung. Erst **Erinnerung speichern** schreibt den Eintrag. Die drei Arten sind persönliche Vorliebe, Wissen und Entscheidung. Es gibt keine automatische Extraktion aus allen Chats oder anderen Modulen.
+Im Modul **Omni** öffnet **Gedächtnis** (mobil **Wissen**) die private Übersicht. **Neue Erinnerung** erstellt einen Entwurf mit Titel, Inhalt, Art, optionaler Projektbindung und bevorzugter Berücksichtigung. Erst **Erinnerung speichern** schreibt den Eintrag. Die drei Arten sind persönliche Vorliebe, Wissen und Entscheidung. Die ergänzte Automatik erkennt Angaben aus neuen eigenen Chatnachrichten; frühere Chats und andere Module werden nicht pauschal durchsucht.
 
 Der Knopf **Merken** unter einer Chatnachricht übernimmt deren Inhalt in einen prüfbaren, bearbeitbaren Entwurf. Überlange Texte werden sichtbar auf die ersten 4.000 Zeichen begrenzt. Aus KI-Antworten übernommene Inhalte sind als abgeleitet gekennzeichnet. Die ursprüngliche Nachricht bleibt über einen Quellenlink erreichbar; ein gelöschter Quellchat wird als fehlend markiert. Eine bewusst separat gespeicherte Erinnerung bleibt beim Löschen ihres Quellchats erhalten.
 
@@ -26,7 +26,7 @@ Der normale Chat erhält weiterhin den jüngsten Gesprächsverlauf: der bisherig
 
 ## Einrichtung und Daten
 
-Keine neuen Provider-Variablen: Der bestehende Omni-KI-Anbieter wird verwendet. Beim Erstellen oder Bearbeiten eines Eintrags gibt es keinen KI-Aufruf. Bei aktivem Gedächtnis werden ausgewählte gespeicherte Inhalte mit der nächsten Chatfrage an diesen Anbieter übermittelt. Keine Passwörter, Tokens, Wiederherstellungscodes oder Vault-Klartexte speichern. Aus anderen Modulen wird nichts heimlich übernommen.
+Keine neuen Provider-Variablen: Der bestehende Omni-KI-Anbieter wird verwendet. Manuelles Erstellen und Bearbeiten ruft keine KI auf. Die gesonderte Automatik nutzt bei geeigneten neuen Chatangaben einen zusätzlichen Anbieteraufruf. Bei aktivem Gedächtnis werden ausgewählte gespeicherte Inhalte mit der nächsten Chatfrage an diesen Anbieter übermittelt. Keine Passwörter, Tokens, Wiederherstellungscodes oder Vault-Klartexte speichern. Aus anderen Modulen wird nichts heimlich übernommen.
 
 Beim ersten Öffnen der Übersicht werden additiv eingerichtet:
 
@@ -38,7 +38,7 @@ Die Datenbankrolle benötigt CREATE-Rechte. Alternativ [das Einrichtungsskript](
 
 Höchstens 500 Erinnerungen je Nutzer einschließlich Archiv, Titel bis 160 Zeichen, Inhalt bis 4.000 Zeichen. Versionen bleiben bis zum Löschen des zugehörigen Eintrags erhalten; die Oberfläche zeigt davon die letzten 50. Alle API-Abfragen und Schreibaktionen prüfen den aus der Sitzung abgeleiteten Besitzer. Projekt- und Chatquellen müssen beim Speichern zugänglich sein. Quellenlinks und Suchergebnisse können keine fremden Chats oder Projektinformationen freigeben. Neue Einträge verwenden eine Request-ID für wiederholbare Speicherung ohne Duplikate. Updates und Löschen verlangen die angezeigte Version.
 
-Fällt das Gedächtnis aus, kann der normale Chat ohne zusätzliches Gedächtnis fortgesetzt werden; die Antwort wird entsprechend gekennzeichnet. Ein Ausfall bedeutet nicht, dass keine Erinnerungen gespeichert sind. Das Modell erhält klare Regeln, gespeicherte Inhalte als Daten zu behandeln und keine dauerhafte Speicherung, Löschung oder ausgeführten Aktionen vorzutäuschen. Die eigentliche Speicherung erfolgt ausschließlich über die geprüften APIs und Formulare.
+Fällt das Gedächtnis aus, kann der normale Chat ohne zusätzliches Gedächtnis fortgesetzt werden; die Antwort wird entsprechend gekennzeichnet. Ein Ausfall bedeutet nicht, dass keine Erinnerungen gespeichert sind. Das Modell erhält klare Regeln, gespeicherte Inhalte als Daten zu behandeln und keine dauerhafte Speicherung, Löschung oder ausgeführten Aktionen vorzutäuschen. Die eigentliche Speicherung erfolgt über die geprüften APIs, Formulare oder den gesonderten automatischen Gedächtnisdienst.
 
 ## Prüfung nach Deployment
 

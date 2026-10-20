@@ -48,3 +48,24 @@ export interface ChatMemoryReceipt {
   projectId: string | null
   references: MemoryReference[]
 }
+
+export interface AutoMemoryEvent {
+  id: string
+  status: 'pending' | 'saved'
+  memoryId: string | null
+  targetId: string
+  targetVersion: number | null
+  savedVersion: number | null
+  currentVersion: number | null
+  title: string
+  content: string
+  previousContent: string | null
+  category: MemoryCategory
+  projectId: string | null
+  changed: boolean
+  archived: boolean
+}
+export interface AutoMemoryState {
+  status: 'done' | 'processing' | 'unavailable'
+  events: AutoMemoryEvent[]
+}

@@ -24,6 +24,10 @@ export const updateMemorySchema = memoryInputSchema
   .extend({ version: z.number().int().positive() })
   .strict()
 export const chatMemoryOptions = z
-  .object({ enabled: z.boolean(), projectId: z.uuid().nullable() })
+  .object({
+    enabled: z.boolean(),
+    projectId: z.uuid().nullable(),
+    autoCapture: z.boolean().optional(),
+  })
   .strict()
 export type ChatMemoryOptions = z.infer<typeof chatMemoryOptions>
