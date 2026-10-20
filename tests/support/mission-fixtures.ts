@@ -7,6 +7,7 @@ export function missionFixture(now = Date.now()): MissionSnapshot {
     earlier = new Date(now - 600_000).toISOString(),
     sha = 'a'.repeat(40)
   const snapshot: MissionSnapshot = {
+    uptime: { state: 'missing', message: '', data: null },
     fetchedAt: at,
     project: {
       id: missionProjectId,
@@ -157,6 +158,21 @@ export function missionFixture(now = Date.now()): MissionSnapshot {
           },
         ],
       },
+    },
+  }
+  snapshot.uptime = {
+    state: 'ready',
+    message: '',
+    data: {
+      origin: 'neon',
+      version: 0,
+      missingMonitors: 0,
+      monitors: snapshot.monitoring.data!.monitors.map((m) => ({
+        ...m,
+        recentChecks: [{ at, status: 'up', responseTimeMs: 125 }],
+        sampleCount: 1,
+        upCount: 1,
+      })),
     },
   }
   snapshot.deployment.data!.deployments = [

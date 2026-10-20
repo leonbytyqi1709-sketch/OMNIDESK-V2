@@ -27,7 +27,8 @@ export function analyzeMission(
   snapshot: MissionSnapshot,
   now = Date.now(),
 ): MissionAnalysis {
-  const { project, tasks, github, deployment, neon, monitoring } = snapshot
+  const { project, tasks, github, deployment, neon, monitoring, uptime } =
+    snapshot
   const facts: MissionFact[] = [],
     events: MissionFact[] = [],
     gaps: string[] = []
@@ -43,7 +44,8 @@ export function analyzeMission(
     ['GitHub', github],
     ['Vercel', deployment],
     ['Neon', neon],
-    ['Monitoring', monitoring],
+    ['Neon-Historie', monitoring],
+    ['Uptime', uptime],
   ] as const) {
     if (source.state !== 'ready' || source.data === null)
       gaps.push(`${label}: ${source.message || 'Keine Daten verfügbar.'}`)
@@ -118,11 +120,13 @@ export function analyzeMission(
       source: 'GitHub API',
       at: gh.checkedAt,
       href: `${projectHref}#mission-github`,
-      status: failed.length
-        ? 'attention'
-        : !current || pending || !gh.runs?.length || gh.unavailable.length
-          ? 'unknown'
-          : 'ok',
+      status: !current
+        ? 'unknown'
+        : failed.length
+          ? 'attention'
+          : !current || pending || !gh.runs?.length || gh.unavailable.length
+            ? 'unknown'
+            : 'ok',
     })
     for (const [kind, list] of [
       ['Commit', gh.commits],
@@ -178,14 +182,16 @@ export function analyzeMission(
       at: dep.checkedAt,
       href: `${projectHref}#mission-deployment`,
       source: 'Vercel API',
-      status: bad
-        ? 'attention'
-        : current &&
-            dep.production?.state === 'READY' &&
-            !dep.unavailable.length &&
-            last?.state === 'READY'
-          ? 'ok'
-          : 'unknown',
+      status: !current
+        ? 'unknown'
+        : bad
+          ? 'attention'
+          : current &&
+              dep.production?.state === 'READY' &&
+              !dep.unavailable.length &&
+              last?.state === 'READY'
+            ? 'ok'
+            : 'unknown',
     })
     for (const item of (dep.deployments ?? []).slice(0, 10))
       events.push({
@@ -258,11 +264,13 @@ export function analyzeMission(
       source: 'Neon API',
       at: ns.checkedAt,
       href: `${projectHref}#mission-neon`,
-      status: bad
-        ? 'attention'
-        : current && known && !ns.unavailable.length
-          ? 'ok'
-          : 'unknown',
+      status: !current
+        ? 'unknown'
+        : bad
+          ? 'attention'
+          : current && known && !ns.unavailable.length
+            ? 'ok'
+            : 'unknown',
     })
   }
   const mon = monitoring.state === 'ready' ? monitoring.data : null
@@ -314,10 +322,37 @@ export function analyzeMission(
         href: `${projectHref}#mission-neon`,
         status: alert.resolvedAt ? 'ok' : 'attention',
       })
-    const monitors = mon.monitors.filter((m) => m.linked)
+    if (alerts.length)
+      nextSteps.push({
+        title: 'Offene Neon-Warnungen und Messhistorie prüfen',
+        href: `${projectHref}#mission-neon`,
+      })
+    // Available samples do not include database connection counts. Never fabricate the requested example.
+    const prod = dep?.production
+    if (prod?.createdAt != null) {
+      const alert = alerts.find((a) => {
+        const delta = Date.parse(a.startedAt) - prod.createdAt!
+        return delta >= 0 && delta <= 60 * 60_000
+      })
+      if (alert)
+        connections.push({
+          title: 'Zeitliche Nähe zum Produktionsdeployment',
+          detail:
+            'Eine offene Neon-Warnung begann innerhalb einer Stunde nach der Erstellung des Produktionsdeployments. Der Erstellungszeitpunkt ist kein bestätigter Go-live-Zeitpunkt. Die zeitliche Nähe belegt keine Ursache.',
+          evidence: ['deployment', 'neon-alerts'],
+        })
+    }
+  }
+  const up = uptime.state === 'ready' ? uptime.data : null
+  if (up) {
+    if (up.missingMonitors)
+      gaps.push(
+        `${up.missingMonitors} zugeordnete Monitore wurden gelöscht oder sind nicht mehr zugänglich.`,
+      )
+    const monitors = up.monitors.filter((m) => m.linked)
     if (!monitors.length)
       gaps.push(
-        'Keine Uptime-Monitore über die Neon-Monitoring-Einstellungen mit diesem Projekt verbunden.',
+        'Keine Uptime-Monitore mit diesem Projekt verbunden. Direkt im Cockpit zuordnen.',
       )
     for (const m of monitors) {
       const current = missionFresh(m.checkedAt, 15, now)
@@ -344,24 +379,52 @@ export function analyzeMission(
       if (m.checkedAt)
         events.push({ ...facts[facts.length - 1], id: `check-${m.id}` })
     }
-    if (alerts.length)
-      nextSteps.push({
-        title: 'Offene Neon-Warnungen und Messhistorie prüfen',
-        href: `${projectHref}#mission-neon`,
-      })
-    // Available samples do not include database connection counts. Never fabricate the requested example.
-    const prod = dep?.production
-    if (prod?.createdAt != null) {
-      const alert = alerts.find((a) => {
-        const delta = Date.parse(a.startedAt) - prod.createdAt!
-        return delta >= 0 && delta <= 60 * 60_000
-      })
-      if (alert)
+  }
+  const productionAt = dep?.production?.createdAt
+  if (
+    up &&
+    productionAt != null &&
+    Number.isFinite(productionAt) &&
+    productionAt <= now
+  ) {
+    const median = (values: number[]) => {
+      const ordered = [...values].sort((a, b) => a - b),
+        mid = Math.floor(ordered.length / 2)
+      return ordered.length % 2
+        ? ordered[mid]
+        : (ordered[mid - 1] + ordered[mid]) / 2
+    }
+    for (const m of up.monitors) {
+      const usable = m.recentChecks.filter(
+        (c) =>
+          c.status === 'up' &&
+          c.responseTimeMs !== null &&
+          c.responseTimeMs >= 0 &&
+          Number.isFinite(Date.parse(c.at)) &&
+          Date.parse(c.at) <= now,
+      )
+      const before = usable
+        .filter(
+          (c) =>
+            Date.parse(c.at) >= productionAt - 3600_000 &&
+            Date.parse(c.at) < productionAt,
+        )
+        .map((c) => c.responseTimeMs!)
+      const after = usable
+        .filter(
+          (c) =>
+            Date.parse(c.at) >= productionAt &&
+            Date.parse(c.at) <= productionAt + 3600_000,
+        )
+        .map((c) => c.responseTimeMs!)
+      if (before.length < 3 || after.length < 3) continue
+      const beforeMs = median(before),
+        afterMs = median(after)
+      if (afterMs > beforeMs * 1.25 && afterMs - beforeMs > 50)
         connections.push({
-          title: 'Zeitliche Nähe zum Produktionsdeployment',
-          detail:
-            'Eine offene Neon-Warnung begann innerhalb einer Stunde nach der Erstellung des Produktionsdeployments. Der Erstellungszeitpunkt ist kein bestätigter Go-live-Zeitpunkt. Die zeitliche Nähe belegt keine Ursache.',
-          evidence: ['deployment', 'neon-alerts'],
+          title: `Höhere gemessene Antwortzeiten: ${m.name}`,
+          detail: `Im Zeitfenster von jeweils einer Stunde vor/nach Erstellung des Produktionsdeployments liegt der Median der erfolgreichen Prüfungen bei ${Math.round(beforeMs)} ms (${before.length} Messungen) bzw. ${Math.round(afterMs)} ms (${after.length} Messungen). Ausfälle sind separat zu prüfen. Deployment-Erstellung ist kein bestätigter Go-live-Zeitpunkt; dies belegt keine Ursache.`,
+          evidence: ['deployment', `uptime-${m.id}`],
         })
     }
   }
@@ -369,7 +432,7 @@ export function analyzeMission(
     connections.push({
       title: 'Kein belastbarer Zusammenhang im geladenen Ausschnitt',
       detail:
-        'Ohne passende Projektbindungen, Commit-IDs und Zeitstempel lässt sich kein Zusammenhang belegen. Datenbankverbindungen und durchgehende Antwortzeitreihen liegen hier nicht vor.',
+        'Ohne passende Projektbindungen, Commit-IDs und Zeitstempel lässt sich kein Zusammenhang belegen. Messreihen zu Datenbankverbindungen liegen hier nicht vor; vorhandene Uptime-Ausschnitte sind im Messverlauf einsehbar.',
       evidence: [],
     })
   if (gaps.length)

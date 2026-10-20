@@ -749,6 +749,47 @@ var init_omni_memory_auto = __esm({
   }
 });
 
+// src/db/schema/mission-control.ts
+import {
+  integer as integer9,
+  jsonb as jsonb11,
+  pgTable as pgTable21,
+  primaryKey as primaryKey3,
+  text as text21,
+  timestamp as timestamp21,
+  uuid as uuid20
+} from "drizzle-orm/pg-core";
+var missionSettings, missionVisits, missionAiLimits;
+var init_mission_control = __esm({
+  "src/db/schema/mission-control.ts"() {
+    init_projects();
+    missionSettings = pgTable21("v2_mission_settings", {
+      projectId: uuid20("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+      userId: text21("user_id").notNull(),
+      monitorIds: jsonb11("monitor_ids").$type().notNull(),
+      version: integer9("version").notNull().default(1),
+      updatedAt: timestamp21("updated_at", { withTimezone: true }).notNull().defaultNow()
+    });
+    missionVisits = pgTable21(
+      "v2_mission_visits",
+      {
+        projectId: uuid20("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+        userId: text21("user_id").notNull(),
+        visitId: uuid20("visit_id").notNull(),
+        baseline: jsonb11("baseline").$type(),
+        baselineAt: timestamp21("baseline_at", { withTimezone: true }),
+        latest: jsonb11("latest").$type().notNull(),
+        lastVisitAt: timestamp21("last_visit_at", { withTimezone: true }).notNull().defaultNow()
+      },
+      (t) => [primaryKey3({ columns: [t.projectId, t.userId, t.visitId] })]
+    );
+    missionAiLimits = pgTable21("v2_mission_ai_limits", {
+      userId: text21("user_id").primaryKey(),
+      nextAt: timestamp21("next_at", { withTimezone: true }).notNull()
+    });
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -775,6 +816,9 @@ __export(schema_exports, {
   githubProjectLinks: () => githubProjectLinks,
   links: () => links,
   milestones: () => milestones,
+  missionAiLimits: () => missionAiLimits,
+  missionSettings: () => missionSettings,
+  missionVisits: () => missionVisits,
   neonMonitoringAlerts: () => neonMonitoringAlerts,
   neonMonitoringConfig: () => neonMonitoringConfig,
   neonMonitoringSamples: () => neonMonitoringSamples,
@@ -816,6 +860,7 @@ var init_schema = __esm({
     init_omni_actions();
     init_omni_memory();
     init_omni_memory_auto();
+    init_mission_control();
   }
 });
 
@@ -1166,16 +1211,16 @@ var init_neon_monitor = __esm({
 
 // server/neon-policy.ts
 import { z as z15 } from "zod";
-function evaluateNeonAlerts(settings, snapshot, failures, sql7) {
+function evaluateNeonAlerts(settings2, snapshot, failures, sql7) {
   const over = (value, limit, divisor = 1) => limit === null ? false : value == null ? null : value / divisor >= limit;
   const conditions = [
-    { code: "api_failures", active: failures >= settings.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
-    { code: "storage", active: over(snapshot?.consumption?.projectStorageBytes, settings.storageLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Projektspeicher-Grenzwert wurde erreicht." },
-    { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
-    { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
+    { code: "api_failures", active: failures >= settings2.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings2.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
+    { code: "storage", active: over(snapshot?.consumption?.projectStorageBytes, settings2.storageLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Projektspeicher-Grenzwert wurde erreicht." },
+    { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings2.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
+    { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings2.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
     { code: "compute_disabled", active: snapshot?.endpoints == null ? null : snapshot.endpoints.some((endpoint) => endpoint.disabled), severity: "warning", message: "Ein zugeordneter Compute-Endpunkt ist deaktiviert." },
-    { code: "sql_failure", active: !settings.sqlEnabled ? false : sql7 == null ? null : sql7.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
-    { code: "sql_latency", active: !settings.sqlEnabled ? false : sql7?.status !== "up" ? null : over(sql7.latencyMs, settings.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
+    { code: "sql_failure", active: !settings2.sqlEnabled ? false : sql7 == null ? null : sql7.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
+    { code: "sql_latency", active: !settings2.sqlEnabled ? false : sql7?.status !== "up" ? null : over(sql7.latencyMs, settings2.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
   ];
   return conditions;
 }
@@ -1287,10 +1332,10 @@ async function loadNeonConfig(link) {
   const [config] = await sql7`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
   return config ?? null;
 }
-async function saveNeonSettings(link, settings) {
+async function saveNeonSettings(link, settings2) {
   const sql7 = monitoringSql();
   const [config] = await sql7`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
-    VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings)}::jsonb)
+    VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings2)}::jsonb)
     ON CONFLICT (project_id) DO UPDATE SET user_id=EXCLUDED.user_id, resource_key=EXCLUDED.resource_key,
       settings=EXCLUDED.settings, updated_at=now(), lease_token=NULL, lease_until=NULL,
       last_attempt_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_attempt_at END,
@@ -1343,7 +1388,7 @@ async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, so
   ];
   await sql7.transaction(statements);
 }
-async function monitoringMonitors(link, settings) {
+async function monitoringMonitors(link, settings2) {
   const sql7 = monitoringSql();
   const rows = await sql7`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
     LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
@@ -1352,7 +1397,7 @@ async function monitoringMonitors(link, settings) {
     id: String(row.id),
     name: String(row.name),
     active: Boolean(row.active),
-    linked: settings.monitorIds.includes(String(row.id)),
+    linked: settings2.monitorIds.includes(String(row.id)),
     status: row.status,
     responseTimeMs: row.response_time_ms,
     checkedAt: row.checked_at
@@ -1368,11 +1413,11 @@ async function readNeonMonitoring(link, days) {
     if (!missingNeonStorage(error)) throw error;
     setupRequired = true;
   }
-  const settings = config?.settings ?? defaultNeonSettings;
-  const monitors = await monitoringMonitors(link, settings);
+  const settings2 = config?.settings ?? defaultNeonSettings;
+  const monitors = await monitoringMonitors(link, settings2);
   const base = {
     setupRequired: setupRequired || !config,
-    settings,
+    settings: settings2,
     lastAttemptAt: config?.last_attempt_at ?? null,
     lastSuccessAt: config?.last_success_at ?? null,
     lastSchedulerAt: config?.last_scheduler_at ?? null,
@@ -2210,9 +2255,9 @@ var WEEKDAY_KEYS = [
 ];
 var datePattern = /^\d{4}-\d{2}-\d{2}$/;
 async function activeSettingsBySlug(slug) {
-  const [settings] = await db.select().from(bookingSettings).where(eq10(bookingSettings.slug, slug));
-  if (!settings || !settings.active) return null;
-  return settings;
+  const [settings2] = await db.select().from(bookingSettings).where(eq10(bookingSettings.slug, slug));
+  if (!settings2 || !settings2.active) return null;
+  return settings2;
 }
 function daySlots(availability, slotMinutes, dateStr) {
   const day2 = availability[WEEKDAY_KEYS[weekdayOfDate(dateStr)]];
@@ -2232,17 +2277,17 @@ function minutesToTime(minutes) {
 }
 var publicBookingRoute = new Hono10();
 publicBookingRoute.get("/:slug", async (c) => {
-  const settings = await activeSettingsBySlug(c.req.param("slug"));
-  if (!settings) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
+  const settings2 = await activeSettingsBySlug(c.req.param("slug"));
+  if (!settings2) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
   return c.json({
-    slug: settings.slug,
-    slotMinutes: settings.slotMinutes,
-    availability: settings.availability
+    slug: settings2.slug,
+    slotMinutes: settings2.slotMinutes,
+    availability: settings2.availability
   });
 });
 publicBookingRoute.get("/:slug/slots", async (c) => {
-  const settings = await activeSettingsBySlug(c.req.param("slug"));
-  if (!settings) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
+  const settings2 = await activeSettingsBySlug(c.req.param("slug"));
+  if (!settings2) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
   const dateStr = c.req.query("date");
   if (!dateStr || !datePattern.test(dateStr)) {
     return c.json({ error: "Parameter date (YYYY-MM-DD) fehlt" }, 400);
@@ -2251,19 +2296,19 @@ publicBookingRoute.get("/:slug/slots", async (c) => {
   const dayEnd = zonedDateTime(nextDate(dateStr), 0);
   const busy = await db.select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt }).from(appointments).where(
     and9(
-      eq10(appointments.userId, settings.userId),
+      eq10(appointments.userId, settings2.userId),
       gte(appointments.startsAt, dayStart),
       lt(appointments.startsAt, dayEnd)
     )
   );
   const now = /* @__PURE__ */ new Date();
   const free = daySlots(
-    settings.availability,
-    settings.slotMinutes,
+    settings2.availability,
+    settings2.slotMinutes,
     dateStr
   ).filter((minutes) => {
     const slotStart = zonedDateTime(dateStr, minutes);
-    const slotEnd = new Date(slotStart.getTime() + settings.slotMinutes * 6e4);
+    const slotEnd = new Date(slotStart.getTime() + settings2.slotMinutes * 6e4);
     if (slotStart <= now) return false;
     return !busy.some((b) => slotStart < b.endsAt && slotEnd > b.startsAt);
   });
@@ -2277,8 +2322,8 @@ var bookInput = z10.object({
   topic: z10.string().trim().max(1e3).optional().default("")
 });
 publicBookingRoute.post("/:slug/book", async (c) => {
-  const settings = await activeSettingsBySlug(c.req.param("slug"));
-  if (!settings) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
+  const settings2 = await activeSettingsBySlug(c.req.param("slug"));
+  if (!settings2) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
   const parsed = bookInput.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: z10.prettifyError(parsed.error) }, 400);
@@ -2286,11 +2331,11 @@ publicBookingRoute.post("/:slug/book", async (c) => {
   const { date, time, name, email, topic } = parsed.data;
   const [h, m] = time.split(":").map(Number);
   const startsAt = zonedDateTime(date, h * 60 + m);
-  const endsAt = new Date(startsAt.getTime() + settings.slotMinutes * 6e4);
+  const endsAt = new Date(startsAt.getTime() + settings2.slotMinutes * 6e4);
   const dayStart = zonedDateTime(date, 0);
   const validSlot = daySlots(
-    settings.availability,
-    settings.slotMinutes,
+    settings2.availability,
+    settings2.slotMinutes,
     date
   ).includes(h * 60 + m);
   if (!validSlot || startsAt <= /* @__PURE__ */ new Date()) {
@@ -2298,7 +2343,7 @@ publicBookingRoute.post("/:slug/book", async (c) => {
   }
   const busy = await db.select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt }).from(appointments).where(
     and9(
-      eq10(appointments.userId, settings.userId),
+      eq10(appointments.userId, settings2.userId),
       gte(appointments.startsAt, dayStart),
       lt(appointments.startsAt, zonedDateTime(nextDate(date), 0))
     )
@@ -2307,9 +2352,9 @@ publicBookingRoute.post("/:slug/book", async (c) => {
     return c.json({ error: "Dieser Slot wurde gerade vergeben" }, 409);
   }
   await db.insert(appointments).values({
-    userId: settings.userId,
+    userId: settings2.userId,
     title: `Buchung: ${name}`,
-    description: `Extern gebucht \xFCber /book/${settings.slug}
+    description: `Extern gebucht \xFCber /book/${settings2.slug}
 E-Mail: ${email}${topic ? `
 Anliegen: ${topic}` : ""}`,
     location: "",
@@ -4352,9 +4397,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text21 = z25.string();
+var text22 = z25.string();
 var nullableDate = z25.string().nullable().optional();
-var repoSchema = z25.object({ id: z25.number(), full_name: text21, name: text21, private: z25.boolean(), default_branch: text21, updated_at: nullableDate, html_url: text21 });
+var repoSchema = z25.object({ id: z25.number(), full_name: text22, name: text22, private: z25.boolean(), default_branch: text22, updated_at: nullableDate, html_url: text22 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -4428,14 +4473,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text21, html_url: text21, state: text21, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
+  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text22, html_url: text22, state: text22, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
   const loaders2 = {
-    branches: async () => z25.array(z25.object({ name: text21, protected: z25.boolean(), commit: z25.object({ sha: text21 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z25.array(z25.object({ sha: text21, html_url: text21, commit: z25.object({ message: text21, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    branches: async () => z25.array(z25.object({ name: text22, protected: z25.boolean(), commit: z25.object({ sha: text22 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z25.array(z25.object({ sha: text22, html_url: text22, commit: z25.object({ message: text22, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
     issues: async () => z25.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
     pulls: async () => z25.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text21.nullable(), html_url: text21, status: text21, conclusion: text21.nullable(), updated_at: nullableDate, head_sha: text21, head_branch: text21.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z25.array(z25.object({ id: z25.number(), name: text21.nullable(), tag_name: text21, html_url: text21, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text22.nullable(), html_url: text22, status: text22, conclusion: text22.nullable(), updated_at: nullableDate, head_sha: text22, head_branch: text22.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z25.array(z25.object({ id: z25.number(), name: text22.nullable(), tag_name: text22, html_url: text22, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -4639,7 +4684,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text22 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text23 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -4647,9 +4692,9 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text22("githubCommitSha") || text22("gitlabCommitSha") || text22("bitbucketCommitSha"),
-      message: text22("githubCommitMessage") || text22("gitlabCommitMessage") || text22("bitbucketCommitMessage"),
-      branch: text22("githubCommitRef") || text22("gitlabCommitRef") || text22("bitbucketCommitRef")
+      sha: text23("githubCommitSha") || text23("gitlabCommitSha") || text23("bitbucketCommitSha"),
+      message: text23("githubCommitMessage") || text23("gitlabCommitMessage") || text23("bitbucketCommitMessage"),
+      branch: text23("githubCommitRef") || text23("gitlabCommitRef") || text23("bitbucketCommitRef")
     }
   };
 }
@@ -4684,9 +4729,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item2) => Boolean(item2))
   };
 }
-function redactBuildLog(text22) {
+function redactBuildLog(text23) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text22.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text23.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -5877,9 +5922,9 @@ var autoExtractionSchema = z33.object({
     }).strict()
   ).max(3)
 }).strict();
-function sensitiveMemoryText(text22) {
+function sensitiveMemoryText(text23) {
   return /(?:sk[-_](?:proj[-_])?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{15,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|\bBearer\s+[a-z0-9._~+/-]{10,}|(?:password|passwort|api[ -_]?key|secret|token|wiederherstellungscode|recovery[ -]?code)\s*(?:ist|lautet|[:=])\s*\S{4,})/i.test(
-    text22
+    text23
   );
 }
 function needsMemoryQuestion(evidence, certainty, update, correction) {
@@ -5958,11 +6003,11 @@ async function extractAutoMemory(content, memories) {
   } finally {
     reader.releaseLock();
   }
-  const text22 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
-  if (typeof text22 !== "string") throw new Error("Invalid response");
+  const text23 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
+  if (typeof text23 !== "string") throw new Error("Invalid response");
   return autoExtractionSchema.parse(
     JSON.parse(
-      text22.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+      text23.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
     )
   );
 }
@@ -6462,117 +6507,10 @@ import { z as z35 } from "zod";
 
 // server/mission-control.ts
 init_neon_storage();
-init_neon_monitor();
-init_neon_storage();
-async function readMissionProject(userId, projectId) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
-  return rows[0] ?? null;
-}
-async function readMissionTasks(userId, projectId) {
-  const sql7 = monitoringSql();
-  return await sql7`SELECT t.id,t.title,t.status,t.priority,t.updated_at AS "updatedAt" FROM project_tasks t
-    JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id
-    WHERE t.user_id=${userId} AND t.project_id=${projectId} ORDER BY t.updated_at DESC,t.id`;
-}
-var missing2 = (message) => ({
-  state: "missing",
-  message,
-  data: null
-});
-async function source(operation, message) {
-  try {
-    return await operation();
-  } catch {
-    return { state: "error", message, data: null };
-  }
-}
-var ready = (data) => ({
-  state: "ready",
-  message: "",
-  data
-});
-var missionDependencies = {
-  readMissionProject,
-  readMissionTasks,
-  listGitHubLinks,
-  fetchGitHubSnapshot,
-  readVercelLinks,
-  fetchVercelSnapshot,
-  readNeonLinks,
-  fetchNeonSnapshot,
-  readNeonMonitoring
-};
-function createMissionLoader(deps = missionDependencies) {
-  return async (userId, projectId) => {
-    const project2 = await deps.readMissionProject(userId, projectId);
-    if (!project2) return null;
-    const getNeonLink = () => deps.readNeonLinks().find((l) => l.userId === userId && l.projectId === projectId);
-    const [tasks2, github, deployment, neon4, monitoring] = await Promise.all([
-      source(
-        async () => ready(await deps.readMissionTasks(userId, projectId)),
-        "Projektaufgaben konnten nicht geladen werden."
-      ),
-      source(async () => {
-        if (!process.env.GITHUB_ACCOUNT_USER_ID?.trim() || process.env.GITHUB_ACCOUNT_USER_ID.trim() !== userId)
-          return missing2(
-            "GitHub-Zentrale f\xFCr diesen Benutzer nicht freigeschaltet."
-          );
-        const link = (await deps.listGitHubLinks(userId)).find(
-          (l) => l.projectId === projectId
-        );
-        if (!link)
-          return missing2(
-            "Diesem Projekt ist kein GitHub-Repository zugeordnet."
-          );
-        if (!process.env.GITHUB_API_TOKEN?.trim())
-          return missing2("GitHub-API-Zugang fehlt.");
-        return ready(await deps.fetchGitHubSnapshot(link.repository));
-      }, "GitHub-Abruf fehlgeschlagen. Zugang, Repository-Zuordnung und API-Limit pr\xFCfen."),
-      source(async () => {
-        const link = deps.readVercelLinks().find((l) => l.userId === userId && l.projectId === projectId);
-        if (!link) return missing2("Keine Vercel-Projektzuordnung vorhanden.");
-        if (!process.env.DEPLOYMENT_API_TOKEN?.trim())
-          return missing2("Vercel-API-Zugang fehlt.");
-        return ready(await deps.fetchVercelSnapshot(link));
-      }, "Vercel-Abruf fehlgeschlagen. Zugang und Projektzuordnung pr\xFCfen."),
-      source(async () => {
-        const link = getNeonLink();
-        if (!link)
-          return missing2("Keine Neon-Projekt-/Branchzuordnung vorhanden.");
-        if (!process.env.NEON_API_KEY?.trim())
-          return missing2("Neon-API-Zugang fehlt.");
-        return ready(await deps.fetchNeonSnapshot(link));
-      }, "Neon-Abruf fehlgeschlagen. Zugang und Projekt-/Branchzuordnung pr\xFCfen."),
-      source(async () => {
-        const link = getNeonLink();
-        if (!link)
-          return missing2(
-            "Uptime-Verkn\xFCpfung und Neon-Historie ben\xF6tigen die bestehende Neon-Projektzuordnung."
-          );
-        const state2 = await deps.readNeonMonitoring(link, 1);
-        return ready({
-          ...state2,
-          monitors: state2.monitors.filter((m) => m.linked)
-        });
-      }, "Monitoring-Historie und Uptime-Zuordnungen konnten nicht geladen werden.")
-    ]);
-    if (!await deps.readMissionProject(userId, projectId)) return null;
-    return {
-      fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      project: project2,
-      tasks: tasks2,
-      github,
-      deployment,
-      neon: neon4,
-      monitoring
-    };
-  };
-}
-var loadMission = createMissionLoader();
 
-// server/mission-report.ts
-import { createHash as createHash3 } from "node:crypto";
+// server/mission-storage.ts
+init_neon_storage();
+init_neon_monitor();
 
 // src/lib/mission-control.ts
 function missionFresh(at, minutes, now) {
@@ -6584,7 +6522,7 @@ function missionHref(projectId, section) {
   return `/projects?project=${encodeURIComponent(projectId)}${section ? `#${section}` : ""}`;
 }
 function analyzeMission(snapshot, now = Date.now()) {
-  const { project: project2, tasks: tasks2, github, deployment, neon: neon4, monitoring } = snapshot;
+  const { project: project2, tasks: tasks2, github, deployment, neon: neon4, monitoring, uptime } = snapshot;
   const facts = [], events = [], gaps = [];
   const connections = [], nextSteps = [];
   const projectHref = missionHref(project2.id);
@@ -6597,7 +6535,8 @@ function analyzeMission(snapshot, now = Date.now()) {
     ["GitHub", github],
     ["Vercel", deployment],
     ["Neon", neon4],
-    ["Monitoring", monitoring]
+    ["Neon-Historie", monitoring],
+    ["Uptime", uptime]
   ]) {
     if (source2.state !== "ready" || source2.data === null)
       gaps.push(`${label}: ${source2.message || "Keine Daten verf\xFCgbar."}`);
@@ -6665,7 +6604,7 @@ function analyzeMission(snapshot, now = Date.now()) {
       source: "GitHub API",
       at: gh.checkedAt,
       href: `${projectHref}#mission-github`,
-      status: failed.length ? "attention" : !current || pending || !gh.runs?.length || gh.unavailable.length ? "unknown" : "ok"
+      status: !current ? "unknown" : failed.length ? "attention" : !current || pending || !gh.runs?.length || gh.unavailable.length ? "unknown" : "ok"
     });
     for (const [kind, list] of [
       ["Commit", gh.commits],
@@ -6713,7 +6652,7 @@ function analyzeMission(snapshot, now = Date.now()) {
       at: dep.checkedAt,
       href: `${projectHref}#mission-deployment`,
       source: "Vercel API",
-      status: bad ? "attention" : current && dep.production?.state === "READY" && !dep.unavailable.length && last?.state === "READY" ? "ok" : "unknown"
+      status: !current ? "unknown" : bad ? "attention" : current && dep.production?.state === "READY" && !dep.unavailable.length && last?.state === "READY" ? "ok" : "unknown"
     });
     for (const item2 of (dep.deployments ?? []).slice(0, 10))
       events.push({
@@ -6767,7 +6706,7 @@ function analyzeMission(snapshot, now = Date.now()) {
       source: "Neon API",
       at: ns.checkedAt,
       href: `${projectHref}#mission-neon`,
-      status: bad ? "attention" : current && known && !ns.unavailable.length ? "ok" : "unknown"
+      status: !current ? "unknown" : bad ? "attention" : current && known && !ns.unavailable.length ? "ok" : "unknown"
     });
   }
   const mon = monitoring.state === "ready" ? monitoring.data : null;
@@ -6809,27 +6748,6 @@ function analyzeMission(snapshot, now = Date.now()) {
         href: `${projectHref}#mission-neon`,
         status: alert.resolvedAt ? "ok" : "attention"
       });
-    const monitors = mon.monitors.filter((m) => m.linked);
-    if (!monitors.length)
-      gaps.push(
-        "Keine Uptime-Monitore \xFCber die Neon-Monitoring-Einstellungen mit diesem Projekt verbunden."
-      );
-    for (const m of monitors) {
-      const current = missionFresh(m.checkedAt, 15, now);
-      add({
-        id: `uptime-${m.id}`,
-        title: m.name,
-        detail: !m.active ? "Pausiert; keine aktuelle Verf\xFCgbarkeitsaussage." : !current ? `Messung fehlt oder \xE4lter als 15 Minuten. Letzter Zustand: ${m.status ?? "unbekannt"}.` : `${m.status ?? "unbekannt"} \xB7 ${m.responseTimeMs == null ? "keine Latenzmessung" : `${m.responseTimeMs} ms`}`,
-        at: m.checkedAt,
-        href: `/uptime?monitor=${encodeURIComponent(m.id)}`,
-        source: "Uptime-Check",
-        status: !m.active || !current || !m.status ? "unknown" : m.status === "down" ? "attention" : "ok"
-      });
-      if (!m.active || !current || !m.status)
-        gaps.push(`Uptime ${m.name}: keine aktuelle aktive Pr\xFCfung.`);
-      if (m.checkedAt)
-        events.push({ ...facts[facts.length - 1], id: `check-${m.id}` });
-    }
     if (alerts.length)
       nextSteps.push({
         title: "Offene Neon-Warnungen und Messhistorie pr\xFCfen",
@@ -6849,10 +6767,64 @@ function analyzeMission(snapshot, now = Date.now()) {
         });
     }
   }
+  const up = uptime.state === "ready" ? uptime.data : null;
+  if (up) {
+    if (up.missingMonitors)
+      gaps.push(
+        `${up.missingMonitors} zugeordnete Monitore wurden gel\xF6scht oder sind nicht mehr zug\xE4nglich.`
+      );
+    const monitors = up.monitors.filter((m) => m.linked);
+    if (!monitors.length)
+      gaps.push(
+        "Keine Uptime-Monitore mit diesem Projekt verbunden. Direkt im Cockpit zuordnen."
+      );
+    for (const m of monitors) {
+      const current = missionFresh(m.checkedAt, 15, now);
+      add({
+        id: `uptime-${m.id}`,
+        title: m.name,
+        detail: !m.active ? "Pausiert; keine aktuelle Verf\xFCgbarkeitsaussage." : !current ? `Messung fehlt oder \xE4lter als 15 Minuten. Letzter Zustand: ${m.status ?? "unbekannt"}.` : `${m.status ?? "unbekannt"} \xB7 ${m.responseTimeMs == null ? "keine Latenzmessung" : `${m.responseTimeMs} ms`}`,
+        at: m.checkedAt,
+        href: `/uptime?monitor=${encodeURIComponent(m.id)}`,
+        source: "Uptime-Check",
+        status: !m.active || !current || !m.status ? "unknown" : m.status === "down" ? "attention" : "ok"
+      });
+      if (!m.active || !current || !m.status)
+        gaps.push(`Uptime ${m.name}: keine aktuelle aktive Pr\xFCfung.`);
+      if (m.checkedAt)
+        events.push({ ...facts[facts.length - 1], id: `check-${m.id}` });
+    }
+  }
+  const productionAt = dep?.production?.createdAt;
+  if (up && productionAt != null && Number.isFinite(productionAt) && productionAt <= now) {
+    const median = (values2) => {
+      const ordered = [...values2].sort((a, b) => a - b), mid = Math.floor(ordered.length / 2);
+      return ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
+    };
+    for (const m of up.monitors) {
+      const usable = m.recentChecks.filter(
+        (c) => c.status === "up" && c.responseTimeMs !== null && c.responseTimeMs >= 0 && Number.isFinite(Date.parse(c.at)) && Date.parse(c.at) <= now
+      );
+      const before = usable.filter(
+        (c) => Date.parse(c.at) >= productionAt - 36e5 && Date.parse(c.at) < productionAt
+      ).map((c) => c.responseTimeMs);
+      const after = usable.filter(
+        (c) => Date.parse(c.at) >= productionAt && Date.parse(c.at) <= productionAt + 36e5
+      ).map((c) => c.responseTimeMs);
+      if (before.length < 3 || after.length < 3) continue;
+      const beforeMs = median(before), afterMs = median(after);
+      if (afterMs > beforeMs * 1.25 && afterMs - beforeMs > 50)
+        connections.push({
+          title: `H\xF6here gemessene Antwortzeiten: ${m.name}`,
+          detail: `Im Zeitfenster von jeweils einer Stunde vor/nach Erstellung des Produktionsdeployments liegt der Median der erfolgreichen Pr\xFCfungen bei ${Math.round(beforeMs)} ms (${before.length} Messungen) bzw. ${Math.round(afterMs)} ms (${after.length} Messungen). Ausf\xE4lle sind separat zu pr\xFCfen. Deployment-Erstellung ist kein best\xE4tigter Go-live-Zeitpunkt; dies belegt keine Ursache.`,
+          evidence: ["deployment", `uptime-${m.id}`]
+        });
+    }
+  }
   if (!connections.length)
     connections.push({
       title: "Kein belastbarer Zusammenhang im geladenen Ausschnitt",
-      detail: "Ohne passende Projektbindungen, Commit-IDs und Zeitstempel l\xE4sst sich kein Zusammenhang belegen. Datenbankverbindungen und durchgehende Antwortzeitreihen liegen hier nicht vor.",
+      detail: "Ohne passende Projektbindungen, Commit-IDs und Zeitstempel l\xE4sst sich kein Zusammenhang belegen. Messreihen zu Datenbankverbindungen liegen hier nicht vor; vorhandene Uptime-Ausschnitte sind im Messverlauf einsehbar.",
       evidence: []
     });
   if (gaps.length)
@@ -6882,7 +6854,339 @@ function safeMissionUrl(value) {
   }
 }
 
+// server/mission-storage.ts
+var MissionStorageError = class extends Error {
+  status;
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+};
+var missionDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_mission_settings(project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,user_id text NOT NULL,monitor_ids jsonb NOT NULL,version integer NOT NULL DEFAULT 1,updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS v2_mission_visits(project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,user_id text NOT NULL,visit_id uuid NOT NULL,baseline jsonb,baseline_at timestamptz,latest jsonb NOT NULL,last_visit_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(project_id,user_id,visit_id))`,
+  `CREATE TABLE IF NOT EXISTS v2_mission_ai_limits(user_id text PRIMARY KEY,next_at timestamptz NOT NULL)`
+];
+async function initializeMissionStorage() {
+  const sql7 = monitoringSql();
+  const [existing] = await sql7`SELECT to_regclass('v2_mission_settings') IS NOT NULL AND to_regclass('v2_mission_visits') IS NOT NULL AND to_regclass('v2_mission_ai_limits') IS NOT NULL AS ready`;
+  if (existing?.ready) return;
+  await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(184730021)`,
+    ...missionDdl.map((s) => sql7.query(s))
+  ]);
+}
+async function settings(userId, projectId) {
+  const sql7 = monitoringSql();
+  try {
+    const [row] = await sql7`SELECT s.monitor_ids,s.version FROM v2_mission_settings s JOIN projects p ON p.id=s.project_id AND p.user_id=s.user_id WHERE s.user_id=${userId} AND s.project_id=${projectId}`;
+    return row;
+  } catch (e) {
+    if (missingNeonStorage(e)) return void 0;
+    throw e;
+  }
+}
+async function selectedMonitors(userId, projectId) {
+  const config = await settings(userId, projectId);
+  if (config)
+    return {
+      ids: config.monitor_ids,
+      origin: "direct",
+      version: config.version
+    };
+  const link = readNeonLinks().find(
+    (l) => l.userId === userId && l.projectId === projectId
+  );
+  let ids = [];
+  if (link) {
+    try {
+      ids = (await loadNeonConfig(link))?.settings.monitorIds ?? [];
+    } catch (e) {
+      if (!missingNeonStorage(e)) throw e;
+    }
+  }
+  return {
+    ids,
+    origin: ids.length ? "neon" : "none",
+    version: 0
+  };
+}
+async function readMissionMonitorOptions(userId, projectId) {
+  const sql7 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
+  const monitors = await sql7`SELECT m.id,m.name,m.active FROM uptime_monitors m WHERE m.user_id=${userId} AND EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId}) ORDER BY m.name,m.id`;
+  return {
+    version: selected.version,
+    origin: selected.origin,
+    selectedIds: selected.ids,
+    monitors
+  };
+}
+async function saveMissionMonitors(userId, projectId, ids, version) {
+  await initializeMissionStorage();
+  const sql7 = monitoringSql(), json = JSON.stringify(ids);
+  const rows = await sql7`INSERT INTO v2_mission_settings(project_id,user_id,monitor_ids)
+    SELECT p.id,p.user_id,${json}::jsonb FROM projects p WHERE p.id=${projectId} AND p.user_id=${userId}
+    AND (SELECT count(*) FROM uptime_monitors m WHERE m.user_id=${userId} AND m.id IN(SELECT value::uuid FROM jsonb_array_elements_text(${json}::jsonb)))=jsonb_array_length(${json}::jsonb)
+    AND (${version}=0 OR EXISTS(SELECT 1 FROM v2_mission_settings s WHERE s.project_id=p.id AND s.user_id=p.user_id AND s.version=${version}))
+    ON CONFLICT(project_id) DO UPDATE SET monitor_ids=excluded.monitor_ids,version=v2_mission_settings.version+1,updated_at=now()
+    WHERE v2_mission_settings.user_id=excluded.user_id AND v2_mission_settings.version=${version}
+    RETURNING version`;
+  if (!rows.length)
+    throw new MissionStorageError(
+      "Zuordnung nicht gespeichert. Projekt/Monitore geh\xF6ren nicht zu deinem Konto oder die Einstellungen wurden inzwischen ge\xE4ndert. Neu laden und erneut pr\xFCfen.",
+      409
+    );
+  return { version: Number(rows[0].version) };
+}
+async function readMissionUptime(userId, projectId) {
+  const sql7 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
+  const rows = await sql7`SELECT m.id,m.name,m.active,c.status,c.response_time_ms AS "responseTimeMs",c.checked_at AS "checkedAt",
+    COALESCE(h.checks,'[]'::jsonb) AS "recentChecks" FROM uptime_monitors m
+    LEFT JOIN LATERAL(SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
+    LEFT JOIN LATERAL(SELECT jsonb_agg(jsonb_build_object('at',checked_at,'status',status,'responseTimeMs',response_time_ms) ORDER BY checked_at) AS checks
+      FROM(SELECT checked_at,status,response_time_ms FROM uptime_checks WHERE monitor_id=m.id AND checked_at>=now()-interval '24 hours' AND checked_at<=now() ORDER BY checked_at DESC LIMIT 288) bounded) h ON true
+    WHERE m.user_id=${userId} AND m.id IN(SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(selected.ids)}::jsonb))
+    AND EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId}) ORDER BY m.name,m.id`;
+  const monitors = rows.map((r) => {
+    const checks = r.recentChecks;
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      active: Boolean(r.active),
+      linked: true,
+      status: r.status,
+      responseTimeMs: r.responseTimeMs,
+      checkedAt: r.checkedAt,
+      recentChecks: checks,
+      sampleCount: checks.length,
+      upCount: checks.filter((c) => c.status === "up").length
+    };
+  });
+  return {
+    origin: selected.origin,
+    version: selected.version,
+    missingMonitors: Math.max(0, selected.ids.length - monitors.length),
+    monitors
+  };
+}
+function missionObservation(snapshot) {
+  const analysis = analyzeMission(snapshot);
+  return {
+    facts: [
+      {
+        id: "project",
+        title: snapshot.project.name,
+        value: `${snapshot.project.status}: ${snapshot.project.description}`,
+        href: `/projects?project=${snapshot.project.id}`
+      },
+      {
+        id: "uptime-selection",
+        title: "Verf\xFCgbare Projektmonitore",
+        value: snapshot.uptime.data ? `${snapshot.uptime.data.origin}: ${snapshot.uptime.data.monitors.map((m) => m.id).sort().join(", ") || "keine"}; nicht verf\xFCgbar: ${snapshot.uptime.data.missingMonitors}` : "Zuordnung nicht abrufbar",
+        href: `/mission-control?project=${snapshot.project.id}`
+      },
+      ...analysis.facts.map((f) => ({
+        id: f.id,
+        title: f.title,
+        value: `${f.status}: ${f.detail}`,
+        href: f.href
+      })),
+      ...analysis.events.filter((e) => !e.id.startsWith("check-")).map((e) => ({
+        id: `event:${e.id}`,
+        title: e.title,
+        value: e.detail,
+        href: e.href
+      })),
+      ...[
+        "github",
+        "deployment",
+        "neon",
+        "monitoring",
+        "uptime",
+        "tasks"
+      ].map((key) => ({
+        id: `source:${key}`,
+        title: `Datenquelle ${key}`,
+        value: `${snapshot[key].state}: ${snapshot[key].message}`,
+        href: `/mission-control?project=${snapshot.project.id}`
+      }))
+    ].slice(0, 100)
+  };
+}
+function compareMission(before, after, previousAt) {
+  if (!before)
+    return {
+      status: "first_visit",
+      previousAt: null,
+      changes: [],
+      totalChanges: 0
+    };
+  const previous = new Map(before.facts.map((f) => [f.id, f]));
+  const changes = after.facts.filter((f) => {
+    const old = previous.get(f.id);
+    return !old || old.value !== f.value || old.title !== f.title;
+  }).map((f) => ({
+    id: f.id,
+    title: f.title,
+    before: previous.get(f.id)?.value ?? null,
+    after: f.value,
+    href: f.href
+  }));
+  return {
+    status: "compared",
+    previousAt,
+    changes: changes.slice(0, 20),
+    totalChanges: changes.length
+  };
+}
+async function recordMissionVisit(userId, projectId, visitId, snapshot) {
+  await initializeMissionStorage();
+  const sql7 = monitoringSql(), observation = missionObservation(snapshot);
+  const [, rows] = await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ":" + projectId},0))`,
+    sql7`INSERT INTO v2_mission_visits(project_id,user_id,visit_id,baseline,baseline_at,latest)
+      SELECT p.id,p.user_id,${visitId}::uuid,previous.latest,previous.last_visit_at,${JSON.stringify(observation)}::jsonb
+      FROM projects p LEFT JOIN LATERAL(SELECT latest,last_visit_at FROM v2_mission_visits WHERE project_id=p.id AND user_id=p.user_id ORDER BY last_visit_at DESC,visit_id DESC LIMIT 1) previous ON true
+      WHERE p.id=${projectId} AND p.user_id=${userId}
+      ON CONFLICT(project_id,user_id,visit_id) DO UPDATE SET latest=excluded.latest
+      RETURNING baseline,baseline_at`,
+    sql7`DELETE FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} AND visit_id IN(SELECT visit_id FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} ORDER BY last_visit_at DESC,visit_id DESC OFFSET 10)`
+  ]);
+  const row = rows[0];
+  if (!row)
+    throw new MissionStorageError("Eigenes Projekt nicht mehr vorhanden.", 404);
+  return compareMission(
+    row.baseline,
+    observation,
+    row.baseline_at
+  );
+}
+async function claimMissionAI(userId) {
+  await initializeMissionStorage();
+  const sql7 = monitoringSql();
+  const rows = await sql7`INSERT INTO v2_mission_ai_limits(user_id,next_at) VALUES(${userId},now()+interval '1 minute')
+    ON CONFLICT(user_id) DO UPDATE SET next_at=excluded.next_at WHERE v2_mission_ai_limits.next_at<=now() RETURNING user_id`;
+  return rows.length > 0;
+}
+
+// server/mission-control.ts
+init_neon_monitor();
+init_neon_storage();
+async function readMissionProject(userId, projectId) {
+  const sql7 = monitoringSql();
+  const rows = await sql7`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
+  return rows[0] ?? null;
+}
+async function readMissionTasks(userId, projectId) {
+  const sql7 = monitoringSql();
+  return await sql7`SELECT t.id,t.title,t.status,t.priority,t.updated_at AS "updatedAt" FROM project_tasks t
+    JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id
+    WHERE t.user_id=${userId} AND t.project_id=${projectId} ORDER BY t.updated_at DESC,t.id`;
+}
+var missing2 = (message) => ({
+  state: "missing",
+  message,
+  data: null
+});
+async function source(operation, message) {
+  try {
+    return await operation();
+  } catch {
+    return { state: "error", message, data: null };
+  }
+}
+var ready = (data) => ({
+  state: "ready",
+  message: "",
+  data
+});
+var missionDependencies = {
+  readMissionProject,
+  readMissionTasks,
+  listGitHubLinks,
+  fetchGitHubSnapshot,
+  readVercelLinks,
+  fetchVercelSnapshot,
+  readNeonLinks,
+  fetchNeonSnapshot,
+  readNeonMonitoring,
+  readMissionUptime
+};
+function createMissionLoader(deps = missionDependencies) {
+  return async (userId, projectId) => {
+    const project2 = await deps.readMissionProject(userId, projectId);
+    if (!project2) return null;
+    const getNeonLink = () => deps.readNeonLinks().find((l) => l.userId === userId && l.projectId === projectId);
+    const [tasks2, github, deployment, neon4, monitoring, uptime] = await Promise.all([
+      source(
+        async () => ready(await deps.readMissionTasks(userId, projectId)),
+        "Projektaufgaben konnten nicht geladen werden."
+      ),
+      source(async () => {
+        if (!process.env.GITHUB_ACCOUNT_USER_ID?.trim() || process.env.GITHUB_ACCOUNT_USER_ID.trim() !== userId)
+          return missing2(
+            "GitHub-Zentrale f\xFCr diesen Benutzer nicht freigeschaltet."
+          );
+        const link = (await deps.listGitHubLinks(userId)).find(
+          (l) => l.projectId === projectId
+        );
+        if (!link)
+          return missing2(
+            "Diesem Projekt ist kein GitHub-Repository zugeordnet."
+          );
+        if (!process.env.GITHUB_API_TOKEN?.trim())
+          return missing2("GitHub-API-Zugang fehlt.");
+        return ready(await deps.fetchGitHubSnapshot(link.repository));
+      }, "GitHub-Abruf fehlgeschlagen. Zugang, Repository-Zuordnung und API-Limit pr\xFCfen."),
+      source(async () => {
+        const link = deps.readVercelLinks().find((l) => l.userId === userId && l.projectId === projectId);
+        if (!link) return missing2("Keine Vercel-Projektzuordnung vorhanden.");
+        if (!process.env.DEPLOYMENT_API_TOKEN?.trim())
+          return missing2("Vercel-API-Zugang fehlt.");
+        return ready(await deps.fetchVercelSnapshot(link));
+      }, "Vercel-Abruf fehlgeschlagen. Zugang und Projektzuordnung pr\xFCfen."),
+      source(async () => {
+        const link = getNeonLink();
+        if (!link)
+          return missing2("Keine Neon-Projekt-/Branchzuordnung vorhanden.");
+        if (!process.env.NEON_API_KEY?.trim())
+          return missing2("Neon-API-Zugang fehlt.");
+        return ready(await deps.fetchNeonSnapshot(link));
+      }, "Neon-Abruf fehlgeschlagen. Zugang und Projekt-/Branchzuordnung pr\xFCfen."),
+      source(async () => {
+        const link = getNeonLink();
+        if (!link)
+          return missing2(
+            "Keine Neon-Monitoring-Historie ohne Neon-Projektzuordnung."
+          );
+        const state2 = await deps.readNeonMonitoring(link, 1);
+        return ready({
+          ...state2,
+          monitors: state2.monitors.filter((m) => m.linked)
+        });
+      }, "Neon-Monitoring-Historie konnte nicht geladen werden."),
+      source(
+        async () => ready(await deps.readMissionUptime(userId, projectId)),
+        "Uptime-Zuordnungen oder Messwerte konnten nicht geladen werden."
+      )
+    ]);
+    if (!await deps.readMissionProject(userId, projectId)) return null;
+    return {
+      fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      project: project2,
+      tasks: tasks2,
+      github,
+      deployment,
+      neon: neon4,
+      monitoring,
+      uptime
+    };
+  };
+}
+var loadMission = createMissionLoader();
+
 // server/mission-report.ts
+import { createHash as createHash3 } from "node:crypto";
 function missionBriefing(snapshot) {
   const analysis = analyzeMission(snapshot);
   const day2 = new Intl.DateTimeFormat("en-CA", {
@@ -6956,38 +7260,105 @@ function createMissionReport(select = callBriefingAI) {
 var generateMissionReport = createMissionReport();
 
 // server/routes/mission-control.ts
-function createMissionRoute(deps = { loadMission, generateMissionReport }) {
+var visitInput = z35.object({ visitId: z35.uuid() }).strict();
+var monitorInput2 = z35.object({
+  monitorIds: z35.array(z35.uuid()).max(30).refine((v) => new Set(v).size === v.length),
+  version: z35.number().int().min(0)
+}).strict();
+var missionRouteDependencies = {
+  loadMission,
+  generateMissionReport,
+  readMissionProject,
+  claimMissionAI,
+  recordMissionVisit,
+  readMissionMonitorOptions,
+  saveMissionMonitors
+};
+function createMissionRoute(deps = missionRouteDependencies) {
   const route = new Hono27();
-  const attempts = /* @__PURE__ */ new Map();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
   });
   route.onError(
-    (_error, c) => c.json(
+    (error, c) => c.json(
       {
-        error: "Projektlage konnte nicht geladen werden. Datenbank und Projektzugriff pr\xFCfen."
+        error: error instanceof MissionStorageError ? error.message : "Projektlage konnte nicht geladen werden. Datenbank und Projektzugriff pr\xFCfen."
       },
-      503
+      error instanceof MissionStorageError ? error.status : 503
     )
   );
-  route.get("/:projectId", async (c) => {
+  route.use("/:projectId/*", async (c, next) => {
     const id = c.req.param("projectId");
     if (!z35.uuid().safeParse(id).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
-    const snapshot = await deps.loadMission(c.get("userId"), id);
+    await next();
+  });
+  route.get("/:projectId", async (c) => {
+    const snapshot = await deps.loadMission(
+      c.get("userId"),
+      c.req.param("projectId")
+    );
     if (!snapshot)
       return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
     return c.json(snapshot);
   });
+  route.post("/:projectId/visit", async (c) => {
+    const input = visitInput.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Ung\xFCltige Besuchskennung." }, 400);
+    const userId = c.get("userId"), id = c.req.param("projectId");
+    const snapshot = await deps.loadMission(userId, id);
+    if (!snapshot)
+      return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
+    try {
+      snapshot.comparison = await deps.recordMissionVisit(
+        userId,
+        id,
+        input.data.visitId,
+        snapshot
+      );
+    } catch (error) {
+      if (error instanceof MissionStorageError) throw error;
+      snapshot.comparison = {
+        status: "unavailable",
+        previousAt: null,
+        changes: [],
+        totalChanges: 0
+      };
+    }
+    return c.json(snapshot);
+  });
+  route.get("/:projectId/monitors", async (c) => {
+    const userId = c.get("userId"), id = c.req.param("projectId");
+    if (!await deps.readMissionProject(userId, id))
+      return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
+    return c.json(await deps.readMissionMonitorOptions(userId, id));
+  });
+  route.put("/:projectId/monitors", async (c) => {
+    const parsed = monitorInput2.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json(
+        { error: "Ung\xFCltige Monitorzuordnung oder Versionsnummer." },
+        400
+      );
+    const userId = c.get("userId"), id = c.req.param("projectId");
+    if (!await deps.readMissionProject(userId, id))
+      return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
+    return c.json(
+      await deps.saveMissionMonitors(
+        userId,
+        id,
+        parsed.data.monitorIds,
+        parsed.data.version
+      )
+    );
+  });
   route.post("/:projectId/report", async (c) => {
     const id = c.req.param("projectId"), userId = c.get("userId");
-    if (!z35.uuid().safeParse(id).success)
-      return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
-    const now = Date.now();
-    for (const [key, at] of attempts)
-      if (now - at >= 6e4) attempts.delete(key);
-    if (attempts.has(userId))
+    if (!await deps.readMissionProject(userId, id))
+      return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
+    if (!await deps.claimMissionAI(userId))
       return c.json(
         {
           error: "Bitte eine Minute bis zur n\xE4chsten KI-Priorisierung warten."
@@ -6997,9 +7368,6 @@ function createMissionRoute(deps = { loadMission, generateMissionReport }) {
     const snapshot = await deps.loadMission(userId, id);
     if (!snapshot)
       return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
-    if (attempts.has(userId))
-      return c.json({ error: "Eine Priorisierung l\xE4uft bereits." }, 429);
-    attempts.set(userId, now);
     return c.json({
       snapshot,
       report: await deps.generateMissionReport(snapshot)

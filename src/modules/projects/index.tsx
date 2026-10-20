@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { useEffect, useState } from 'react'
 import { GitHubPanel } from '@/components/integrations/GitHubPanel'
 import { DeploymentPanel } from '@/components/integrations/DeploymentPanel'
@@ -107,6 +107,7 @@ function ProjectDetailView({
             ))}
           </div>
         )}
+        <Link className="text-sm text-primary hover:underline" to={`/mission-control?project=${encodeURIComponent(projectId)}`}>Mission Control öffnen →</Link>
         <span className="text-xs text-muted-foreground">
           Meilensteine: {doneMilestones}/{data.milestones.length}
         </span>

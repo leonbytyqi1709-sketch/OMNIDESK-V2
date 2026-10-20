@@ -126,4 +126,4 @@ Omni kann wichtige eigene Chatangaben jetzt auch automatisch merken, ausdrückli
 
 ## Mission Control in V2
 
-Eigenes Projektlagebild mit expliziten GitHub-/Vercel-/Neon-/Uptime-Verbindungen, Quellenzeiten, Datenlücken, Ereignisverlauf und Omni-Lagebericht. Direkte Projektaufgaben und manuelle Uptime-Prüfungen verwenden bestehende APIs. [Bedienung, Zuordnungen und Grenzen](docs/MISSION-CONTROL.md).
+Eigenes Projektlagebild mit expliziten GitHub-/Vercel-/Neon-/Uptime-Verbindungen, Quellenzeiten, Datenlücken, Ereignisverlauf, Besuchsvergleich, Messverläufen und Omni-Lagebericht. Eigene Uptime-Monitore lassen sich direkt zuordnen, unabhängig von Neon. Direkte Projektaufgaben und manuelle Uptime-Prüfungen verwenden bestehende APIs. [Bedienung, Zuordnungen und Grenzen](docs/MISSION-CONTROL.md).

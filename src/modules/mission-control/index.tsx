@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, useContext, type FormEvent, type ReactNode } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
@@ -35,7 +35,9 @@ import type {
   MissionSnapshot,
   MissionStatus,
 } from '@/types/mission-control'
-import { useMission } from './api'
+import { useMission, useMissionOverview, MissionVisitContext } from './api'
+import { MissionConnections } from './Connections'
+import { MissionMetrics } from './Metrics'
 
 const color: Record<MissionStatus, string> = {
   ok: 'text-emerald-400 border-emerald-500/30',
@@ -161,7 +163,7 @@ function CockpitActions({ snapshot }: { snapshot: MissionSnapshot }) {
     cache = useQueryClient()
   const { userId } = useAuth()
   const monitors =
-    snapshot.monitoring.data?.monitors.filter((m) => m.active && m.linked) ?? []
+    snapshot.uptime.data?.monitors.filter((m) => m.active && m.linked) ?? []
   const [monitorId, setMonitorId] = useState('')
   const current = monitors.find((m) => m.id === monitorId) ?? monitors[0]
   async function addTask(event: FormEvent) {
@@ -258,8 +260,8 @@ function CockpitActions({ snapshot }: { snapshot: MissionSnapshot }) {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Für eine direkte Uptime-Prüfung einen eigenen aktiven Monitor in den
-            bestehenden Neon-Monitoring-Einstellungen verknüpfen.
+            Für eine direkte Uptime-Prüfung oben einen eigenen aktiven Monitor
+            mit diesem Projekt verknüpfen.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
@@ -272,6 +274,7 @@ function CockpitActions({ snapshot }: { snapshot: MissionSnapshot }) {
 }
 function Cockpit({ projectId }: { projectId: string }) {
   const query = useMission(projectId)
+  const visitId = useContext(MissionVisitContext)
   const api = useApiFetch(),
     cache = useQueryClient(),
     { userId } = useAuth()
@@ -291,10 +294,10 @@ function Cockpit({ projectId }: { projectId: string }) {
       }>(`/api/mission-control/${encodeURIComponent(projectId)}/report`, {
         method: 'POST',
       })
-      cache.setQueryData(
-        ['mission-control', userId, projectId],
-        result.snapshot,
-      )
+      cache.setQueryData(['mission-control', userId, projectId, visitId], {
+        ...result.snapshot,
+        comparison: query.data?.comparison,
+      })
       setReport(result.report)
     } catch (error) {
       toast.error(
@@ -378,11 +381,70 @@ function Cockpit({ projectId }: { projectId: string }) {
           )}
         </CardHeader>
       </Card>
+      <MissionConnections key={projectId} projectId={projectId} />
       <section aria-label="Quellenstatus" className="grid gap-3 sm:grid-cols-2">
         {analysis.facts.map((fact) => (
           <Fact key={fact.id} fact={fact} />
         ))}
       </section>
+      <Card>
+        <CardHeader>
+          <CardTitle role="heading" aria-level={2} className="text-base">
+            Seit deinem letzten Öffnen
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!snapshot.comparison ||
+          snapshot.comparison.status === 'unavailable' ? (
+            <p className="text-sm text-muted-foreground">
+              Besuchsvergleich nicht verfügbar. Der aktuelle Quellenstatus
+              bleibt unabhängig davon nutzbar.
+            </p>
+          ) : snapshot.comparison.status === 'first_visit' ? (
+            <p className="text-sm text-muted-foreground">
+              Erster erfasster Besuch: Der aktuelle Stand dient künftig als
+              Vergleich. Frühere Änderungen werden nicht nachträglich erfunden.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Vergleich mit {date(snapshot.comparison.previousAt)} ·{' '}
+                {snapshot.comparison.totalChanges} neue oder veränderte
+                Beobachtungen.
+              </p>
+              {snapshot.comparison.changes.map((change) => (
+                <div
+                  key={change.id}
+                  className="space-y-1 rounded-lg border border-border p-3 text-xs"
+                >
+                  <SourceLink
+                    href={change.href}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {change.title}
+                  </SourceLink>
+                  <p className="break-words text-muted-foreground">
+                    Vorher:{' '}
+                    {change.before ?? 'Nicht im vorherigen Ausschnitt erfasst'}
+                  </p>
+                  <p className="break-words">Jetzt: {change.after}</p>
+                </div>
+              ))}
+              {snapshot.comparison.totalChanges === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Keine neuen oder veränderten Beobachtungen in den erfassten
+                  Quellen.
+                </p>
+              )}
+            </>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Pro Projekt bleiben höchstens zehn Besuchsstände gespeichert;
+            parallele Tabs haben einen stabilen Vergleich. Fehlende Einträge in
+            begrenzten Listen gelten nicht als Löschung.
+          </p>
+        </CardContent>
+      </Card>
       <Card className="border-primary/25">
         <CardHeader>
           <CardTitle
@@ -614,6 +676,7 @@ function Cockpit({ projectId }: { projectId: string }) {
           </div>
         </CardContent>
       </Card>
+      <MissionMetrics snapshot={snapshot} />
       <CockpitActions key={projectId} snapshot={snapshot} />
       <Card>
         <CardHeader>
@@ -658,7 +721,15 @@ function Cockpit({ projectId }: { projectId: string }) {
 }
 export default function MissionControlPage() {
   const { userId } = useAuth()
-  return userId ? <MissionWorkspace key={userId} /> : null
+  return userId ? <MissionSession key={userId} /> : null
+}
+function MissionSession() {
+  const [visitId] = useState(() => crypto.randomUUID())
+  return (
+    <MissionVisitContext.Provider value={visitId}>
+      <MissionWorkspace />
+    </MissionVisitContext.Provider>
+  )
 }
 function MissionWorkspace() {
   const projects = useProjects(),
@@ -677,6 +748,15 @@ function MissionWorkspace() {
   const pages = Math.max(1, Math.ceil(filtered.length / 6)),
     currentPage = Math.min(page, pages - 1)
   const visible = filtered.slice(currentPage * 6, currentPage * 6 + 6)
+  const overview = useMissionOverview(visible.map((p) => p.id))
+  const counts = { attention: 0, unknown: 0, ok: 0, pending: 0 }
+  for (const item of overview) {
+    if (item.isPending) counts.pending++
+    else
+      counts[
+        item.error || !item.data ? 'unknown' : analyzeMission(item.data).status
+      ]++
+  }
   const requested = params.get('project'),
     selected = all.find((p) => p.id === requested)?.id ?? visible[0]?.id
   return (
@@ -697,6 +777,32 @@ function MissionWorkspace() {
           </Link>
         </Button>
       </header>
+      <div
+        className="grid gap-3 sm:grid-cols-3"
+        aria-label="Statusübersicht der sichtbaren Projekte"
+      >
+        {(
+          [
+            ['attention', 'Benötigen Aufmerksamkeit'],
+            ['unknown', 'Lage unvollständig'],
+            ['ok', 'Unauffällig im erfassten Umfang'],
+          ] as const
+        ).map(([key, label]) => (
+          <div
+            key={key}
+            className="rounded-xl border border-border bg-card p-4"
+          >
+            <p className={`text-2xl font-semibold ${color[key]}`}>
+              {counts[key]}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground sm:col-span-3">
+          Diese Zählung gilt für die {visible.length} sichtbaren Projekte auf
+          dieser Seite; {counts.pending} werden noch geprüft.
+        </p>
+      </div>
       <div className="flex flex-wrap gap-3">
         <Input
           aria-label="Projekte durchsuchen"
