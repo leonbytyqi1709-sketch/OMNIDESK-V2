@@ -1,16 +1,24 @@
 import { useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Bot, Check, Copy, User } from 'lucide-react'
+import { Bot, Brain, Check, Copy, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import type { ChatMessageDto } from '../api'
 
 interface ChatMessageItemProps {
   message: ChatMessageDto
+  isSource?: boolean
+  onRemember?: (message: ChatMessageDto) => void
+  onShowMemory?: (id: string) => void
 }
 
-export function ChatMessageItem({ message }: ChatMessageItemProps) {
+export function ChatMessageItem({
+  message,
+  isSource = false,
+  onRemember,
+  onShowMemory,
+}: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
 
@@ -23,7 +31,8 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
 
   return (
     <div
-      className={`flex w-full gap-3 py-3 ${
+      id={`chat-message-${message.id}`}
+      className={`${isSource ? 'rounded-xl ring-2 ring-primary' : ''} flex w-full gap-3 py-3 ${
         isUser ? 'justify-end' : 'justify-start'
       }`}
     >
@@ -64,7 +73,16 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
             <Markdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
+                code({
+                  inline,
+                  className,
+                  children,
+                  ...props
+                }: {
+                  inline?: boolean
+                  className?: string
+                  children?: React.ReactNode
+                }) {
                   const match = /language-(\w+)/.exec(className || '')
                   return !inline ? (
                     <div className="relative my-2 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 font-mono text-xs">
@@ -98,6 +116,64 @@ export function ChatMessageItem({ message }: ChatMessageItemProps) {
           </div>
         )}
 
+        {!isUser && message.memory && (
+          <details className="mt-3 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
+            <summary className="cursor-pointer">
+              {message.memory.status === 'used'
+                ? `Gedächtniskontext mitgesendet · ${message.memory.references.length} Quellen`
+                : message.memory.status === 'disabled'
+                  ? 'Gedächtnis für diese Antwort ausgeschaltet'
+                  : message.memory.status === 'unavailable'
+                    ? 'Gedächtniskontext / KI-Anbieter nicht verfügbar'
+                    : 'Kein passender Gedächtniseintrag mitgesendet'}
+            </summary>
+            <p className="mt-2">
+              Dies zeigt den mitgesendeten Kontext, nicht den Nachweis, dass die
+              KI jeden Eintrag genutzt hat.
+            </p>
+            <ul className="mt-2 space-y-2">
+              {message.memory.references.map((reference) => (
+                <li key={reference.id}>
+                  {reference.available ? (
+                    <button
+                      onClick={() => onShowMemory?.(reference.id)}
+                      className="break-words text-left underline underline-offset-4"
+                    >
+                      {reference.title} · gesendete Version {reference.version}
+                    </button>
+                  ) : (
+                    <span>
+                      Erinnerung entfernt oder Projekt nicht mehr verfügbar ·
+                      Version {reference.version}
+                    </span>
+                  )}
+                  {reference.changed && (
+                    <span className="block text-amber-400">
+                      Inzwischen geändert · aktuell v{reference.currentVersion}
+                    </span>
+                  )}
+                  {reference.archived && (
+                    <span className="block">Inzwischen archiviert.</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1 text-[11px] text-zinc-400"
+            onClick={() => onRemember?.(message)}
+          >
+            <Brain className="mr-1 size-3" />
+            Merken
+          </Button>
+          <span className="text-[10px] text-zinc-500">
+            Speichern öffnet einen prüfbaren Entwurf.
+          </span>
+        </div>
         <div className="mt-1 flex items-center justify-end text-[10px] text-zinc-500">
           {new Date(message.createdAt).toLocaleTimeString('de-DE', {
             hour: '2-digit',

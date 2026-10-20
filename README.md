@@ -116,3 +116,7 @@ Persönlicher Arbeitsstand beim App-Start mit Aufgaben, Projekten, Terminen, ges
 ## Omni-Aktionen in V2
 
 Omni schlägt interne Aufgabenänderungen, Termine und Projektnotizen mit genauer Vorschau vor und führt sie nach Bestätigung gemeinsam aus. Mit Verlauf, Ergebnislinks und Schutz gegen doppelte Ausführung: [Bedienung und Einrichtung](docs/OMNI-AKTIONEN.md).
+
+## Omnis Gedächtnis in V2
+
+Gezielt gespeicherte Vorlieben, Wissen und Entscheidungen mit Projektbindung, Chatquellen, Versionen, Archiv und Löschen. Passender Kontext ist pro Antwort nachvollziehbar und abschaltbar: [Bedienung und Einrichtung](docs/OMNI-GEDAECHTNIS.md).

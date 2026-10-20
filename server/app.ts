@@ -23,6 +23,7 @@ import { accountMapRoute } from './routes/account-map'
 import { accountSecurityRoute } from './routes/account-security'
 import { githubRoute } from './routes/github'
 import { deploymentsRoute } from './routes/deployments'
+import { omniMemoryRoute } from './routes/omni-memory'
 import { omniActionsRoute } from './routes/omni-actions'
 import { chatRoute } from './routes/chat'
 
@@ -114,6 +115,7 @@ export function createApp() {
   app.route('/briefing', briefingRoute)
   app.route('/chat', chatRoute)
   app.route('/omni-actions', omniActionsRoute)
+  app.route('/omni-memory', omniMemoryRoute)
 
   return app
 }

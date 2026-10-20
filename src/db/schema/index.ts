@@ -21,3 +21,4 @@ export * from './account-map'
 export * from './briefing'
 
 export * from './omni-actions'
+export * from './omni-memory'

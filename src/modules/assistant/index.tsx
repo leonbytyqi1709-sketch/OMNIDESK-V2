@@ -1,6 +1,10 @@
+import { useAuth } from '@clerk/clerk-react'
+import { useLocation, useSearchParams } from 'react-router'
+import { useProjects } from '@/modules/projects/api'
 import { useEffect, useRef, useState } from 'react'
 import {
   Bot,
+  Brain,
   ChevronDown,
   CornerDownLeft,
   Gauge,
@@ -25,6 +29,7 @@ import {
 } from './api'
 import type { ChatUsage } from './api'
 import { ChatMessageItem } from './components/ChatMessageItem'
+import { OmniMemory, type MemoryDraft } from './components/OmniMemory'
 import { OmniActions } from './components/OmniActions'
 import { ChatSidebar } from './components/ChatSidebar'
 
@@ -36,6 +41,23 @@ const STARTER_PROMPTS = [
 ]
 
 export default function AssistantPage() {
+  const { userId } = useAuth()
+  return userId ? <AssistantWorkspace key={userId} userId={userId} /> : null
+}
+
+function AssistantWorkspace({ userId }: { userId: string }) {
+  const [params, setParams] = useSearchParams(),
+    location = useLocation()
+  const requestedSession = params.get('session'),
+    lastSource = useRef('')
+  const [memoryOpen, setMemoryOpen] = useState(false),
+    [memoryDraft, setMemoryDraft] = useState<MemoryDraft | null>(null),
+    [selectedMemory, setSelectedMemory] = useState<string | null>(null)
+  const [memoryEnabled, setMemoryEnabled] = useState(
+    () => localStorage.getItem(`omnidesk:chat-memory:${userId}`) !== 'off',
+  )
+  const [projectScopes, setProjectScopes] = useState<Record<string, string>>({})
+  const projects = useProjects()
   const { data: sessions = [], isLoading: sessionsLoading } = useChatSessions()
   const createSessionMutation = useCreateSession()
 
@@ -67,6 +89,37 @@ export default function AssistantPage() {
   const { data: messages = [], isLoading: messagesLoading } =
     useChatMessages(activeSessionId)
   const sendMutation = useSendMessage()
+  const projectScope = projectScopes[activeSessionId ?? 'new'] ?? ''
+  useEffect(() => {
+    if (sessionsLoading || !requestedSession) return
+    const signature = location.key + requestedSession
+    if (lastSource.current === signature) return
+    lastSource.current = signature
+    if (sessions.some((session) => session.id === requestedSession)) {
+      setActiveSessionId(requestedSession)
+      isPinnedRef.current = false
+    } else toast.error('Die Chatquelle ist nicht mehr verfügbar.')
+  }, [requestedSession, sessions, sessionsLoading, location.key])
+  useEffect(() => {
+    if (
+      messagesLoading ||
+      requestedSession !== activeSessionId ||
+      !/^#chat-message-[0-9a-f-]{36}$/i.test(location.hash)
+    )
+      return
+    const frame = requestAnimationFrame(() =>
+      document
+        .getElementById(location.hash.slice(1))
+        ?.scrollIntoView({ block: 'center' }),
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [
+    messagesLoading,
+    messages,
+    requestedSession,
+    activeSessionId,
+    location.hash,
+  ])
 
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
@@ -107,6 +160,7 @@ export default function AssistantPage() {
     try {
       const newSession = await createSessionMutation.mutateAsync()
       markPinned()
+      setParams({})
       setActiveSessionId(newSession.id)
       setMobileSidebarOpen(false)
     } catch {
@@ -140,6 +194,11 @@ export default function AssistantPage() {
         const newSession = await createSessionMutation.mutateAsync()
         currentId = newSession.id
         setActiveSessionId(currentId)
+        if (projectScope)
+          setProjectScopes((current) => ({
+            ...current,
+            [currentId!]: projectScope,
+          }))
       } catch {
         toast.error('Fehler beim Starten des Chats')
         return
@@ -154,7 +213,12 @@ export default function AssistantPage() {
       const result = await sendMutation.mutateAsync({
         sessionId: currentId,
         content: textToSend.trim(),
+        memory: { enabled: memoryEnabled, projectId: projectScope || null },
       })
+      if (result.memoryReceiptSaved === false)
+        toast.warning(
+          'Antwort gespeichert, aber der Gedächtnisnachweis konnte nicht dauerhaft gesichert werden.',
+        )
       setUsage(result.usage ?? null)
       setIsContextOpen(true)
       markPinned()
@@ -207,6 +271,7 @@ export default function AssistantPage() {
             currentSessionId={activeSessionId}
             onSelectSession={(id) => {
               markPinned()
+              setParams({})
               setActiveSessionId(id)
             }}
             onNewChat={handleNewChat}
@@ -223,6 +288,7 @@ export default function AssistantPage() {
               currentSessionId={activeSessionId}
               onSelectSession={(id) => {
                 markPinned()
+                setParams({})
                 setActiveSessionId(id)
                 setMobileSidebarOpen(false)
               }}
@@ -230,10 +296,7 @@ export default function AssistantPage() {
               onCloseMobile={() => setMobileSidebarOpen(false)}
             />
           </div>
-          <div
-            className="flex-1"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
+          <div className="flex-1" onClick={() => setMobileSidebarOpen(false)} />
         </div>
       )}
 
@@ -247,7 +310,9 @@ export default function AssistantPage() {
               size="icon"
               className="hidden md:inline-flex text-zinc-400 hover:text-zinc-100"
               onClick={toggleSidebar}
-              title={sidebarCollapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden'}
+              title={
+                sidebarCollapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden'
+              }
             >
               <PanelLeftClose className="h-5 w-5" />
             </Button>
@@ -274,7 +339,22 @@ export default function AssistantPage() {
               </p>
             </div>
           </div>
-          <OmniActions />
+          <div className="flex shrink-0 gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setMemoryDraft(null)
+                setSelectedMemory(null)
+                setMemoryOpen(true)
+              }}
+            >
+              <Brain className="mr-1.5 size-4" />
+              <span className="hidden sm:inline">Gedächtnis</span>
+              <span className="sm:hidden">Wissen</span>
+            </Button>
+            <OmniActions />
+          </div>
         </div>
 
         {/* Nachrichtenliste */}
@@ -284,73 +364,90 @@ export default function AssistantPage() {
             onScroll={handleChatScroll}
             className="h-full px-4 py-4"
           >
-          {sessionsLoading || messagesLoading ? (
-            <div className="flex h-64 items-center justify-center text-xs text-zinc-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
-              Chat wird geladen...
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-accent text-white shadow-md glow-subtle mb-3">
-                <Sparkles className="h-6 w-6" />
+            {sessionsLoading || messagesLoading ? (
+              <div className="flex h-64 items-center justify-center text-xs text-zinc-500">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+                Chat wird geladen...
               </div>
-              <h3 className="text-base font-semibold text-zinc-200">
-                Hi, ich bin Omni 👋 Wie kann ich dich heute unterstützen?
-              </h3>
-              <p className="mt-1 text-xs text-zinc-500 max-w-sm">
-                Frage nach Fachbegriffen, Skripten (PowerShell, Bash, SQL),
-                Netzwerk-Konfigurationen oder Vorbereitungsthemen.
-              </p>
-
-              {/* Starter-Prompts */}
-              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 max-w-lg w-full text-left">
-                {STARTER_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => handleSend(prompt)}
-                    className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-850 hover:text-zinc-100 hover:border-zinc-700 text-left"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />
-                    <span>{prompt}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {messages.map((m) => (
-                <ChatMessageItem key={m.id} message={m} />
-              ))}
-              {sendMutation.isPending && (
-                <div className="flex items-center gap-2 py-3 text-xs text-zinc-500">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-accent text-white shadow-sm glow-subtle animate-pulse">
-                    <Bot className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="flex items-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    KI generiert Antwort…
-                  </span>
+            ) : messages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center py-12 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-accent text-white shadow-md glow-subtle mb-3">
+                  <Sparkles className="h-6 w-6" />
                 </div>
-              )}
-            </div>
-          )}
-        </ScrollArea>
+                <h3 className="text-base font-semibold text-zinc-200">
+                  Hi, ich bin Omni 👋 Wie kann ich dich heute unterstützen?
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500 max-w-sm">
+                  Frage nach Fachbegriffen, Skripten (PowerShell, Bash, SQL),
+                  Netzwerk-Konfigurationen oder Vorbereitungsthemen.
+                </p>
 
-        {/* „Nach unten"-Button, sobald man nach oben gescrollt ist */}
-        {!isPinnedToBottom && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              markPinned()
-              scrollToBottom()
-            }}
-            className="absolute bottom-3 left-1/2 z-10 h-7 -translate-x-1/2 rounded-full border border-zinc-800 bg-zinc-900/90 text-[11px] text-zinc-300 shadow-md hover:bg-zinc-800"
-          >
-            <ChevronDown className="mr-1 h-3.5 w-3.5" />
-            Nach unten
-          </Button>
-        )}
+                {/* Starter-Prompts */}
+                <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 max-w-lg w-full text-left">
+                  {STARTER_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => handleSend(prompt)}
+                      className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-850 hover:text-zinc-100 hover:border-zinc-700 text-left"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />
+                      <span>{prompt}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {messages.map((m) => (
+                  <ChatMessageItem
+                    key={m.id}
+                    message={m}
+                    isSource={
+                      requestedSession === activeSessionId &&
+                      location.hash === `#chat-message-${m.id}`
+                    }
+                    onRemember={(message) => {
+                      setMemoryDraft({ message, key: crypto.randomUUID() })
+                      setSelectedMemory(null)
+                      setMemoryOpen(true)
+                    }}
+                    onShowMemory={(id) => {
+                      setMemoryDraft(null)
+                      setSelectedMemory(id)
+                      setMemoryOpen(true)
+                    }}
+                  />
+                ))}
+                {sendMutation.isPending && (
+                  <div className="flex items-center gap-2 py-3 text-xs text-zinc-500">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-accent text-white shadow-sm glow-subtle animate-pulse">
+                      <Bot className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                      KI generiert Antwort…
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* „Nach unten"-Button, sobald man nach oben gescrollt ist */}
+          {!isPinnedToBottom && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                markPinned()
+                scrollToBottom()
+              }}
+              className="absolute bottom-3 left-1/2 z-10 h-7 -translate-x-1/2 rounded-full border border-zinc-800 bg-zinc-900/90 text-[11px] text-zinc-300 shadow-md hover:bg-zinc-800"
+            >
+              <ChevronDown className="mr-1 h-3.5 w-3.5" />
+              Nach unten
+            </Button>
+          )}
         </div>
 
         {/* /context – Token-Nutzung & Kontingent */}
@@ -409,6 +506,49 @@ export default function AssistantPage() {
           </div>
         )}
 
+        <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/80 px-3 py-2 text-xs text-zinc-400">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={memoryEnabled}
+              onChange={(e) => {
+                setMemoryEnabled(e.target.checked)
+                localStorage.setItem(
+                  `omnidesk:chat-memory:${userId}`,
+                  e.target.checked ? 'on' : 'off',
+                )
+              }}
+            />
+            Gedächtnis für neue Antworten nutzen
+          </label>
+          <label className="flex min-w-0 items-center gap-2">
+            <span>Projektkontext</span>
+            <select
+              aria-label="Projektkontext für Gedächtnis"
+              className="max-w-48 rounded-md border border-zinc-800 bg-zinc-900 p-1.5"
+              value={projectScope}
+              disabled={!memoryEnabled || sendMutation.isPending}
+              onChange={(e) =>
+                setProjectScopes((current) => ({
+                  ...current,
+                  [activeSessionId ?? 'new']: e.target.value,
+                }))
+              }
+            >
+              <option value="">Nur persönliche Erinnerungen</option>
+              {projects.data?.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {projects.error && (
+            <span className="text-amber-400">
+              Projektliste nicht verfügbar.
+            </span>
+          )}
+        </div>
         {/* Input Bar */}
         <div className="border-t border-zinc-800/80 p-3 bg-zinc-900/40">
           <div className="relative flex items-end rounded-xl border border-zinc-800 bg-zinc-900/80 p-2 shadow-sm focus-within:border-zinc-700">
@@ -436,6 +576,13 @@ export default function AssistantPage() {
           </div>
         </div>
       </div>
+      <OmniMemory
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        draft={memoryDraft}
+        selectedId={selectedMemory}
+        onSelect={setSelectedMemory}
+      />
     </div>
   )
 }

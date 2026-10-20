@@ -1,3 +1,5 @@
+import { useAuth } from '@clerk/clerk-react'
+import type { ChatMemoryReceipt } from '@/types/omni-memory'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 
@@ -15,6 +17,7 @@ export interface ChatMessageDto {
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: string
+  memory?: ChatMemoryReceipt | null
 }
 export interface ChatUsageRatelimit {
   remainingRequests: number | null
@@ -34,15 +37,17 @@ export interface SendMessageResult {
   userMessage: ChatMessageDto
   assistantMessage: ChatMessageDto
   usage?: ChatUsage | null
+  memoryReceiptSaved?: boolean
 }
-
 
 const CHAT_SESSIONS_KEY = ['chat-sessions'] as const
 
 export function useChatSessions() {
+  const { userId } = useAuth()
   const apiFetch = useApiFetch()
   return useQuery({
-    queryKey: CHAT_SESSIONS_KEY,
+    queryKey: [...CHAT_SESSIONS_KEY, userId],
+    enabled: Boolean(userId),
     queryFn: () => apiFetch<ChatSessionDto[]>('/api/chat/sessions'),
   })
 }
@@ -92,14 +97,15 @@ export function useDeleteSession() {
 }
 
 export function useChatMessages(sessionId: string | null) {
+  const { userId } = useAuth()
   const apiFetch = useApiFetch()
   return useQuery({
-    queryKey: ['chat-messages', sessionId],
+    queryKey: ['chat-messages', userId, sessionId],
     queryFn: () =>
       sessionId
         ? apiFetch<ChatMessageDto[]>(`/api/chat/sessions/${sessionId}/messages`)
         : Promise.resolve([]),
-    enabled: !!sessionId,
+    enabled: Boolean(sessionId && userId),
   })
 }
 
@@ -110,17 +116,22 @@ export function useSendMessage() {
     // sessionId wird bei jedem Aufruf mitgegeben (nicht beim Hook-Setup!),
     // damit die erste Nachricht eines frisch angelegten Chats nicht an eine
     // veraltete/leere Session-URL geschickt wird (früherer "Zweimal-senden"-Bug).
-    mutationFn: ({ sessionId, content }: { sessionId: string; content: string }) =>
-      apiFetch<SendMessageResult>(
-        `/api/chat/sessions/${sessionId}/messages`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ content }),
-        },
-      ),
-    onSuccess: (_data, variables) => {
+    mutationFn: ({
+      sessionId,
+      content,
+      memory,
+    }: {
+      sessionId: string
+      content: string
+      memory?: { enabled: boolean; projectId: string | null }
+    }) =>
+      apiFetch<SendMessageResult>(`/api/chat/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content, memory }),
+      }),
+    onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['chat-messages', variables.sessionId],
+        queryKey: ['chat-messages'],
       })
       queryClient.invalidateQueries({ queryKey: CHAT_SESSIONS_KEY })
     },
