@@ -112,3 +112,7 @@ Kontenkarte: [Einrichtung, Pfeilrichtung und Abhängigkeiten](docs/KONTENKARTE.m
 ## Omni-Startbriefing in V2
 
 Persönlicher Arbeitsstand beim App-Start mit Aufgaben, Projekten, Terminen, gespeicherten Monitorwarnungen und optionaler Kontosicherheit. Quellenlinks, Zeitzone, Besuchsvergleich und begrenzte KI-Empfehlungen: [Einrichtung und Funktionsumfang](docs/OMNI-BRIEFING.md).
+
+## Omni-Aktionen in V2
+
+Omni schlägt interne Aufgabenänderungen, Termine und Projektnotizen mit genauer Vorschau vor und führt sie nach Bestätigung gemeinsam aus. Mit Verlauf, Ergebnislinks und Schutz gegen doppelte Ausführung: [Bedienung und Einrichtung](docs/OMNI-AKTIONEN.md).

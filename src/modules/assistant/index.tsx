@@ -25,6 +25,7 @@ import {
 } from './api'
 import type { ChatUsage } from './api'
 import { ChatMessageItem } from './components/ChatMessageItem'
+import { OmniActions } from './components/OmniActions'
 import { ChatSidebar } from './components/ChatSidebar'
 
 const STARTER_PROMPTS = [
@@ -273,6 +274,7 @@ export default function AssistantPage() {
               </p>
             </div>
           </div>
+          <OmniActions />
         </div>
 
         {/* Nachrichtenliste */}
