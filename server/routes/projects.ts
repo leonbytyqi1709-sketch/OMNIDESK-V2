@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, getTableColumns, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../../src/db/client'
@@ -10,6 +10,13 @@ import {
   projectTasks,
   projects,
 } from '../../src/db/schema/index'
+
+import { initializeWorkingHistory } from '../history-storage'
+import { historyFingerprint } from '../history-policy'
+const taskFields = {
+  ...getTableColumns(projectTasks),
+  fingerprint: sql<string>`md5(to_jsonb(${projectTasks})::text)`,
+}
 
 const projectInput = z.object({
   name: z.string().trim().min(1, 'Name fehlt').max(300),
@@ -32,6 +39,11 @@ const milestoneInput = z.object({
 })
 
 export const projectsRoute = new Hono()
+projectsRoute.use('*', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await initializeWorkingHistory()
+  await next()
+})
 
 projectsRoute.get('/', async (c) => {
   const rows = await db
@@ -54,9 +66,11 @@ projectsRoute.get('/:id', async (c) => {
 
   const [tasks, projectMilestones] = await Promise.all([
     db
-      .select()
+      .select(taskFields)
       .from(projectTasks)
-      .where(and(eq(projectTasks.projectId, id), eq(projectTasks.userId, userId)))
+      .where(
+        and(eq(projectTasks.projectId, id), eq(projectTasks.userId, userId)),
+      )
       .orderBy(asc(projectTasks.createdAt)),
     db
       .select()
@@ -88,7 +102,10 @@ projectsRoute.put('/:id', async (c) => {
     .update(projects)
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(
-      and(eq(projects.id, c.req.param('id')), eq(projects.userId, c.get('userId'))),
+      and(
+        eq(projects.id, c.req.param('id')),
+        eq(projects.userId, c.get('userId')),
+      ),
     )
     .returning()
   if (!row) return c.json({ error: 'Projekt nicht gefunden' }, 404)
@@ -99,7 +116,10 @@ projectsRoute.delete('/:id', async (c) => {
   const [row] = await db
     .delete(projects)
     .where(
-      and(eq(projects.id, c.req.param('id')), eq(projects.userId, c.get('userId'))),
+      and(
+        eq(projects.id, c.req.param('id')),
+        eq(projects.userId, c.get('userId')),
+      ),
     )
     .returning({ id: projects.id })
   if (!row) return c.json({ error: 'Projekt nicht gefunden' }, 404)
@@ -124,26 +144,44 @@ projectsRoute.post('/:id/tasks', async (c) => {
   const [row] = await db
     .insert(projectTasks)
     .values({ ...parsed.data, projectId, userId })
-    .returning()
+    .returning(taskFields)
   return c.json(row, 201)
 })
 
 projectsRoute.put('/tasks/:taskId', async (c) => {
-  const parsed = projectTaskInput.partial().safeParse(await c.req.json())
+  const parsed = projectTaskInput
+    .partial()
+    .extend({ expectedFingerprint: historyFingerprint })
+    .strict()
+    .safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
     return c.json({ error: z.prettifyError(parsed.error) }, 400)
   }
   const [row] = await db
     .update(projectTasks)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({
+      title: parsed.data.title,
+      status: parsed.data.status,
+      priority: parsed.data.priority,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(projectTasks.id, c.req.param('taskId')),
         eq(projectTasks.userId, c.get('userId')),
+        sql`md5(to_jsonb(${projectTasks})::text)=${parsed.data.expectedFingerprint}`,
+        sql`EXISTS(SELECT 1 FROM projects p WHERE p.id=${projectTasks.projectId} AND p.user_id=${projectTasks.userId})`,
       ),
     )
-    .returning()
-  if (!row) return c.json({ error: 'Aufgabe nicht gefunden' }, 404)
+    .returning(taskFields)
+  if (!row)
+    return c.json(
+      {
+        error:
+          'Aufgabe inzwischen geändert oder nicht mehr verfügbar. Bitte neu laden.',
+      },
+      409,
+    )
   return c.json(row)
 })
 

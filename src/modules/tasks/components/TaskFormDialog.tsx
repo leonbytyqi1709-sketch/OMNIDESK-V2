@@ -30,6 +30,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from '../api'
+import { HistoryLink } from '@/modules/working-history/HistoryLink'
 import { PRIORITY_META, STATUS_META, STATUS_ORDER } from '../constants'
 
 interface TaskFormDialogProps {
@@ -133,7 +134,7 @@ export function TaskFormDialog({
     }
     try {
       if (editTask) {
-        await updateTask.mutateAsync({ id: editTask.id, ...input })
+        await updateTask.mutateAsync({ id: editTask.id, expectedFingerprint: editTask.fingerprint, ...input })
         toast.success('Aufgabe aktualisiert')
       } else {
         await createTask.mutateAsync(input)
@@ -156,6 +157,7 @@ export function TaskFormDialog({
             Mit Priorität, Status, Fälligkeit, Tags und Unteraufgaben.
           </DialogDescription>
         </DialogHeader>
+        {editTask && <HistoryLink kind="task" id={editTask.id} />}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="task-title">Titel</Label>

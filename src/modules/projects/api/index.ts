@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/clerk-react'
+import { toast } from 'sonner'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 import type {
@@ -21,6 +22,7 @@ export interface ProjectDto {
 }
 
 export interface ProjectTaskDto {
+  fingerprint: string
   id: string
   projectId: string
   title: string
@@ -68,8 +70,10 @@ export function useProjects() {
 
 export function useProjectDetail(id: string) {
   const apiFetch = useApiFetch()
+  const { userId } = useAuth()
   return useQuery({
-    queryKey: detailKey(id),
+    queryKey: [...detailKey(id), userId],
+    enabled: Boolean(userId),
     queryFn: () => apiFetch<ProjectDetail>(`/api/projects/${id}`),
   })
 }
@@ -145,12 +149,24 @@ export function useUpdateProjectTask(projectId: string) {
   const apiFetch = useApiFetch()
   const invalidate = useInvalidateProjects(projectId)
   return useMutation({
-    mutationFn: ({ id, ...input }: Partial<ProjectTaskInput> & { id: string }) =>
+    mutationFn: ({
+      id,
+      ...input
+    }: Partial<ProjectTaskInput> & {
+      id: string
+      expectedFingerprint: string
+    }) =>
       apiFetch<ProjectTaskDto>(`/api/projects/tasks/${id}`, {
         method: 'PUT',
         body: JSON.stringify(input),
       }),
     onSuccess: invalidate,
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Projektaufgabe konnte nicht geändert werden.',
+      ),
   })
 }
 
@@ -161,6 +177,12 @@ export function useDeleteProjectTask(projectId: string) {
     mutationFn: (id: string) =>
       apiFetch<{ ok: true }>(`/api/projects/tasks/${id}`, { method: 'DELETE' }),
     onSuccess: invalidate,
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Projektaufgabe konnte nicht geändert werden.',
+      ),
   })
 }
 

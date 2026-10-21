@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openNoteAttachment, useNoteAttachments } from '../attachments'
 import type { NoteInput } from '../api'
+import { HistoryLink } from '@/modules/working-history/HistoryLink'
 
-export type SaveStatus = 'saved' | 'saving' | 'dirty'
+export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error'
 
 interface NoteEditorProps {
   noteId: string | null
@@ -19,6 +20,8 @@ interface NoteEditorProps {
 }
 
 function StatusIndicator({ status }: { status: SaveStatus }) {
+  if (status === 'error')
+    return <span className="text-xs text-destructive">Nicht gespeichert</span>
   if (status === 'saving') {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -27,9 +30,7 @@ function StatusIndicator({ status }: { status: SaveStatus }) {
     )
   }
   if (status === 'dirty') {
-    return (
-      <span className="text-xs text-muted-foreground">Ungespeichert…</span>
-    )
+    return <span className="text-xs text-muted-foreground">Ungespeichert…</span>
   }
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -38,10 +39,22 @@ function StatusIndicator({ status }: { status: SaveStatus }) {
   )
 }
 
-export function NoteEditor({ noteId, draft, onChange, status, onDelete }: NoteEditorProps) {
+export function NoteEditor({
+  noteId,
+  draft,
+  onChange,
+  status,
+  onDelete,
+}: NoteEditorProps) {
   const [view, setView] = useState<'edit' | 'preview'>('edit')
-  const { attachments, addFiles, remove, isDropping, setIsDropping, formatSize } =
-    useNoteAttachments(noteId)
+  const {
+    attachments,
+    addFiles,
+    remove,
+    isDropping,
+    setIsDropping,
+    formatSize,
+  } = useNoteAttachments(noteId)
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!noteId) return
@@ -94,8 +107,11 @@ export function NoteEditor({ noteId, draft, onChange, status, onDelete }: NoteEd
           <p className="text-sm font-medium">Loslassen zum Anhängen</p>
         </div>
       )}
-      <div className="flex items-center justify-between gap-4 border-b px-4 py-2">
-        <Tabs value={view} onValueChange={(v) => setView(v as 'edit' | 'preview')}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
+        <Tabs
+          value={view}
+          onValueChange={(v) => setView(v as 'edit' | 'preview')}
+        >
           <TabsList className="h-8">
             <TabsTrigger value="edit" className="text-xs">
               Bearbeiten
@@ -106,6 +122,13 @@ export function NoteEditor({ noteId, draft, onChange, status, onDelete }: NoteEd
           </TabsList>
         </Tabs>
         <div className="flex items-center gap-3">
+          {noteId && (
+            <HistoryLink
+              kind="note"
+              id={noteId}
+              disabled={status !== 'saved'}
+            />
+          )}
           <StatusIndicator status={status} />
           <Button
             variant="ghost"
@@ -138,7 +161,9 @@ export function NoteEditor({ noteId, draft, onChange, status, onDelete }: NoteEd
       ) : (
         <div className="prose prose-invert prose-sm max-w-none flex-1 overflow-y-auto px-6 py-2">
           {draft.content.trim() === '' ? (
-            <p className="text-muted-foreground">Nichts zu sehen – die Notiz ist leer.</p>
+            <p className="text-muted-foreground">
+              Nichts zu sehen – die Notiz ist leer.
+            </p>
           ) : (
             <Markdown remarkPlugins={[remarkGfm]}>{draft.content}</Markdown>
           )}
@@ -165,7 +190,9 @@ export function NoteEditor({ noteId, draft, onChange, status, onDelete }: NoteEd
               >
                 {a.name}
               </button>
-              <span className="shrink-0 text-muted-foreground">{formatSize(a.size)}</span>
+              <span className="shrink-0 text-muted-foreground">
+                {formatSize(a.size)}
+              </span>
               <button
                 onClick={() => void remove(a.id)}
                 title="Anhang entfernen"

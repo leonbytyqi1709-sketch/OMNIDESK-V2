@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { consumeQuickAction, consumeQuickActionPayload } from '@/lib/quick-action'
+import {
+  consumeQuickAction,
+  consumeQuickActionPayload,
+} from '@/lib/quick-action'
 import { deleteAllNoteAttachments } from './attachments'
 import { NoteEditor, type SaveStatus } from './components/NoteEditor'
 import { NoteList } from './components/NoteList'
@@ -13,151 +19,223 @@ import {
   type NoteInput,
 } from './api'
 
-const AUTOSAVE_DELAY_MS = 800
-const FALLBACK_TITLE = 'Unbenannte Notiz'
-
-export default function NotesPage() {
-  const { data: notes, isLoading, error } = useNotes()
-  const createNote = useCreateNote()
-  const updateNote = useUpdateNote()
-  const deleteNote = useDeleteNote()
-
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<NoteInput | null>(null)
-  const [dirty, setDirty] = useState(false)
-
-  // Anstoß aus der Command-Palette: Diese Notiz öffnen, sobald die Liste da ist
-  const pendingOpenRef = useRef<string | null>(null)
-
-  // Merkt sich die aktuellen Werte für den Save-Flush beim Notizwechsel
-  const flushRef = useRef<{ id: string; draft: NoteInput } | null>(null)
-  flushRef.current = selectedId && draft ? { id: selectedId, draft } : null
-
-  const save = (id: string, input: NoteInput) => {
-    updateNote.mutate(
-      {
-        id,
-        title: input.title.trim() === '' ? FALLBACK_TITLE : input.title.trim(),
-        content: input.content,
-      },
-      {
-        onError: (err) =>
-          toast.error(
-            err instanceof Error ? err.message : 'Speichern fehlgeschlagen',
-          ),
-      },
-    )
-  }
-
-  // Erste Notiz automatisch auswählen, sobald die Liste da ist
+function Notes() {
+  const [params] = useSearchParams()
+  const query = useNotes(),
+    { data: notes, isLoading, error } = query
+  const createNote = useCreateNote(),
+    updateNote = useUpdateNote(),
+    deleteNote = useDeleteNote()
+  const { mutateAsync: updateNoteAsync } = updateNote
+  const { mutateAsync: createNoteAsync } = createNote
+  const [selectedId, setSelectedId] = useState<string | null>(null),
+    [draft, setDraft] = useState<NoteInput | null>(null),
+    [dirty, setDirty] = useState(false),
+    [saving, setSaving] = useState(false),
+    [saveError, setSaveError] = useState(''),
+    [switching, setSwitching] = useState(false)
+  const pendingCount = useRef(0)
+  const bases = useRef(new Map<string, string>()),
+    queue = useRef(Promise.resolve()),
+    blocked = useRef(false),
+    pendingOpen = useRef<string | null>(null),
+    latest = useRef({ selectedId, draft, dirty })
+  latest.current = { selectedId, draft, dirty }
+  const save = useCallback(
+    async (id: string, input: NoteInput) => {
+      pendingCount.current++
+      setSaving(true)
+      const work = queue.current.then(async () => {
+        try {
+          if (blocked.current)
+            throw new Error(
+              'Zuerst den Speicherkonflikt lösen. Dein Entwurf bleibt im Editor.',
+            )
+          const expectedFingerprint = bases.current.get(id)
+          if (!expectedFingerprint)
+            throw new Error('Notizstand fehlt. Bitte neu laden.')
+          const note = await updateNoteAsync({
+            id,
+            title: input.title.trim() || 'Unbenannte Notiz',
+            content: input.content,
+            expectedFingerprint,
+          })
+          bases.current.set(id, note.fingerprint)
+          setSaveError('')
+        } catch (e) {
+          blocked.current = true
+          setSaveError((e as Error).message)
+          throw e
+        } finally {
+          pendingCount.current--
+          setSaving(pendingCount.current > 0)
+        }
+      })
+      queue.current = work.catch(() => {})
+      return work
+    },
+    [updateNoteAsync],
+  )
+  const select = useCallback(
+    (id: string) => {
+      const note = notes?.find((n) => n.id === id)
+      if (!note) return
+      bases.current.set(id, note.fingerprint)
+      setSelectedId(id)
+      setDraft({ title: note.title, content: note.content })
+      setDirty(false)
+      setSaveError('')
+      blocked.current = false
+    },
+    [notes],
+  )
   useEffect(() => {
-    if (!selectedId && notes && notes.length > 0) {
-      setSelectedId(notes[0].id)
-    }
-  }, [notes, selectedId])
-
-  // Beim Wechsel der Auswahl den Entwurf aus der Notiz laden
+    if (!selectedId && notes?.length) select(notes[0].id)
+  }, [notes, selectedId, select])
   useEffect(() => {
-    const note = notes?.find((n) => n.id === selectedId)
-    setDraft(note ? { title: note.title, content: note.content } : null)
-    setDirty(false)
-    // Bewusst nur an selectedId gekoppelt: Refetches (z.B. nach dem Speichern)
-    // dürfen den Entwurf nicht überschreiben, während getippt wird.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId])
-
-  // Autosave mit Debounce
-  useEffect(() => {
-    if (!dirty || !draft || !selectedId) return
+    if (!dirty || !draft || !selectedId || switching || blocked.current) return
     const timer = setTimeout(() => {
-      save(selectedId, draft)
       setDirty(false)
-    }, AUTOSAVE_DELAY_MS)
+      void save(selectedId, draft).catch(() => {})
+    }, 800)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, dirty, selectedId])
-
-  const handleChange = (next: NoteInput) => {
-    setDraft(next)
-    setDirty(true)
-  }
-
-  /** Ungespeicherte Änderungen sofort sichern (vor Wechsel/Anlage). */
-  const flushPending = () => {
-    if (dirty && flushRef.current) {
-      save(flushRef.current.id, flushRef.current.draft)
+  }, [draft, dirty, selectedId, switching, save])
+  // The next save uses the preceding successful fingerprint. Refetches never
+  // silently replace a local draft or advance its editing base.
+  const flush = useCallback(async () => {
+    const value = latest.current
+    if (value.dirty && value.draft && value.selectedId) {
       setDirty(false)
-    }
-  }
-
-  const handleSelect = (id: string) => {
-    if (id === selectedId) return
-    flushPending()
-    setSelectedId(id)
-  }
-
-  const openCreate = () => {
-    flushPending()
-    void createNote.mutateAsync()
-      .then((note) => setSelectedId(note.id))
-      .catch((err) =>
-        toast.error(err instanceof Error ? err.message : 'Anlegen fehlgeschlagen'),
+      await save(value.selectedId, value.draft)
+    } else await queue.current
+    if (blocked.current)
+      throw new Error(
+        'Dein Entwurf ist noch nicht gespeichert. Bitte zuerst den Konflikt lösen.',
       )
-  }
-
-  // Schnellaktion aus der Command-Palette: sofort neue Notiz anlegen
-  useEffect(() => {
-    pendingOpenRef.current = consumeQuickActionPayload('open-note')
-    if (consumeQuickAction('create-note')) openCreate()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Angestoßene "open-note"-Aktion ausführen, sobald die Notizliste geladen ist
-  useEffect(() => {
-    const wanted = pendingOpenRef.current
-    if (wanted && notes?.some((n) => n.id === wanted)) {
-      setSelectedId(wanted)
-      pendingOpenRef.current = null
-    }
-  }, [notes])
-
-  const handleCreate = openCreate
-
-  const handleDelete = async () => {
-    if (!selectedId) return
-    const title = draft?.title || FALLBACK_TITLE
+  }, [save])
+  async function changeSelection(id: string) {
+    if (id === selectedId || switching) return
+    setSwitching(true)
     try {
-      await deleteNote.mutateAsync(selectedId)
-      // Anhänge der gelöschten Notiz aus IndexedDB aufräumen
-      void deleteAllNoteAttachments(selectedId)
-      setDirty(false)
-      const remaining = (notes ?? []).filter((n) => n.id !== selectedId)
-      setSelectedId(remaining[0]?.id ?? null)
-      toast.success(`„${title}" gelöscht`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Löschen fehlgeschlagen')
+      await flush()
+      select(id)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSwitching(false)
     }
   }
-
-  const status: SaveStatus = dirty
-    ? 'dirty'
-    : updateNote.isPending
-      ? 'saving'
-      : 'saved'
-
-  if (error) {
+  const create = useCallback(async () => {
+    if (switching) return
+    setSwitching(true)
+    try {
+      await flush()
+      const note = await createNoteAsync()
+      bases.current.set(note.id, note.fingerprint)
+      setSelectedId(note.id)
+      setDraft({ title: note.title, content: note.content })
+      setDirty(false)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSwitching(false)
+    }
+  }, [switching, flush, createNoteAsync])
+  async function remove() {
+    if (
+      !selectedId ||
+      switching ||
+      !window.confirm(
+        'Notiz und ihren gespeicherten Verlauf endgültig löschen?',
+      )
+    )
+      return
+    setSwitching(true)
+    try {
+      await queue.current
+      await deleteNote.mutateAsync(selectedId)
+      void deleteAllNoteAttachments(selectedId)
+      setSelectedId(null)
+      setDraft(null)
+      setDirty(false)
+      setSaveError('')
+      blocked.current = false
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSwitching(false)
+    }
+  }
+  async function reload() {
+    if (
+      !selectedId ||
+      !window.confirm(
+        'Aktuellen Serverstand laden? Kopiere deinen Entwurf vorher, wenn du ihn behalten möchtest. Er wird durch den Serverstand ersetzt.',
+      )
+    )
+      return
+    setSwitching(true)
+    try {
+      await queue.current
+      const result = await query.refetch()
+      if (result.error) throw result.error
+      const note = result.data?.find((n) => n.id === selectedId)
+      if (!note)
+        throw new Error(
+          'Notiz nicht mehr verfügbar. Dein Entwurf bleibt hier sichtbar.',
+        )
+      bases.current.set(note.id, note.fingerprint)
+      setDraft({ title: note.title, content: note.content })
+      setDirty(false)
+      setSaveError('')
+      blocked.current = false
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSwitching(false)
+    }
+  }
+  const quickHandled = useRef(false)
+  useEffect(() => {
+    if (quickHandled.current) return
+    quickHandled.current = true
+    pendingOpen.current =
+      params.get('note') || consumeQuickActionPayload('open-note')
+    if (consumeQuickAction('create-note')) void create()
+  }, [create, params])
+  useEffect(() => {
+    const id = pendingOpen.current
+    if (id && notes?.some((n) => n.id === id)) {
+      select(id)
+      pendingOpen.current = null
+    }
+  }, [notes, select])
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (latest.current.dirty || pendingCount.current > 0 || blocked.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [saving])
+  const status: SaveStatus = saveError
+    ? 'error'
+    : dirty
+      ? 'dirty'
+      : saving
+        ? 'saving'
+        : 'saved'
+  if (error && !draft)
     return (
-      <div className="p-8">
-        <p className="text-sm text-destructive">
-          Notizen konnten nicht geladen werden: {error.message}
-        </p>
+      <div className="p-6 text-destructive">
+        Notizen konnten nicht geladen werden: {error.message}
       </div>
     )
-  }
-
   return (
-    <div className="flex h-screen">
-      <aside className="w-72 shrink-0 border-r">
+    <div className="flex min-h-[75vh] min-w-0 flex-col md:h-screen md:flex-row">
+      <aside className="max-h-48 shrink-0 overflow-y-auto border-b md:max-h-none md:w-72 md:border-r md:border-b-0">
         {isLoading ? (
           <div className="space-y-2 p-3">
             {Array.from({ length: 5 }, (_, i) => (
@@ -168,21 +246,47 @@ export default function NotesPage() {
           <NoteList
             notes={notes ?? []}
             selectedId={selectedId}
-            onSelect={handleSelect}
-            onCreate={handleCreate}
-            isCreating={createNote.isPending}
+            onSelect={(id) => void changeSelection(id)}
+            onCreate={() => void create()}
+            isCreating={switching || createNote.isPending}
           />
         )}
       </aside>
-      <section className="min-w-0 flex-1">
+      <section className="min-h-[60vh] min-w-0 flex-1">
+        {saveError && (
+          <div
+            role="alert"
+            className="space-y-2 border-b border-destructive/30 p-3 text-sm"
+          >
+            <p>
+              {saveError} Dein Entwurf bleibt im Editor. Er wird nicht
+              automatisch überschrieben.
+            </p>
+            <Button
+              variant="outline"
+              disabled={switching}
+              onClick={() => void reload()}
+            >
+              Aktuellen Stand laden
+            </Button>
+          </div>
+        )}
         <NoteEditor
           noteId={selectedId}
           draft={draft}
-          onChange={handleChange}
+          onChange={(next) => {
+            if (switching) return
+            setDraft(next)
+            setDirty(true)
+          }}
           status={status}
-          onDelete={handleDelete}
+          onDelete={() => void remove()}
         />
       </section>
     </div>
   )
+}
+export default function NotesPage() {
+  const { userId } = useAuth()
+  return userId ? <Notes key={userId} /> : null
 }

@@ -12,6 +12,7 @@ import {
   type ProjectTaskDto,
   type ProjectTaskStatus,
 } from '../api'
+import { HistoryLink } from '@/modules/working-history/HistoryLink'
 import { BOARD_COLUMNS, PRIORITY_META } from '../constants'
 
 function BoardCard({
@@ -27,7 +28,7 @@ function BoardCard({
 
   const move = (direction: -1 | 1) => {
     const next = BOARD_COLUMNS[columnIndex + direction]
-    if (next) updateTask.mutate({ id: task.id, status: next.status })
+    if (next) updateTask.mutate({ id: task.id, status: next.status, expectedFingerprint: task.fingerprint })
   }
 
   return (
@@ -57,11 +58,12 @@ function BoardCard({
         </p>
       </div>
       <div className="flex items-center justify-between">
+        <HistoryLink kind="project_task" id={task.id} compact />
         <Button
           variant="ghost"
           size="icon"
           className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={() => deleteTask.mutate(task.id)}
+          onClick={() => { if(window.confirm(`„${task.title}“ mit Verlauf endgültig löschen?`)) deleteTask.mutate(task.id) }}
           aria-label="Aufgabe löschen"
         >
           <Trash2 className="size-3.5" />
@@ -151,7 +153,7 @@ export function ProjectBoard({ projectId, tasks }: ProjectBoardProps) {
     const id = e.dataTransfer.getData('text/plain')
     const task = tasks.find((t) => t.id === id)
     if (task && task.status !== status) {
-      updateTask.mutate({ id, status })
+      updateTask.mutate({ id, status, expectedFingerprint: task.fingerprint })
     }
   }
 

@@ -93,12 +93,12 @@ export function GeneralTab() {
       }
       for (const n of (parsed.notes ?? []) as Record<string, unknown>[]) {
         // Notizen: erst anlegen, dann Inhalt setzen (POST vergibt Defaults)
-        const created = await apiFetch<{ id: string }>('/api/notes', {
+        const created = await apiFetch<{ id: string; fingerprint: string }>('/api/notes', {
           method: 'POST',
         })
         await apiFetch(`/api/notes/${created.id}`, {
           method: 'PUT',
-          body: JSON.stringify({ title: n.title, content: n.content }),
+          body: JSON.stringify({ title: n.title, content: n.content, expectedFingerprint: created.fingerprint }),
         })
         imported++
       }

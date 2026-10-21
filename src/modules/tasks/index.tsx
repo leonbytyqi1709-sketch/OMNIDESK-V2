@@ -61,7 +61,7 @@ export default function TasksPage() {
 
   const setStatus = (task: TaskDto, status: TaskDto['status']) => {
     updateTask.mutate(
-      { id: task.id, status },
+      { id: task.id, status, expectedFingerprint: task.fingerprint },
       {
         onError: (err) =>
           toast.error(
@@ -81,6 +81,7 @@ export default function TasksPage() {
   }
 
   const handleDelete = async (task: TaskDto) => {
+    if (!window.confirm(`„${task.title}“ mit dem gespeicherten Verlauf endgültig löschen?`)) return
     try {
       await deleteTask.mutateAsync(task.id)
       toast.success(`„${task.title}“ gelöscht`)

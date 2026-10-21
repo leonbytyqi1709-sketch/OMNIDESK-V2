@@ -30,6 +30,8 @@ import { chatRoute } from './routes/chat'
 import { missionRoute } from './routes/mission-control'
 import { browserWebRoute, browserExtensionRoute } from './routes/browser-desk'
 import { sharedRoomsRoute } from './routes/shared-rooms'
+import { workingHistoryRoute } from './routes/working-history'
+import { missionRecordsRoute } from './routes/mission-records'
 
 /**
  * Gemeinsame App-Factory für beide Laufzeiten:
@@ -111,6 +113,8 @@ export function createApp() {
   app.route('/mission-control', missionRoute)
   app.route('/browser', browserWebRoute)
   app.route('/shared-rooms', sharedRoomsRoute)
+  app.route('/working-history', workingHistoryRoute)
+  app.route('/mission-records', missionRecordsRoute)
   app.route('/vault', vaultRoute)
   app.route('/booking', bookingRoute)
   app.route('/integrations', integrationsRoute)

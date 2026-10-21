@@ -9,6 +9,7 @@ export type { Subtask, TaskPriority, TaskStatus }
 
 /** Aufgabe, wie sie die API liefert (Timestamps als ISO-Strings). */
 export interface TaskDto {
+  fingerprint: string
   id: string
   title: string
   description: string
@@ -66,7 +67,7 @@ export function useUpdateTask() {
   const apiFetch = useApiFetch()
   const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: ({ id, ...input }: Partial<TaskInput> & { id: string }) =>
+    mutationFn: ({ id, ...input }: Partial<TaskInput> & { id: string; expectedFingerprint: string }) =>
       apiFetch<TaskDto>(`/api/tasks/${id}`, {
         method: 'PUT',
         body: JSON.stringify(input),

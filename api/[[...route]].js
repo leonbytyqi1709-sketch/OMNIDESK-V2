@@ -915,6 +915,96 @@ var init_shared_rooms = __esm({
   }
 });
 
+// src/db/schema/working-history.ts
+import {
+  boolean as boolean7,
+  index as index20,
+  integer as integer12,
+  jsonb as jsonb12,
+  pgTable as pgTable24,
+  primaryKey as primaryKey4,
+  text as text24,
+  timestamp as timestamp24,
+  unique as unique4,
+  uuid as uuid23
+} from "drizzle-orm/pg-core";
+var missionRecords, historySettings, historyHeads, workingHistory;
+var init_working_history = __esm({
+  "src/db/schema/working-history.ts"() {
+    init_projects();
+    missionRecords = pgTable24(
+      "v2_mission_records",
+      {
+        id: uuid23("id").primaryKey(),
+        userId: text24("user_id").notNull(),
+        creationHash: text24("creation_hash").notNull(),
+        title: text24("title").notNull(),
+        projectId: uuid23("project_id").references(() => projects.id, {
+          onDelete: "set null"
+        }),
+        state: text24("state").notNull(),
+        context: text24("context").notNull(),
+        decisions: text24("decisions").notNull(),
+        outcome: text24("outcome").notNull(),
+        questions: text24("questions").notNull(),
+        nextSteps: text24("next_steps").notNull(),
+        sources: jsonb12("sources").notNull(),
+        version: integer12("version").notNull().default(1),
+        createdAt: timestamp24("created_at", { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp24("updated_at", { withTimezone: true }).notNull().defaultNow(),
+        archivedAt: timestamp24("archived_at", { withTimezone: true })
+      },
+      (t) => [
+        index20("v2_mission_records_owner").on(t.userId, t.state, t.updatedAt.desc())
+      ]
+    );
+    historySettings = pgTable24("v2_history_settings", {
+      userId: text24("user_id").primaryKey(),
+      enabled: boolean7("enabled").notNull().default(true),
+      retentionDays: integer12("retention_days").notNull().default(90),
+      maxVersions: integer12("max_versions").notNull().default(50)
+    });
+    historyHeads = pgTable24(
+      "v2_history_heads",
+      {
+        userId: text24("user_id").notNull(),
+        kind: text24("kind").notNull(),
+        objectId: uuid23("object_id").notNull(),
+        revision: integer12("revision").notNull()
+      },
+      (t) => [primaryKey4({ columns: [t.userId, t.kind, t.objectId] })]
+    );
+    workingHistory = pgTable24(
+      "v2_working_history",
+      {
+        id: uuid23("id").primaryKey().defaultRandom(),
+        userId: text24("user_id").notNull(),
+        kind: text24("kind").notNull(),
+        objectId: uuid23("object_id").notNull(),
+        revision: integer12("revision").notNull(),
+        snapshot: jsonb12("snapshot").notNull(),
+        operation: text24("operation").notNull(),
+        source: text24("source").notNull(),
+        capturedAt: timestamp24("captured_at", { withTimezone: true }).notNull().defaultNow()
+      },
+      (t) => [
+        unique4("v2_working_history_user_id_kind_object_id_revision_key").on(
+          t.userId,
+          t.kind,
+          t.objectId,
+          t.revision
+        ),
+        index20("v2_working_history_lookup").on(
+          t.userId,
+          t.kind,
+          t.objectId,
+          t.capturedAt.desc()
+        )
+      ]
+    );
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -942,9 +1032,12 @@ __export(schema_exports, {
   connectedAccounts: () => connectedAccounts,
   contacts: () => contacts,
   githubProjectLinks: () => githubProjectLinks,
+  historyHeads: () => historyHeads,
+  historySettings: () => historySettings,
   links: () => links,
   milestones: () => milestones,
   missionAiLimits: () => missionAiLimits,
+  missionRecords: () => missionRecords,
   missionSettings: () => missionSettings,
   missionVisits: () => missionVisits,
   neonMonitoringAlerts: () => neonMonitoringAlerts,
@@ -968,7 +1061,8 @@ __export(schema_exports, {
   uptimeChecks: () => uptimeChecks,
   uptimeMonitors: () => uptimeMonitors,
   vaultEntries: () => vaultEntries,
-  vaults: () => vaults
+  vaults: () => vaults,
+  workingHistory: () => workingHistory
 });
 var init_schema = __esm({
   "src/db/schema/index.ts"() {
@@ -995,6 +1089,7 @@ var init_schema = __esm({
     init_mission_control();
     init_browser_desk();
     init_shared_rooms();
+    init_working_history();
   }
 });
 
@@ -1023,6 +1118,279 @@ var init_client = __esm({
         return Reflect.get(getDb(), prop, receiver);
       }
     });
+  }
+});
+
+// server/neon-policy.ts
+import { z as z2 } from "zod";
+function evaluateNeonAlerts(settings2, snapshot, failures, sql10) {
+  const over = (value, limit, divisor = 1) => limit === null ? false : value == null ? null : value / divisor >= limit;
+  const conditions = [
+    { code: "api_failures", active: failures >= settings2.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings2.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
+    { code: "storage", active: over(snapshot?.consumption?.projectStorageBytes, settings2.storageLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Projektspeicher-Grenzwert wurde erreicht." },
+    { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings2.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
+    { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings2.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
+    { code: "compute_disabled", active: snapshot?.endpoints == null ? null : snapshot.endpoints.some((endpoint) => endpoint.disabled), severity: "warning", message: "Ein zugeordneter Compute-Endpunkt ist deaktiviert." },
+    { code: "sql_failure", active: !settings2.sqlEnabled ? false : sql10 == null ? null : sql10.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
+    { code: "sql_latency", active: !settings2.sqlEnabled ? false : sql10?.status !== "up" ? null : over(sql10.latencyMs, settings2.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
+  ];
+  return conditions;
+}
+function schedulerInterval() {
+  const value = Number(process.env.NEON_SCHEDULER_INTERVAL_MINUTES ?? 1440);
+  return Number.isInteger(value) && value >= 5 && value <= 1440 ? value : 1440;
+}
+var threshold, neonSettingsSchema, defaultNeonSettings;
+var init_neon_policy = __esm({
+  "server/neon-policy.ts"() {
+    threshold = z2.number().finite().positive().max(1e9).nullable();
+    neonSettingsSchema = z2.object({
+      enabled: z2.boolean(),
+      intervalMinutes: z2.union([z2.literal(5), z2.literal(15), z2.literal(60)]),
+      retentionDays: z2.union([z2.literal(7), z2.literal(30), z2.literal(90)]),
+      storageLimitGiB: threshold,
+      computeLimitHours: threshold,
+      transferLimitGiB: threshold,
+      failureThreshold: z2.number().int().min(1).max(10),
+      sqlEnabled: z2.boolean(),
+      sqlIntervalMinutes: z2.union([z2.literal(15), z2.literal(60), z2.literal(240)]),
+      sqlLatencyLimitMs: threshold,
+      monitorIds: z2.array(z2.uuid()).max(3)
+    }).strict().refine((value) => !value.sqlEnabled || value.sqlIntervalMinutes >= value.intervalMinutes, "SQL-Intervall muss mindestens dem Neon-Pr\xFCfintervall entsprechen").refine((value) => new Set(value.monitorIds).size === value.monitorIds.length, "Doppelte Monitorzuordnung");
+    defaultNeonSettings = {
+      enabled: true,
+      intervalMinutes: 15,
+      retentionDays: 30,
+      storageLimitGiB: null,
+      computeLimitHours: null,
+      transferLimitGiB: null,
+      failureThreshold: 2,
+      sqlEnabled: false,
+      sqlIntervalMinutes: 60,
+      sqlLatencyLimitMs: null,
+      monitorIds: []
+    };
+  }
+});
+
+// server/neon-sql.ts
+import { neon as neon2 } from "@neondatabase/serverless";
+import { z as z3 } from "zod";
+function targetUrl(link) {
+  const targets = targetSchema.parse(JSON.parse(process.env.NEON_SQL_TARGETS || "[]"));
+  const matches = targets.filter((target) => target.neonProjectId === link.neonProjectId && target.branchId === link.branchId);
+  if (matches.length !== 1) throw new Error("SQL target missing or ambiguous");
+  const raw = process.env[matches[0].env];
+  if (!raw) throw new Error("SQL secret missing");
+  const url2 = new URL(raw);
+  if (!["postgres:", "postgresql:"].includes(url2.protocol) || !url2.hostname.endsWith(".neon.tech") || !url2.username || !url2.password || !["require", "verify-full"].includes(url2.searchParams.get("sslmode") ?? "")) throw new Error("SQL target invalid");
+  return { raw, url: url2 };
+}
+function isNeonSqlConfigured(link) {
+  try {
+    targetUrl(link);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function checkNeonSql(link, snapshot) {
+  const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    const { raw, url: url2 } = targetUrl(link);
+    const hostname = url2.hostname.split(".")[0];
+    if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
+    const sql10 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
+    const started = performance.now();
+    const [rows] = await sql10.transaction([sql10`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
+    if (rows[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
+    return { checkedAt, status: "up", latencyMs: Math.round(performance.now() - started), message: null };
+  } catch {
+    return {
+      checkedAt,
+      status: isNeonSqlConfigured(link) ? "down" : "unavailable",
+      latencyMs: null,
+      message: "SQL-Pr\xFCfung nicht erfolgreich. Serverseitige Zielzuordnung, Branch und Leseberechtigungen pr\xFCfen."
+    };
+  }
+}
+var targetSchema;
+var init_neon_sql = __esm({
+  "server/neon-sql.ts"() {
+    targetSchema = z3.array(z3.object({ neonProjectId: z3.string(), branchId: z3.string(), env: z3.string().regex(/^NEON_SQL_[A-Z0-9_]+_URL$/) })).max(100);
+  }
+});
+
+// server/neon-storage.ts
+import { neon as neon3 } from "@neondatabase/serverless";
+import { randomUUID } from "node:crypto";
+function monitoringSql() {
+  if (!process.env.DATABASE_URL) throw new Error("Monitoring-Speicher: DATABASE_URL fehlt.");
+  return neon3(process.env.DATABASE_URL, { fetchOptions: { signal: AbortSignal.timeout(15e3) } });
+}
+async function initializeNeonStorage() {
+  const sql10 = monitoringSql();
+  const [existing] = await sql10`SELECT to_regclass('v2_neon_config') IS NOT NULL AND to_regclass('v2_neon_samples') IS NOT NULL
+    AND to_regclass('v2_neon_alerts') IS NOT NULL AND to_regclass('v2_neon_samples_unique') IS NOT NULL
+    AND to_regclass('v2_neon_alerts_open') IS NOT NULL AS ready`;
+  if (existing?.ready === true) return;
+  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730019)`, ...neonDdl.map((statement) => sql10.query(statement))]);
+}
+function missingNeonStorage(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "42P01";
+}
+async function loadNeonConfig(link) {
+  const sql10 = monitoringSql();
+  const [config] = await sql10`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
+  return config ?? null;
+}
+async function saveNeonSettings(link, settings2) {
+  const sql10 = monitoringSql();
+  const [config] = await sql10`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
+    VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings2)}::jsonb)
+    ON CONFLICT (project_id) DO UPDATE SET user_id=EXCLUDED.user_id, resource_key=EXCLUDED.resource_key,
+      settings=EXCLUDED.settings, updated_at=now(), lease_token=NULL, lease_until=NULL,
+      last_attempt_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_attempt_at END,
+      last_success_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_success_at END,
+      last_snapshot=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_snapshot END,
+      last_sql=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_sql END,
+      last_scheduler_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_scheduler_at END,
+      failures=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.failures ELSE 0 END
+    RETURNING *`;
+  return config;
+}
+async function claimNeonCheck(link, source2) {
+  const sql10 = monitoringSql();
+  const token = randomUUID();
+  const [config] = await sql10`UPDATE v2_neon_config SET lease_token=${token}, lease_until=now()+interval '90 seconds'
+    WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}
+      AND (lease_until IS NULL OR lease_until<now())
+      AND (${source2}='manual' OR (settings->>'enabled')::boolean)
+      AND (last_attempt_at IS NULL OR last_attempt_at<now()-
+        (CASE WHEN ${source2}='manual' THEN 60 ELSE (settings->>'intervalMinutes')::int*60 END)*interval '1 second')
+    RETURNING *`;
+  return config ? { config, token } : null;
+}
+async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, source2, checkedAt) {
+  const sql10 = monitoringSql();
+  const complete = Boolean(snapshot && !snapshot.unavailable.length);
+  const key = resourceKey(link);
+  const guard = sql10`SELECT 1 FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`;
+  const statements = [
+    // Lock the lease row for the full transaction so settings changes cannot race a completed sample.
+    sql10`SELECT project_id FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND lease_token=${token} FOR UPDATE`,
+    sql10`INSERT INTO v2_neon_samples (project_id,user_id,resource_key,checked_at,bucket,source,snapshot,sql_check,complete)
+      SELECT ${link.projectId},${link.userId},${key},${checkedAt}::timestamptz,date_trunc('minute',${checkedAt}::timestamptz),${source2},
+      ${snapshot ? JSON.stringify(snapshot) : null}::jsonb,${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,${complete}
+      WHERE EXISTS (${guard}) ON CONFLICT (project_id,user_id,resource_key,bucket) DO NOTHING`,
+    ...conditions.filter((condition) => condition.active !== null).map((condition) => condition.active ? sql10`INSERT INTO v2_neon_alerts (project_id,user_id,resource_key,code,message,severity)
+          SELECT ${link.projectId},${link.userId},${key},${condition.code},${condition.message},${condition.severity} WHERE EXISTS (${guard})
+          ON CONFLICT (project_id,user_id,resource_key,code) WHERE resolved_at IS NULL DO NOTHING` : sql10`UPDATE v2_neon_alerts SET resolved_at=now() WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+          AND code=${condition.code} AND resolved_at IS NULL AND EXISTS (${guard})`),
+    sql10`DELETE FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId}
+      AND checked_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
+    sql10`DELETE FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resolved_at IS NOT NULL
+      AND resolved_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
+    sql10`UPDATE v2_neon_config SET last_attempt_at=${checkedAt}::timestamptz,
+      last_success_at=CASE WHEN ${complete} THEN ${checkedAt}::timestamptz ELSE last_success_at END,
+      last_scheduler_at=CASE WHEN ${source2}='scheduler' THEN now() ELSE last_scheduler_at END,
+      last_snapshot=COALESCE(${snapshot ? JSON.stringify(snapshot) : null}::jsonb,last_snapshot),
+      last_sql=COALESCE(${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,last_sql), failures=CASE WHEN ${complete} THEN 0 ELSE failures+1 END,
+      lease_token=NULL, lease_until=NULL WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`
+  ];
+  await sql10.transaction(statements);
+}
+async function monitoringMonitors(link, settings2) {
+  const sql10 = monitoringSql();
+  const rows = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
+    LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
+    WHERE m.user_id=${link.userId} ORDER BY m.name LIMIT 500`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    active: Boolean(row.active),
+    linked: settings2.monitorIds.includes(String(row.id)),
+    status: row.status,
+    responseTimeMs: row.response_time_ms,
+    checkedAt: row.checked_at
+  }));
+}
+async function readNeonMonitoring(link, days) {
+  const sql10 = monitoringSql();
+  let config = null;
+  let setupRequired = false;
+  try {
+    config = await loadNeonConfig(link);
+  } catch (error) {
+    if (!missingNeonStorage(error)) throw error;
+    setupRequired = true;
+  }
+  const settings2 = config?.settings ?? defaultNeonSettings;
+  const monitors = await monitoringMonitors(link, settings2);
+  const base = {
+    setupRequired: setupRequired || !config,
+    settings: settings2,
+    lastAttemptAt: config?.last_attempt_at ?? null,
+    lastSuccessAt: config?.last_success_at ?? null,
+    lastSchedulerAt: config?.last_scheduler_at ?? null,
+    snapshot: config?.last_snapshot ?? null,
+    lastSql: config?.last_sql ?? null,
+    schedulerIntervalMinutes: schedulerInterval(),
+    sqlConfigured: isNeonSqlConfigured(link),
+    monitors,
+    historyDays: days
+  };
+  if (!config) return { ...base, history: [], alerts: [] };
+  const key = resourceKey(link);
+  const bucketSeconds = days === 1 ? 300 : days === 7 ? 3600 : days === 30 ? 21600 : 86400;
+  const [history, alerts] = await Promise.all([
+    sql10`SELECT to_timestamp(floor(extract(epoch FROM checked_at)/${bucketSeconds})*${bucketSeconds}) AS at, snapshot->'consumption'->>'periodStart' AS "periodStart",
+      avg((snapshot->'consumption'->>'projectStorageBytes')::double precision)/1073741824 AS "storageGiB",
+      avg((snapshot->'branch'->>'logicalSizeBytes')::double precision)/1073741824 AS "branchGiB",
+      max((snapshot->'consumption'->>'computeCuSeconds')::double precision)/3600 AS "computeHours",
+      max((snapshot->'consumption'->>'transferBytes')::double precision)/1073741824 AS "transferGiB",
+      avg((sql_check->>'latencyMs')::double precision) AS "sqlLatencyMs", count(*)::int AS samples,
+      count(*) FILTER (WHERE NOT complete)::int AS failures
+      FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+      AND checked_at>=now()-${days}*interval '1 day' GROUP BY 1,2 ORDER BY 1 LIMIT 800`,
+    sql10`SELECT id,code,message,severity,started_at AS "startedAt",resolved_at AS "resolvedAt",acknowledged_at AS "acknowledgedAt"
+      FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
+      ORDER BY (resolved_at IS NULL) DESC,started_at DESC LIMIT 100`
+  ]);
+  return { ...base, history, alerts };
+}
+async function acknowledgeNeonAlert(link, id) {
+  const sql10 = monitoringSql();
+  const rows = await sql10`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
+    WHERE id=${id} AND project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)} RETURNING id`;
+  return rows.length > 0;
+}
+var resourceKey, neonDdl;
+var init_neon_storage = __esm({
+  "server/neon-storage.ts"() {
+    init_neon_policy();
+    init_neon_sql();
+    resourceKey = (link) => `${link.neonProjectId}:${link.branchId}`;
+    neonDdl = [
+      `CREATE TABLE IF NOT EXISTS v2_neon_config (
+    project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, settings jsonb NOT NULL,
+    last_attempt_at timestamptz, last_success_at timestamptz, last_scheduler_at timestamptz,
+    last_snapshot jsonb, last_sql jsonb, failures integer NOT NULL DEFAULT 0,
+    lease_token uuid, lease_until timestamptz, updated_at timestamptz NOT NULL DEFAULT now())`,
+      `CREATE TABLE IF NOT EXISTS v2_neon_samples (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, checked_at timestamptz NOT NULL, bucket timestamptz NOT NULL,
+    source text NOT NULL CHECK (source IN ('manual','scheduler')), snapshot jsonb, sql_check jsonb,
+    complete boolean NOT NULL)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_samples_unique ON v2_neon_samples(project_id, user_id, resource_key, bucket)`,
+      `CREATE INDEX IF NOT EXISTS v2_neon_samples_lookup ON v2_neon_samples(project_id, user_id, resource_key, checked_at)`,
+      `CREATE TABLE IF NOT EXISTS v2_neon_alerts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id text NOT NULL, resource_key text NOT NULL, code text NOT NULL, message text NOT NULL,
+    severity text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, acknowledged_at timestamptz)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_alerts_open ON v2_neon_alerts(project_id, user_id, resource_key, code) WHERE resolved_at IS NULL`
+    ];
   }
 });
 
@@ -1209,7 +1577,7 @@ var init_uptime_check = __esm({
 });
 
 // server/neon-monitor.ts
-import { z as z14 } from "zod";
+import { z as z17 } from "zod";
 function readNeonLinks() {
   const value = process.env.NEON_MONITOR_LINKS;
   if (!value?.trim()) return [];
@@ -1219,7 +1587,7 @@ function readNeonLinks() {
   } catch {
     throw new NeonConfigurationError("NEON_MONITOR_LINKS enth\xE4lt ung\xFCltiges JSON. In Vercel die vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zus\xE4tzliche \xE4u\xDFere Anf\xFChrungszeichen eintragen und neu deployen.");
   }
-  const result = z14.array(neonLinkSchema).max(100).safeParse(parsed);
+  const result = z17.array(neonLinkSchema).max(100).safeParse(parsed);
   if (!result.success) {
     const path = result.error.issues[0]?.path;
     const field = path?.length ? path.join(".") : "Liste";
@@ -1289,16 +1657,16 @@ async function fetchNeonSnapshot(link) {
       periodStart: project2.consumption_period_start ?? null,
       periodEnd: project2.consumption_period_end ?? null
     } : null,
-    unavailable: results.flatMap((result, index20) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index20]] : [])
+    unavailable: results.flatMap((result, index21) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index21]] : [])
   };
 }
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
 var init_neon_monitor = __esm({
   "server/neon-monitor.ts"() {
-    neonId = z14.string().regex(/^[a-z0-9-]{1,60}$/);
-    neonLinkSchema = z14.object({
-      userId: z14.string().min(1),
-      projectId: z14.uuid(),
+    neonId = z17.string().regex(/^[a-z0-9-]{1,60}$/);
+    neonLinkSchema = z17.object({
+      userId: z17.string().min(1),
+      projectId: z17.uuid(),
       neonProjectId: neonId,
       branchId: neonId
     });
@@ -1308,311 +1676,38 @@ var init_neon_monitor = __esm({
         this.name = "NeonConfigurationError";
       }
     };
-    metric = z14.number().finite().nonnegative().optional().nullable();
-    projectSchema = z14.object({ project: z14.object({
-      id: z14.string(),
-      name: z14.string(),
-      region_id: z14.string().optional(),
-      pg_version: z14.number().optional(),
+    metric = z17.number().finite().nonnegative().optional().nullable();
+    projectSchema = z17.object({ project: z17.object({
+      id: z17.string(),
+      name: z17.string(),
+      region_id: z17.string().optional(),
+      pg_version: z17.number().optional(),
       synthetic_storage_size: metric,
       compute_time_seconds: metric,
       active_time_seconds: metric,
       data_transfer_bytes: metric,
-      consumption_period_start: z14.string().optional(),
-      consumption_period_end: z14.string().optional()
+      consumption_period_start: z17.string().optional(),
+      consumption_period_end: z17.string().optional()
     }) });
-    branchSchema = z14.object({ branch: z14.object({
-      id: z14.string(),
-      project_id: z14.string(),
-      name: z14.string(),
-      current_state: z14.string(),
+    branchSchema = z17.object({ branch: z17.object({
+      id: z17.string(),
+      project_id: z17.string(),
+      name: z17.string(),
+      current_state: z17.string(),
       logical_size: metric
     }) });
-    endpointSchema = z14.object({ endpoints: z14.array(z14.object({
-      id: z14.string(),
-      branch_id: z14.string(),
-      project_id: z14.string(),
-      current_state: z14.string(),
-      pending_state: z14.string().optional(),
-      type: z14.string(),
-      disabled: z14.boolean(),
-      last_active: z14.string().optional(),
+    endpointSchema = z17.object({ endpoints: z17.array(z17.object({
+      id: z17.string(),
+      branch_id: z17.string(),
+      project_id: z17.string(),
+      current_state: z17.string(),
+      pending_state: z17.string().optional(),
+      type: z17.string(),
+      disabled: z17.boolean(),
+      last_active: z17.string().optional(),
       autoscaling_limit_min_cu: metric,
       autoscaling_limit_max_cu: metric
     })) });
-  }
-});
-
-// server/neon-policy.ts
-import { z as z15 } from "zod";
-function evaluateNeonAlerts(settings2, snapshot, failures, sql7) {
-  const over = (value, limit, divisor = 1) => limit === null ? false : value == null ? null : value / divisor >= limit;
-  const conditions = [
-    { code: "api_failures", active: failures >= settings2.failureThreshold, severity: "critical", message: `Neon-Daten sind seit mindestens ${settings2.failureThreshold} Pr\xFCfungen unvollst\xE4ndig oder nicht abrufbar.` },
-    { code: "storage", active: over(snapshot?.consumption?.projectStorageBytes, settings2.storageLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Projektspeicher-Grenzwert wurde erreicht." },
-    { code: "compute", active: over(snapshot?.consumption?.computeCuSeconds, settings2.computeLimitHours, 3600), severity: "warning", message: "Der konfigurierte Compute-Verbrauch wurde erreicht (CU-h im Neon-Verbrauchszeitraum)." },
-    { code: "transfer", active: over(snapshot?.consumption?.transferBytes, settings2.transferLimitGiB, 1024 ** 3), severity: "warning", message: "Der konfigurierte Daten\xFCbertragungs-Grenzwert wurde erreicht." },
-    { code: "compute_disabled", active: snapshot?.endpoints == null ? null : snapshot.endpoints.some((endpoint) => endpoint.disabled), severity: "warning", message: "Ein zugeordneter Compute-Endpunkt ist deaktiviert." },
-    { code: "sql_failure", active: !settings2.sqlEnabled ? false : sql7 == null ? null : sql7.status !== "up", severity: "critical", message: "Der SQL-Funktionstest ist fehlgeschlagen oder nicht ausf\xFChrbar." },
-    { code: "sql_latency", active: !settings2.sqlEnabled ? false : sql7?.status !== "up" ? null : over(sql7.latencyMs, settings2.sqlLatencyLimitMs), severity: "warning", message: "Die Laufzeit des SQL-Funktionstests \xFCberschreitet den eingestellten Grenzwert." }
-  ];
-  return conditions;
-}
-function schedulerInterval() {
-  const value = Number(process.env.NEON_SCHEDULER_INTERVAL_MINUTES ?? 1440);
-  return Number.isInteger(value) && value >= 5 && value <= 1440 ? value : 1440;
-}
-var threshold, neonSettingsSchema, defaultNeonSettings;
-var init_neon_policy = __esm({
-  "server/neon-policy.ts"() {
-    threshold = z15.number().finite().positive().max(1e9).nullable();
-    neonSettingsSchema = z15.object({
-      enabled: z15.boolean(),
-      intervalMinutes: z15.union([z15.literal(5), z15.literal(15), z15.literal(60)]),
-      retentionDays: z15.union([z15.literal(7), z15.literal(30), z15.literal(90)]),
-      storageLimitGiB: threshold,
-      computeLimitHours: threshold,
-      transferLimitGiB: threshold,
-      failureThreshold: z15.number().int().min(1).max(10),
-      sqlEnabled: z15.boolean(),
-      sqlIntervalMinutes: z15.union([z15.literal(15), z15.literal(60), z15.literal(240)]),
-      sqlLatencyLimitMs: threshold,
-      monitorIds: z15.array(z15.uuid()).max(3)
-    }).strict().refine((value) => !value.sqlEnabled || value.sqlIntervalMinutes >= value.intervalMinutes, "SQL-Intervall muss mindestens dem Neon-Pr\xFCfintervall entsprechen").refine((value) => new Set(value.monitorIds).size === value.monitorIds.length, "Doppelte Monitorzuordnung");
-    defaultNeonSettings = {
-      enabled: true,
-      intervalMinutes: 15,
-      retentionDays: 30,
-      storageLimitGiB: null,
-      computeLimitHours: null,
-      transferLimitGiB: null,
-      failureThreshold: 2,
-      sqlEnabled: false,
-      sqlIntervalMinutes: 60,
-      sqlLatencyLimitMs: null,
-      monitorIds: []
-    };
-  }
-});
-
-// server/neon-sql.ts
-import { neon as neon2 } from "@neondatabase/serverless";
-import { z as z16 } from "zod";
-function targetUrl(link) {
-  const targets = targetSchema.parse(JSON.parse(process.env.NEON_SQL_TARGETS || "[]"));
-  const matches = targets.filter((target) => target.neonProjectId === link.neonProjectId && target.branchId === link.branchId);
-  if (matches.length !== 1) throw new Error("SQL target missing or ambiguous");
-  const raw = process.env[matches[0].env];
-  if (!raw) throw new Error("SQL secret missing");
-  const url2 = new URL(raw);
-  if (!["postgres:", "postgresql:"].includes(url2.protocol) || !url2.hostname.endsWith(".neon.tech") || !url2.username || !url2.password || !["require", "verify-full"].includes(url2.searchParams.get("sslmode") ?? "")) throw new Error("SQL target invalid");
-  return { raw, url: url2 };
-}
-function isNeonSqlConfigured(link) {
-  try {
-    targetUrl(link);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function checkNeonSql(link, snapshot) {
-  const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
-  try {
-    const { raw, url: url2 } = targetUrl(link);
-    const hostname = url2.hostname.split(".")[0];
-    if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
-    const sql7 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
-    const started = performance.now();
-    const [rows] = await sql7.transaction([sql7`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
-    if (rows[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
-    return { checkedAt, status: "up", latencyMs: Math.round(performance.now() - started), message: null };
-  } catch {
-    return {
-      checkedAt,
-      status: isNeonSqlConfigured(link) ? "down" : "unavailable",
-      latencyMs: null,
-      message: "SQL-Pr\xFCfung nicht erfolgreich. Serverseitige Zielzuordnung, Branch und Leseberechtigungen pr\xFCfen."
-    };
-  }
-}
-var targetSchema;
-var init_neon_sql = __esm({
-  "server/neon-sql.ts"() {
-    targetSchema = z16.array(z16.object({ neonProjectId: z16.string(), branchId: z16.string(), env: z16.string().regex(/^NEON_SQL_[A-Z0-9_]+_URL$/) })).max(100);
-  }
-});
-
-// server/neon-storage.ts
-import { neon as neon3 } from "@neondatabase/serverless";
-import { randomUUID } from "node:crypto";
-function monitoringSql() {
-  if (!process.env.DATABASE_URL) throw new Error("Monitoring-Speicher: DATABASE_URL fehlt.");
-  return neon3(process.env.DATABASE_URL, { fetchOptions: { signal: AbortSignal.timeout(15e3) } });
-}
-async function initializeNeonStorage() {
-  const sql7 = monitoringSql();
-  const [existing] = await sql7`SELECT to_regclass('v2_neon_config') IS NOT NULL AND to_regclass('v2_neon_samples') IS NOT NULL
-    AND to_regclass('v2_neon_alerts') IS NOT NULL AND to_regclass('v2_neon_samples_unique') IS NOT NULL
-    AND to_regclass('v2_neon_alerts_open') IS NOT NULL AS ready`;
-  if (existing?.ready === true) return;
-  await sql7.transaction([sql7`SELECT pg_advisory_xact_lock(184730019)`, ...neonDdl.map((statement) => sql7.query(statement))]);
-}
-function missingNeonStorage(error) {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "42P01";
-}
-async function loadNeonConfig(link) {
-  const sql7 = monitoringSql();
-  const [config] = await sql7`SELECT * FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}`;
-  return config ?? null;
-}
-async function saveNeonSettings(link, settings2) {
-  const sql7 = monitoringSql();
-  const [config] = await sql7`INSERT INTO v2_neon_config (project_id,user_id,resource_key,settings)
-    VALUES (${link.projectId},${link.userId},${resourceKey(link)},${JSON.stringify(settings2)}::jsonb)
-    ON CONFLICT (project_id) DO UPDATE SET user_id=EXCLUDED.user_id, resource_key=EXCLUDED.resource_key,
-      settings=EXCLUDED.settings, updated_at=now(), lease_token=NULL, lease_until=NULL,
-      last_attempt_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_attempt_at END,
-      last_success_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_success_at END,
-      last_snapshot=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_snapshot END,
-      last_sql=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_sql END,
-      last_scheduler_at=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.last_scheduler_at END,
-      failures=CASE WHEN v2_neon_config.resource_key=EXCLUDED.resource_key AND v2_neon_config.user_id=EXCLUDED.user_id THEN v2_neon_config.failures ELSE 0 END
-    RETURNING *`;
-  return config;
-}
-async function claimNeonCheck(link, source2) {
-  const sql7 = monitoringSql();
-  const token = randomUUID();
-  const [config] = await sql7`UPDATE v2_neon_config SET lease_token=${token}, lease_until=now()+interval '90 seconds'
-    WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)}
-      AND (lease_until IS NULL OR lease_until<now())
-      AND (${source2}='manual' OR (settings->>'enabled')::boolean)
-      AND (last_attempt_at IS NULL OR last_attempt_at<now()-
-        (CASE WHEN ${source2}='manual' THEN 60 ELSE (settings->>'intervalMinutes')::int*60 END)*interval '1 second')
-    RETURNING *`;
-  return config ? { config, token } : null;
-}
-async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, source2, checkedAt) {
-  const sql7 = monitoringSql();
-  const complete = Boolean(snapshot && !snapshot.unavailable.length);
-  const key = resourceKey(link);
-  const guard = sql7`SELECT 1 FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`;
-  const statements = [
-    // Lock the lease row for the full transaction so settings changes cannot race a completed sample.
-    sql7`SELECT project_id FROM v2_neon_config WHERE project_id=${link.projectId} AND user_id=${link.userId} AND lease_token=${token} FOR UPDATE`,
-    sql7`INSERT INTO v2_neon_samples (project_id,user_id,resource_key,checked_at,bucket,source,snapshot,sql_check,complete)
-      SELECT ${link.projectId},${link.userId},${key},${checkedAt}::timestamptz,date_trunc('minute',${checkedAt}::timestamptz),${source2},
-      ${snapshot ? JSON.stringify(snapshot) : null}::jsonb,${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,${complete}
-      WHERE EXISTS (${guard}) ON CONFLICT (project_id,user_id,resource_key,bucket) DO NOTHING`,
-    ...conditions.filter((condition) => condition.active !== null).map((condition) => condition.active ? sql7`INSERT INTO v2_neon_alerts (project_id,user_id,resource_key,code,message,severity)
-          SELECT ${link.projectId},${link.userId},${key},${condition.code},${condition.message},${condition.severity} WHERE EXISTS (${guard})
-          ON CONFLICT (project_id,user_id,resource_key,code) WHERE resolved_at IS NULL DO NOTHING` : sql7`UPDATE v2_neon_alerts SET resolved_at=now() WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
-          AND code=${condition.code} AND resolved_at IS NULL AND EXISTS (${guard})`),
-    sql7`DELETE FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId}
-      AND checked_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
-    sql7`DELETE FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resolved_at IS NOT NULL
-      AND resolved_at<now()-(SELECT (settings->>'retentionDays')::int FROM v2_neon_config WHERE project_id=${link.projectId})*interval '1 day' AND EXISTS (${guard})`,
-    sql7`UPDATE v2_neon_config SET last_attempt_at=${checkedAt}::timestamptz,
-      last_success_at=CASE WHEN ${complete} THEN ${checkedAt}::timestamptz ELSE last_success_at END,
-      last_scheduler_at=CASE WHEN ${source2}='scheduler' THEN now() ELSE last_scheduler_at END,
-      last_snapshot=COALESCE(${snapshot ? JSON.stringify(snapshot) : null}::jsonb,last_snapshot),
-      last_sql=COALESCE(${sqlCheck ? JSON.stringify(sqlCheck) : null}::jsonb,last_sql), failures=CASE WHEN ${complete} THEN 0 ELSE failures+1 END,
-      lease_token=NULL, lease_until=NULL WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key} AND lease_token=${token}`
-  ];
-  await sql7.transaction(statements);
-}
-async function monitoringMonitors(link, settings2) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
-    LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
-    WHERE m.user_id=${link.userId} ORDER BY m.name LIMIT 500`;
-  return rows.map((row) => ({
-    id: String(row.id),
-    name: String(row.name),
-    active: Boolean(row.active),
-    linked: settings2.monitorIds.includes(String(row.id)),
-    status: row.status,
-    responseTimeMs: row.response_time_ms,
-    checkedAt: row.checked_at
-  }));
-}
-async function readNeonMonitoring(link, days) {
-  const sql7 = monitoringSql();
-  let config = null;
-  let setupRequired = false;
-  try {
-    config = await loadNeonConfig(link);
-  } catch (error) {
-    if (!missingNeonStorage(error)) throw error;
-    setupRequired = true;
-  }
-  const settings2 = config?.settings ?? defaultNeonSettings;
-  const monitors = await monitoringMonitors(link, settings2);
-  const base = {
-    setupRequired: setupRequired || !config,
-    settings: settings2,
-    lastAttemptAt: config?.last_attempt_at ?? null,
-    lastSuccessAt: config?.last_success_at ?? null,
-    lastSchedulerAt: config?.last_scheduler_at ?? null,
-    snapshot: config?.last_snapshot ?? null,
-    lastSql: config?.last_sql ?? null,
-    schedulerIntervalMinutes: schedulerInterval(),
-    sqlConfigured: isNeonSqlConfigured(link),
-    monitors,
-    historyDays: days
-  };
-  if (!config) return { ...base, history: [], alerts: [] };
-  const key = resourceKey(link);
-  const bucketSeconds = days === 1 ? 300 : days === 7 ? 3600 : days === 30 ? 21600 : 86400;
-  const [history, alerts] = await Promise.all([
-    sql7`SELECT to_timestamp(floor(extract(epoch FROM checked_at)/${bucketSeconds})*${bucketSeconds}) AS at, snapshot->'consumption'->>'periodStart' AS "periodStart",
-      avg((snapshot->'consumption'->>'projectStorageBytes')::double precision)/1073741824 AS "storageGiB",
-      avg((snapshot->'branch'->>'logicalSizeBytes')::double precision)/1073741824 AS "branchGiB",
-      max((snapshot->'consumption'->>'computeCuSeconds')::double precision)/3600 AS "computeHours",
-      max((snapshot->'consumption'->>'transferBytes')::double precision)/1073741824 AS "transferGiB",
-      avg((sql_check->>'latencyMs')::double precision) AS "sqlLatencyMs", count(*)::int AS samples,
-      count(*) FILTER (WHERE NOT complete)::int AS failures
-      FROM v2_neon_samples WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
-      AND checked_at>=now()-${days}*interval '1 day' GROUP BY 1,2 ORDER BY 1 LIMIT 800`,
-    sql7`SELECT id,code,message,severity,started_at AS "startedAt",resolved_at AS "resolvedAt",acknowledged_at AS "acknowledgedAt"
-      FROM v2_neon_alerts WHERE project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${key}
-      ORDER BY (resolved_at IS NULL) DESC,started_at DESC LIMIT 100`
-  ]);
-  return { ...base, history, alerts };
-}
-async function acknowledgeNeonAlert(link, id) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
-    WHERE id=${id} AND project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)} RETURNING id`;
-  return rows.length > 0;
-}
-var resourceKey, neonDdl;
-var init_neon_storage = __esm({
-  "server/neon-storage.ts"() {
-    init_neon_policy();
-    init_neon_sql();
-    resourceKey = (link) => `${link.neonProjectId}:${link.branchId}`;
-    neonDdl = [
-      `CREATE TABLE IF NOT EXISTS v2_neon_config (
-    project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-    user_id text NOT NULL, resource_key text NOT NULL, settings jsonb NOT NULL,
-    last_attempt_at timestamptz, last_success_at timestamptz, last_scheduler_at timestamptz,
-    last_snapshot jsonb, last_sql jsonb, failures integer NOT NULL DEFAULT 0,
-    lease_token uuid, lease_until timestamptz, updated_at timestamptz NOT NULL DEFAULT now())`,
-      `CREATE TABLE IF NOT EXISTS v2_neon_samples (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id text NOT NULL, resource_key text NOT NULL, checked_at timestamptz NOT NULL, bucket timestamptz NOT NULL,
-    source text NOT NULL CHECK (source IN ('manual','scheduler')), snapshot jsonb, sql_check jsonb,
-    complete boolean NOT NULL)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_samples_unique ON v2_neon_samples(project_id, user_id, resource_key, bucket)`,
-      `CREATE INDEX IF NOT EXISTS v2_neon_samples_lookup ON v2_neon_samples(project_id, user_id, resource_key, checked_at)`,
-      `CREATE TABLE IF NOT EXISTS v2_neon_alerts (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id text NOT NULL, resource_key text NOT NULL, code text NOT NULL, message text NOT NULL,
-    severity text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, acknowledged_at timestamptz)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS v2_neon_alerts_open ON v2_neon_alerts(project_id, user_id, resource_key, code) WHERE resolved_at IS NULL`
-    ];
   }
 });
 
@@ -1663,17 +1758,17 @@ function createNeonRunner(dependencies = { ownsProject, claimNeonCheck, fetchNeo
   };
 }
 async function runNeonScheduler(projectId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   const links2 = readNeonLinks();
   const permitted = JSON.stringify(links2);
   let rows;
   try {
-    await sql7`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
+    await sql10`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
       WHERE p.id=c.project_id AND p.user_id=c.user_id AND (c.settings->>'enabled')::boolean
       AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
         AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)`;
-    rows = await sql7`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
+    rows = await sql10`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
       JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
       WHERE (c.settings->>'enabled')::boolean AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
@@ -1690,9 +1785,9 @@ async function runNeonScheduler(projectId) {
     return link ? [link] : [];
   });
   const results = await Promise.allSettled(eligible.map((link) => runNeonCheck(link, "scheduler")));
-  await sql7.transaction([
-    sql7`DELETE FROM v2_neon_samples s USING v2_neon_config c WHERE s.project_id=c.project_id AND s.checked_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`,
-    sql7`DELETE FROM v2_neon_alerts a USING v2_neon_config c WHERE a.project_id=c.project_id AND a.resolved_at IS NOT NULL AND a.resolved_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`
+  await sql10.transaction([
+    sql10`DELETE FROM v2_neon_samples s USING v2_neon_config c WHERE s.project_id=c.project_id AND s.checked_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`,
+    sql10`DELETE FROM v2_neon_alerts a USING v2_neon_config c WHERE a.project_id=c.project_id AND a.resolved_at IS NOT NULL AND a.resolved_at<now()-(c.settings->>'retentionDays')::int*interval '1 day'`
   ]);
   return {
     setupRequired: false,
@@ -1719,8 +1814,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono30 } from "hono";
-import { z as z40 } from "zod";
+import { Hono as Hono32 } from "hono";
+import { z as z44 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -1804,33 +1899,330 @@ linksRoute.delete("/:id", async (c) => {
 // server/routes/notes.ts
 init_client();
 init_schema();
-import { and as and2, desc as desc2, eq as eq2 } from "drizzle-orm";
+import { and as and2, desc as desc2, eq as eq2, getTableColumns, sql as sql7 } from "drizzle-orm";
 import { Hono as Hono2 } from "hono";
-import { z as z2 } from "zod";
-var noteInput = z2.object({
-  title: z2.string().trim().min(1, "Titel fehlt").max(300),
-  content: z2.string().max(1e5)
+import { z as z5 } from "zod";
+
+// server/history-storage.ts
+init_neon_storage();
+
+// server/history-policy.ts
+import { z as z4 } from "zod";
+var historyKind = z4.enum(["note", "task", "project_task"]);
+var historyFingerprint = z4.string().regex(/^[a-f0-9]{32}$/);
+var historyFields = {
+  note: ["title", "content"],
+  task: [
+    "title",
+    "description",
+    "priority",
+    "status",
+    "dueDate",
+    "tags",
+    "subtasks"
+  ],
+  project_task: ["title", "status", "priority"]
+};
+var historyPreferences = z4.object({
+  enabled: z4.boolean(),
+  retentionDays: z4.union([
+    z4.literal(7),
+    z4.literal(30),
+    z4.literal(90),
+    z4.literal(365)
+  ]),
+  maxVersions: z4.union([z4.literal(10), z4.literal(25), z4.literal(50)])
+}).strict();
+var historyRestore = z4.object({
+  versionId: z4.uuid(),
+  expectedFingerprint: historyFingerprint,
+  fields: z4.array(
+    z4.enum([
+      "title",
+      "content",
+      "description",
+      "status",
+      "priority",
+      "dueDate",
+      "tags",
+      "subtasks"
+    ])
+  ).min(1).max(8)
+}).strict();
+var HistoryError = class extends Error {
+  status;
+  constructor(message, status = 409) {
+    super(message);
+    this.status = status;
+  }
+};
+
+// server/history-storage.ts
+var historyDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_history_settings(user_id text PRIMARY KEY,enabled boolean NOT NULL DEFAULT true,retention_days integer NOT NULL DEFAULT 90 CHECK(retention_days IN (7,30,90,365)),max_versions integer NOT NULL DEFAULT 50 CHECK(max_versions IN (10,25,50)))`,
+  `CREATE TABLE IF NOT EXISTS v2_history_heads(user_id text NOT NULL,kind text NOT NULL,object_id uuid NOT NULL,revision integer NOT NULL,PRIMARY KEY(user_id,kind,object_id))`,
+  `CREATE TABLE IF NOT EXISTS v2_working_history(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id text NOT NULL,kind text NOT NULL CHECK(kind IN ('note','task','project_task')),object_id uuid NOT NULL,revision integer NOT NULL,snapshot jsonb NOT NULL,operation text NOT NULL,source text NOT NULL,captured_at timestamptz NOT NULL DEFAULT clock_timestamp(),UNIQUE(user_id,kind,object_id,revision))`,
+  `CREATE INDEX IF NOT EXISTS v2_working_history_lookup ON v2_working_history(user_id,kind,object_id,captured_at DESC)`,
+  `CREATE OR REPLACE FUNCTION public.omnidesk_history_snapshot_v2(k text,r jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $history$
+    SELECT CASE k WHEN 'note' THEN jsonb_build_object('title',r->'title','content',r->'content')
+      WHEN 'task' THEN jsonb_build_object('title',r->'title','description',r->'description','priority',r->'priority','status',r->'status','dueDate',r->'due_date','tags',r->'tags','subtasks',r->'subtasks')
+      WHEN 'project_task' THEN jsonb_build_object('title',r->'title','status',r->'status','priority',r->'priority') END
+    $history$`,
+  `CREATE OR REPLACE FUNCTION public.omnidesk_history_prune_v2(u text) RETURNS void LANGUAGE sql SET search_path=pg_catalog,public AS $history$
+    DELETE FROM public.v2_working_history WHERE id IN (
+      SELECT id FROM (SELECT h.id,h.captured_at,row_number() OVER(PARTITION BY h.kind,h.object_id ORDER BY h.revision DESC) AS n,
+        coalesce(s.retention_days,90) AS days,coalesce(s.max_versions,50) AS cap
+        FROM public.v2_working_history h LEFT JOIN public.v2_history_settings s ON s.user_id=h.user_id WHERE h.user_id=u) q
+      WHERE captured_at<clock_timestamp()-days*interval '1 day' OR n>cap)
+    $history$`,
+  `CREATE OR REPLACE FUNCTION public.omnidesk_history_record_v2(u text,k text,o uuid,s jsonb,op text,src text) RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog,public AS $history$
+    DECLARE n integer;
+    BEGIN
+      INSERT INTO public.v2_history_heads(user_id,kind,object_id,revision) VALUES(u,k,o,1)
+      ON CONFLICT(user_id,kind,object_id) DO UPDATE SET revision=v2_history_heads.revision+1 RETURNING revision INTO n;
+      INSERT INTO public.v2_working_history(user_id,kind,object_id,revision,snapshot,operation,source) VALUES(u,k,o,n,s,op,src);
+    END $history$`,
+  `CREATE OR REPLACE FUNCTION public.omnidesk_history_capture_v2() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $history$
+    DECLARE k text:=TG_ARGV[0];u text;o uuid;before_state jsonb;after_state jsonb;src text;active boolean;days integer;cap integer;
+    BEGIN
+      IF TG_OP='DELETE' THEN
+        PERFORM pg_advisory_xact_lock_shared(hashtextextended('working-history:'||OLD.user_id,0));
+        DELETE FROM public.v2_working_history WHERE user_id=OLD.user_id AND kind=k AND object_id=OLD.id;
+        DELETE FROM public.v2_history_heads WHERE user_id=OLD.user_id AND kind=k AND object_id=OLD.id;
+        RETURN OLD;
+      END IF;
+      u:=NEW.user_id;o:=NEW.id;
+      PERFORM pg_advisory_xact_lock_shared(hashtextextended('working-history:'||u,0));
+      IF TG_OP='UPDATE' AND OLD.user_id IS DISTINCT FROM u THEN
+        DELETE FROM public.v2_working_history WHERE user_id=OLD.user_id AND kind=k AND object_id=o;
+        DELETE FROM public.v2_history_heads WHERE user_id=OLD.user_id AND kind=k AND object_id=o;
+      END IF;
+      SELECT coalesce(s.enabled,true),coalesce(s.retention_days,90),coalesce(s.max_versions,50) INTO active,days,cap FROM (SELECT 1) q LEFT JOIN public.v2_history_settings s ON s.user_id=u;
+      IF NOT active THEN RETURN NEW; END IF;
+      IF k='project_task' THEN
+        IF NOT EXISTS(SELECT 1 FROM public.projects p WHERE p.id=NEW.project_id AND p.user_id=u) THEN RETURN NEW; END IF;
+      END IF;
+      after_state:=public.omnidesk_history_snapshot_v2(k,to_jsonb(NEW));
+      src:=coalesce(nullif(current_setting('omnidesk.history_source',true),''),'module');
+      IF src NOT IN ('module','omni','restore') THEN src:='module'; END IF;
+      IF TG_OP='UPDATE' AND OLD.user_id=u THEN
+        before_state:=public.omnidesk_history_snapshot_v2(k,to_jsonb(OLD));
+        IF before_state=after_state THEN RETURN NEW; END IF;
+        IF NOT EXISTS(SELECT 1 FROM public.v2_history_heads WHERE user_id=u AND kind=k AND object_id=o) THEN
+          PERFORM public.omnidesk_history_record_v2(u,k,o,before_state,'baseline','module');
+        END IF;
+      END IF;
+      PERFORM public.omnidesk_history_record_v2(u,k,o,after_state,CASE WHEN src='restore' THEN 'restored' WHEN TG_OP='INSERT' THEN 'created' ELSE 'updated' END,src);
+      DELETE FROM public.v2_working_history WHERE user_id=u AND kind=k AND object_id=o AND
+        (captured_at<clock_timestamp()-days*interval '1 day' OR id IN(SELECT id FROM public.v2_working_history WHERE user_id=u AND kind=k AND object_id=o ORDER BY revision DESC OFFSET cap));
+      RETURN NEW;
+    END $history$`,
+  ...[
+    ["notes", "note"],
+    ["tasks", "task"],
+    ["project_tasks", "project_task"]
+  ].map(
+    ([table, kind]) => `DO $history$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='v2_history_${table}' AND tgrelid='public.${table}'::regclass) THEN CREATE TRIGGER v2_history_${table} AFTER INSERT OR UPDATE OR DELETE ON public.${table} FOR EACH ROW EXECUTE FUNCTION public.omnidesk_history_capture_v2('${kind}'); END IF; END $history$`
+  )
+];
+async function initializeWorkingHistory() {
+  const sql10 = monitoringSql();
+  const [state2] = await sql10`SELECT to_regclass('public.v2_working_history_lookup') IS NOT NULL AND to_regclass('public.v2_history_settings') IS NOT NULL AND to_regclass('public.v2_history_heads') IS NOT NULL AND (SELECT count(*) FROM pg_trigger WHERE tgname IN ('v2_history_notes','v2_history_tasks','v2_history_project_tasks') AND NOT tgisinternal)=3 AS ready`;
+  if (!state2?.ready)
+    await sql10.transaction([
+      sql10`SELECT pg_advisory_xact_lock(184730024)`,
+      ...historyDdl.map((s) => sql10.query(s))
+    ]);
+}
+async function readHistorySettings(userId) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql();
+  const [, , rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
+    sql10`SELECT public.omnidesk_history_prune_v2(${userId})`,
+    sql10`SELECT enabled,retention_days AS "retentionDays",max_versions AS "maxVersions" FROM v2_history_settings WHERE user_id=${userId}`
+  ]);
+  const [row] = rows;
+  return row ?? {
+    enabled: true,
+    retentionDays: 90,
+    maxVersions: 50
+  };
+}
+async function saveHistorySettings(userId, input) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql();
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
+    sql10`INSERT INTO v2_history_settings(user_id,enabled,retention_days,max_versions) VALUES(${userId},${input.enabled},${input.retentionDays},${input.maxVersions}) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,retention_days=excluded.retention_days,max_versions=excluded.max_versions`,
+    sql10`SELECT public.omnidesk_history_prune_v2(${userId})`
+  ]);
+  return input;
+}
+async function clearWorkingHistory(userId) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql();
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
+    sql10`DELETE FROM v2_working_history WHERE user_id=${userId}`,
+    sql10`DELETE FROM v2_history_heads WHERE user_id=${userId}`
+  ]);
+}
+var currentObjects = `SELECT 'note'::text AS kind,n.id,n.user_id,n.title,NULL::uuid AS project_id FROM notes n
+  UNION ALL SELECT 'task',t.id,t.user_id,t.title,NULL::uuid FROM tasks t
+  UNION ALL SELECT 'project_task',t.id,t.user_id,t.title,t.project_id FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id`;
+async function historyTimeline(userId, kind, search) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql();
+  const rows = await sql10.query(
+    `WITH objects AS (${currentObjects}) SELECT h.id,h.kind,h.object_id AS "objectId",h.snapshot->>'title' AS title,h.revision,h.operation,h.source,h.captured_at AS "capturedAt",o.project_id AS "projectId"
+    FROM v2_working_history h JOIN objects o ON o.id=h.object_id AND o.kind=h.kind AND o.user_id=h.user_id LEFT JOIN v2_history_settings s ON s.user_id=h.user_id
+    WHERE h.user_id=$1 AND ($2::text IS NULL OR h.kind=$2) AND (strpos(lower(h.snapshot->>'title'),lower($3))>0 OR strpos(lower(o.title),lower($3))>0)
+    AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day' ORDER BY h.captured_at DESC,h.id LIMIT 101`,
+    [userId, kind, search]
+  );
+  return {
+    entries: rows.slice(0, 100),
+    limited: rows.length > 100
+  };
+}
+var tables = {
+  note: "notes",
+  task: "tasks",
+  project_task: "project_tasks"
+};
+async function currentObject(userId, kind, id) {
+  const sql10 = monitoringSql(), table = tables[kind];
+  const [row] = await sql10.query(
+    `SELECT md5(to_jsonb(o)::text) AS fingerprint,public.omnidesk_history_snapshot_v2($1,to_jsonb(o)) AS snapshot,${kind === "project_task" ? "o.project_id" : "NULL::uuid"} AS "projectId"
+    FROM ${table} o WHERE o.id=$2 AND o.user_id=$3 ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
+    [kind, id, userId]
+  );
+  if (!row) throw new HistoryError("Eintrag nicht mehr zug\xE4nglich.", 404);
+  return row;
+}
+async function historyDetail(userId, kind, id) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql(), table = tables[kind];
+  const [row] = await sql10.query(
+    `SELECT jsonb_build_object('fingerprint',md5(to_jsonb(o)::text),'snapshot',public.omnidesk_history_snapshot_v2($1,to_jsonb(o)),'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS current,
+    coalesce((SELECT jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'objectId',h.object_id,'title',h.snapshot->>'title','revision',h.revision,'operation',h.operation,'source',h.source,'capturedAt',h.captured_at,'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) ORDER BY h.revision DESC)
+      FROM v2_working_history h LEFT JOIN v2_history_settings s ON s.user_id=h.user_id WHERE h.user_id=$3 AND h.kind=$1 AND h.object_id=$2 AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day'),'[]'::jsonb) AS versions
+    FROM ${table} o WHERE o.id=$2 AND o.user_id=$3 ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
+    [kind, id, userId]
+  );
+  if (!row) throw new HistoryError("Eintrag nicht mehr zug\xE4nglich.", 404);
+  return row;
+}
+async function compareHistory(userId, kind, id, versionId) {
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql(), table = tables[kind];
+  const [row] = await sql10.query(
+    `SELECT jsonb_build_object('fingerprint',md5(to_jsonb(o)::text),'snapshot',public.omnidesk_history_snapshot_v2($1,to_jsonb(o)),'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS current,
+    jsonb_build_object('id',h.id,'kind',h.kind,'objectId',h.object_id,'title',h.snapshot->>'title','revision',h.revision,'operation',h.operation,'source',h.source,'capturedAt',h.captured_at,'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS version,h.snapshot
+    FROM ${table} o JOIN v2_working_history h ON h.object_id=o.id AND h.kind=$1 AND h.user_id=o.user_id LEFT JOIN v2_history_settings s ON s.user_id=h.user_id
+    WHERE o.id=$2 AND o.user_id=$3 AND h.id=$4 AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day'
+    ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
+    [kind, id, userId, versionId]
+  );
+  if (!row)
+    throw new HistoryError(
+      "Version nicht mehr zug\xE4nglich oder bereits entfernt.",
+      404
+    );
+  return row;
+}
+async function restoreHistory(userId, kind, id, versionId, expectedFingerprint, fields) {
+  if (!fields.length || fields.some((f) => !historyFields[kind].includes(f)))
+    throw new HistoryError(
+      "Diese Felder lassen sich hier nicht wiederherstellen.",
+      400
+    );
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql(), table = tables[kind];
+  const columns = {
+    title: "title",
+    content: "content",
+    description: "description",
+    status: "status",
+    priority: "priority",
+    dueDate: "due_date",
+    tags: "tags",
+    subtasks: "subtasks"
+  };
+  const setters = [...new Set(fields)].map(
+    (f) => `${columns[f]}=${f === "tags" || f === "subtasks" ? `NULLIF(h.snapshot->'${f}','null'::jsonb)` : f === "dueDate" ? `(h.snapshot->>'dueDate')::timestamptz` : `h.snapshot->>'${f}'`}`
+  );
+  const [, rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`working-history:${userId}`},0)),set_config('omnidesk.history_source','restore',true)`,
+    sql10.query(
+      `UPDATE ${table} o SET ${setters.join(",")},updated_at=clock_timestamp() FROM v2_working_history h
+      WHERE o.id=$1 AND o.user_id=$2 AND md5(to_jsonb(o)::text)=$3 AND h.id=$4 AND h.user_id=o.user_id AND h.kind=$5 AND h.object_id=o.id
+      AND h.captured_at>=clock_timestamp()-coalesce((SELECT retention_days FROM v2_history_settings WHERE user_id=$2),90)*interval '1 day'
+      AND coalesce((SELECT enabled FROM v2_history_settings WHERE user_id=$2),true)
+      ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""} RETURNING o.id`,
+      [id, userId, expectedFingerprint, versionId, kind]
+    )
+  ]);
+  if (!rows.length)
+    throw new HistoryError(
+      "Eintrag wurde inzwischen ver\xE4ndert, Verlauf pausiert oder Version entfernt. Bitte neu laden; nichts wurde \xFCberschrieben."
+    );
+  return currentObject(userId, kind, id);
+}
+
+// server/routes/notes.ts
+var rowFields = {
+  ...getTableColumns(notes),
+  fingerprint: sql7`md5(to_jsonb(${notes})::text)`
+};
+var noteInput = z5.object({
+  title: z5.string().trim().min(1, "Titel fehlt").max(300),
+  content: z5.string().max(1e5)
 });
 var notesRoute = new Hono2();
+notesRoute.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  await initializeWorkingHistory();
+  await next();
+});
 notesRoute.get("/", async (c) => {
-  const rows = await db.select().from(notes).where(eq2(notes.userId, c.get("userId"))).orderBy(desc2(notes.updatedAt));
+  const rows = await db.select(rowFields).from(notes).where(eq2(notes.userId, c.get("userId"))).orderBy(desc2(notes.updatedAt));
   return c.json(rows);
 });
 notesRoute.post("/", async (c) => {
-  const [row] = await db.insert(notes).values({ userId: c.get("userId") }).returning();
+  const [row] = await db.insert(notes).values({ userId: c.get("userId") }).returning(rowFields);
   return c.json(row, 201);
 });
 notesRoute.put("/:id", async (c) => {
-  const parsed = noteInput.safeParse(await c.req.json());
+  const parsed = noteInput.extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    return c.json({ error: z2.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z5.prettifyError(parsed.error) }, 400);
   }
-  const [row] = await db.update(notes).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(and2(eq2(notes.id, c.req.param("id")), eq2(notes.userId, c.get("userId")))).returning();
-  if (!row) return c.json({ error: "Notiz nicht gefunden" }, 404);
+  const [row] = await db.update(notes).set({
+    title: parsed.data.title,
+    content: parsed.data.content,
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(
+    and2(
+      eq2(notes.id, c.req.param("id")),
+      eq2(notes.userId, c.get("userId")),
+      sql7`md5(to_jsonb(${notes})::text)=${parsed.data.expectedFingerprint}`
+    )
+  ).returning(rowFields);
+  if (!row)
+    return c.json(
+      {
+        error: "Notiz inzwischen ge\xE4ndert oder nicht mehr verf\xFCgbar. Bitte neu laden"
+      },
+      409
+    );
   return c.json(row);
 });
 notesRoute.delete("/:id", async (c) => {
-  const [row] = await db.delete(notes).where(and2(eq2(notes.id, c.req.param("id")), eq2(notes.userId, c.get("userId")))).returning({ id: notes.id });
+  const [row] = await db.delete(notes).where(
+    and2(eq2(notes.id, c.req.param("id")), eq2(notes.userId, c.get("userId")))
+  ).returning({ id: notes.id });
   if (!row) return c.json({ error: "Notiz nicht gefunden" }, 404);
   return c.json({ ok: true });
 });
@@ -1838,58 +2230,81 @@ notesRoute.delete("/:id", async (c) => {
 // server/routes/tasks.ts
 init_client();
 init_schema();
-import { and as and3, desc as desc3, eq as eq3 } from "drizzle-orm";
+import { and as and3, desc as desc3, eq as eq3, getTableColumns as getTableColumns2, sql as sql8 } from "drizzle-orm";
 import { Hono as Hono3 } from "hono";
-import { z as z3 } from "zod";
-var subtaskInput = z3.object({
-  id: z3.string().trim().min(1),
-  title: z3.string().trim().min(1, "Unteraufgabe darf nicht leer sein").max(300),
-  done: z3.boolean()
+import { z as z6 } from "zod";
+var rowFields2 = {
+  ...getTableColumns2(tasks),
+  fingerprint: sql8`md5(to_jsonb(${tasks})::text)`
+};
+var subtaskInput = z6.object({
+  id: z6.string().trim().min(1),
+  title: z6.string().trim().min(1, "Unteraufgabe darf nicht leer sein").max(300),
+  done: z6.boolean()
 });
-var taskInput = z3.object({
-  title: z3.string().trim().min(1, "Titel fehlt").max(300),
-  description: z3.string().max(1e4),
-  priority: z3.enum(TASK_PRIORITIES),
-  status: z3.enum(TASK_STATUSES),
+var taskInput = z6.object({
+  title: z6.string().trim().min(1, "Titel fehlt").max(300),
+  description: z6.string().max(1e4),
+  priority: z6.enum(TASK_PRIORITIES),
+  status: z6.enum(TASK_STATUSES),
   /** ISO-Datum oder null (keine Fälligkeit) */
-  dueDate: z3.iso.datetime({ offset: true }).nullable(),
-  tags: z3.array(z3.string().trim().max(50)).optional(),
-  subtasks: z3.array(subtaskInput).optional()
+  dueDate: z6.iso.datetime({ offset: true }).nullable(),
+  tags: z6.array(z6.string().trim().max(50)).optional(),
+  subtasks: z6.array(subtaskInput).optional()
 });
 var tasksRoute = new Hono3();
+tasksRoute.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  await initializeWorkingHistory();
+  await next();
+});
 tasksRoute.get("/", async (c) => {
-  const rows = await db.select().from(tasks).where(eq3(tasks.userId, c.get("userId"))).orderBy(desc3(tasks.createdAt));
+  const rows = await db.select(rowFields2).from(tasks).where(eq3(tasks.userId, c.get("userId"))).orderBy(desc3(tasks.createdAt));
   return c.json(rows);
 });
 tasksRoute.post("/", async (c) => {
   const parsed = taskInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z3.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z6.prettifyError(parsed.error) }, 400);
   }
   const { dueDate, ...rest } = parsed.data;
   const [row] = await db.insert(tasks).values({
     ...rest,
     dueDate: dueDate ? new Date(dueDate) : null,
     userId: c.get("userId")
-  }).returning();
+  }).returning(rowFields2);
   return c.json(row, 201);
 });
 tasksRoute.put("/:id", async (c) => {
-  const parsed = taskInput.partial().safeParse(await c.req.json());
+  const parsed = taskInput.partial().extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    return c.json({ error: z3.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z6.prettifyError(parsed.error) }, 400);
   }
-  const { dueDate, ...rest } = parsed.data;
+  const { dueDate, expectedFingerprint, ...rest } = parsed.data;
   const [row] = await db.update(tasks).set({
     ...rest,
     ...dueDate !== void 0 ? { dueDate: dueDate ? new Date(dueDate) : null } : {},
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(and3(eq3(tasks.id, c.req.param("id")), eq3(tasks.userId, c.get("userId")))).returning();
-  if (!row) return c.json({ error: "Aufgabe nicht gefunden" }, 404);
+  }).where(
+    and3(
+      eq3(tasks.id, c.req.param("id")),
+      eq3(tasks.userId, c.get("userId")),
+      sql8`md5(to_jsonb(${tasks})::text)=${expectedFingerprint}`
+    )
+  ).returning(rowFields2);
+  if (!row)
+    return c.json(
+      {
+        error: "Aufgabe inzwischen ge\xE4ndert oder nicht mehr verf\xFCgbar. Bitte neu laden"
+      },
+      409
+    );
   return c.json(row);
 });
 tasksRoute.delete("/:id", async (c) => {
-  const [row] = await db.delete(tasks).where(and3(eq3(tasks.id, c.req.param("id")), eq3(tasks.userId, c.get("userId")))).returning({ id: tasks.id });
+  const [row] = await db.delete(tasks).where(
+    and3(eq3(tasks.id, c.req.param("id")), eq3(tasks.userId, c.get("userId")))
+  ).returning({ id: tasks.id });
   if (!row) return c.json({ error: "Aufgabe nicht gefunden" }, 404);
   return c.json({ ok: true });
 });
@@ -1899,14 +2314,14 @@ init_client();
 init_schema();
 import { and as and4, asc, eq as eq4 } from "drizzle-orm";
 import { Hono as Hono4 } from "hono";
-import { z as z4 } from "zod";
-var contactInput = z4.object({
-  firstName: z4.string().trim().min(1, "Vorname fehlt").max(100),
-  lastName: z4.string().trim().max(100).default(""),
-  email: z4.email("Ung\xFCltige E-Mail").or(z4.literal("")).default(""),
-  phone: z4.string().trim().max(50).default(""),
-  company: z4.string().trim().max(200).default(""),
-  notes: z4.string().max(1e4).default("")
+import { z as z7 } from "zod";
+var contactInput = z7.object({
+  firstName: z7.string().trim().min(1, "Vorname fehlt").max(100),
+  lastName: z7.string().trim().max(100).default(""),
+  email: z7.email("Ung\xFCltige E-Mail").or(z7.literal("")).default(""),
+  phone: z7.string().trim().max(50).default(""),
+  company: z7.string().trim().max(200).default(""),
+  notes: z7.string().max(1e4).default("")
 });
 var contactsRoute = new Hono4();
 contactsRoute.get("/", async (c) => {
@@ -1916,7 +2331,7 @@ contactsRoute.get("/", async (c) => {
 contactsRoute.post("/", async (c) => {
   const parsed = contactInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z4.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(contacts).values({ ...parsed.data, userId: c.get("userId") }).returning();
   return c.json(row, 201);
@@ -1924,7 +2339,7 @@ contactsRoute.post("/", async (c) => {
 contactsRoute.put("/:id", async (c) => {
   const parsed = contactInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z4.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(contacts).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(
     and4(eq4(contacts.id, c.req.param("id")), eq4(contacts.userId, c.get("userId")))
@@ -1945,14 +2360,14 @@ init_client();
 init_schema();
 import { and as and5, asc as asc2, eq as eq5 } from "drizzle-orm";
 import { Hono as Hono5 } from "hono";
-import { z as z5 } from "zod";
-var appointmentInput = z5.object({
-  title: z5.string().trim().min(1, "Titel fehlt").max(300),
-  description: z5.string().max(1e4).default(""),
-  location: z5.string().trim().max(300).default(""),
-  priority: z5.enum(TASK_PRIORITIES).default("medium"),
-  startsAt: z5.iso.datetime({ offset: true }),
-  endsAt: z5.iso.datetime({ offset: true })
+import { z as z8 } from "zod";
+var appointmentInput = z8.object({
+  title: z8.string().trim().min(1, "Titel fehlt").max(300),
+  description: z8.string().max(1e4).default(""),
+  location: z8.string().trim().max(300).default(""),
+  priority: z8.enum(TASK_PRIORITIES).default("medium"),
+  startsAt: z8.iso.datetime({ offset: true }),
+  endsAt: z8.iso.datetime({ offset: true })
 }).refine((v) => new Date(v.endsAt) > new Date(v.startsAt), {
   message: "Ende muss nach dem Beginn liegen",
   path: ["endsAt"]
@@ -1965,7 +2380,7 @@ appointmentsRoute.get("/", async (c) => {
 appointmentsRoute.post("/", async (c) => {
   const parsed = appointmentInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z5.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z8.prettifyError(parsed.error) }, 400);
   }
   const { startsAt, endsAt, ...rest } = parsed.data;
   const [row] = await db.insert(appointments).values({
@@ -1979,7 +2394,7 @@ appointmentsRoute.post("/", async (c) => {
 appointmentsRoute.put("/:id", async (c) => {
   const parsed = appointmentInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z5.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z8.prettifyError(parsed.error) }, 400);
   }
   const { startsAt, endsAt, ...rest } = parsed.data;
   const [row] = await db.update(appointments).set({
@@ -2012,11 +2427,11 @@ init_client();
 init_schema();
 import { and as and6, asc as asc3, eq as eq6 } from "drizzle-orm";
 import { Hono as Hono6 } from "hono";
-import { z as z6 } from "zod";
-var commandInput = z6.object({
-  title: z6.string().trim().min(1, "Beschreibung fehlt").max(300),
-  command: z6.string().trim().min(1, "Befehl fehlt").max(5e3),
-  category: z6.string().trim().min(1).max(100)
+import { z as z9 } from "zod";
+var commandInput = z9.object({
+  title: z9.string().trim().min(1, "Beschreibung fehlt").max(300),
+  command: z9.string().trim().min(1, "Befehl fehlt").max(5e3),
+  category: z9.string().trim().min(1).max(100)
 });
 var commandsRoute = new Hono6();
 commandsRoute.get("/", async (c) => {
@@ -2026,15 +2441,15 @@ commandsRoute.get("/", async (c) => {
 commandsRoute.post("/", async (c) => {
   const parsed = commandInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z6.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z9.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(commands).values({ ...parsed.data, userId: c.get("userId") }).returning();
   return c.json(row, 201);
 });
 commandsRoute.post("/bulk", async (c) => {
-  const parsed = z6.array(commandInput).max(200).safeParse(await c.req.json());
+  const parsed = z9.array(commandInput).max(200).safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z6.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z9.prettifyError(parsed.error) }, 400);
   }
   if (parsed.data.length === 0) return c.json([]);
   const rows = await db.insert(commands).values(parsed.data.map((d) => ({ ...d, userId: c.get("userId") }))).returning();
@@ -2043,7 +2458,7 @@ commandsRoute.post("/bulk", async (c) => {
 commandsRoute.put("/:id", async (c) => {
   const parsed = commandInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z6.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z9.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(commands).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(
     and6(eq6(commands.id, c.req.param("id")), eq6(commands.userId, c.get("userId")))
@@ -2062,27 +2477,36 @@ commandsRoute.delete("/:id", async (c) => {
 // server/routes/projects.ts
 init_client();
 init_schema();
-import { and as and7, asc as asc4, desc as desc4, eq as eq7 } from "drizzle-orm";
+import { and as and7, asc as asc4, desc as desc4, eq as eq7, getTableColumns as getTableColumns3, sql as sql9 } from "drizzle-orm";
 import { Hono as Hono7 } from "hono";
-import { z as z7 } from "zod";
-var projectInput = z7.object({
-  name: z7.string().trim().min(1, "Name fehlt").max(300),
-  description: z7.string().max(1e4),
-  priority: z7.enum(TASK_PRIORITIES),
-  status: z7.enum(PROJECT_STATUSES),
-  tags: z7.array(z7.string().trim().max(50)).optional()
+import { z as z10 } from "zod";
+var taskFields = {
+  ...getTableColumns3(projectTasks),
+  fingerprint: sql9`md5(to_jsonb(${projectTasks})::text)`
+};
+var projectInput = z10.object({
+  name: z10.string().trim().min(1, "Name fehlt").max(300),
+  description: z10.string().max(1e4),
+  priority: z10.enum(TASK_PRIORITIES),
+  status: z10.enum(PROJECT_STATUSES),
+  tags: z10.array(z10.string().trim().max(50)).optional()
 });
-var projectTaskInput = z7.object({
-  title: z7.string().trim().min(1, "Titel fehlt").max(300),
-  status: z7.enum(PROJECT_TASK_STATUSES),
-  priority: z7.enum(TASK_PRIORITIES)
+var projectTaskInput = z10.object({
+  title: z10.string().trim().min(1, "Titel fehlt").max(300),
+  status: z10.enum(PROJECT_TASK_STATUSES),
+  priority: z10.enum(TASK_PRIORITIES)
 });
-var milestoneInput = z7.object({
-  title: z7.string().trim().min(1, "Titel fehlt").max(300),
-  dueDate: z7.iso.datetime({ offset: true }).nullable(),
-  done: z7.boolean()
+var milestoneInput = z10.object({
+  title: z10.string().trim().min(1, "Titel fehlt").max(300),
+  dueDate: z10.iso.datetime({ offset: true }).nullable(),
+  done: z10.boolean()
 });
 var projectsRoute = new Hono7();
+projectsRoute.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  await initializeWorkingHistory();
+  await next();
+});
 projectsRoute.get("/", async (c) => {
   const rows = await db.select().from(projects).where(eq7(projects.userId, c.get("userId"))).orderBy(desc4(projects.createdAt));
   return c.json(rows);
@@ -2093,7 +2517,9 @@ projectsRoute.get("/:id", async (c) => {
   const [project2] = await db.select().from(projects).where(and7(eq7(projects.id, id), eq7(projects.userId, userId)));
   if (!project2) return c.json({ error: "Projekt nicht gefunden" }, 404);
   const [tasks2, projectMilestones] = await Promise.all([
-    db.select().from(projectTasks).where(and7(eq7(projectTasks.projectId, id), eq7(projectTasks.userId, userId))).orderBy(asc4(projectTasks.createdAt)),
+    db.select(taskFields).from(projectTasks).where(
+      and7(eq7(projectTasks.projectId, id), eq7(projectTasks.userId, userId))
+    ).orderBy(asc4(projectTasks.createdAt)),
     db.select().from(milestones).where(and7(eq7(milestones.projectId, id), eq7(milestones.userId, userId))).orderBy(asc4(milestones.dueDate))
   ]);
   return c.json({ project: project2, tasks: tasks2, milestones: projectMilestones });
@@ -2101,7 +2527,7 @@ projectsRoute.get("/:id", async (c) => {
 projectsRoute.post("/", async (c) => {
   const parsed = projectInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(projects).values({ ...parsed.data, userId: c.get("userId") }).returning();
   return c.json(row, 201);
@@ -2109,17 +2535,23 @@ projectsRoute.post("/", async (c) => {
 projectsRoute.put("/:id", async (c) => {
   const parsed = projectInput.partial().safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(projects).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(
-    and7(eq7(projects.id, c.req.param("id")), eq7(projects.userId, c.get("userId")))
+    and7(
+      eq7(projects.id, c.req.param("id")),
+      eq7(projects.userId, c.get("userId"))
+    )
   ).returning();
   if (!row) return c.json({ error: "Projekt nicht gefunden" }, 404);
   return c.json(row);
 });
 projectsRoute.delete("/:id", async (c) => {
   const [row] = await db.delete(projects).where(
-    and7(eq7(projects.id, c.req.param("id")), eq7(projects.userId, c.get("userId")))
+    and7(
+      eq7(projects.id, c.req.param("id")),
+      eq7(projects.userId, c.get("userId"))
+    )
   ).returning({ id: projects.id });
   if (!row) return c.json({ error: "Projekt nicht gefunden" }, 404);
   return c.json({ ok: true });
@@ -2127,27 +2559,40 @@ projectsRoute.delete("/:id", async (c) => {
 projectsRoute.post("/:id/tasks", async (c) => {
   const parsed = projectTaskInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
   const userId = c.get("userId");
   const projectId = c.req.param("id");
   const [project2] = await db.select({ id: projects.id }).from(projects).where(and7(eq7(projects.id, projectId), eq7(projects.userId, userId)));
   if (!project2) return c.json({ error: "Projekt nicht gefunden" }, 404);
-  const [row] = await db.insert(projectTasks).values({ ...parsed.data, projectId, userId }).returning();
+  const [row] = await db.insert(projectTasks).values({ ...parsed.data, projectId, userId }).returning(taskFields);
   return c.json(row, 201);
 });
 projectsRoute.put("/tasks/:taskId", async (c) => {
-  const parsed = projectTaskInput.partial().safeParse(await c.req.json());
+  const parsed = projectTaskInput.partial().extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
-  const [row] = await db.update(projectTasks).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(
+  const [row] = await db.update(projectTasks).set({
+    title: parsed.data.title,
+    status: parsed.data.status,
+    priority: parsed.data.priority,
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(
     and7(
       eq7(projectTasks.id, c.req.param("taskId")),
-      eq7(projectTasks.userId, c.get("userId"))
+      eq7(projectTasks.userId, c.get("userId")),
+      sql9`md5(to_jsonb(${projectTasks})::text)=${parsed.data.expectedFingerprint}`,
+      sql9`EXISTS(SELECT 1 FROM projects p WHERE p.id=${projectTasks.projectId} AND p.user_id=${projectTasks.userId})`
     )
-  ).returning();
-  if (!row) return c.json({ error: "Aufgabe nicht gefunden" }, 404);
+  ).returning(taskFields);
+  if (!row)
+    return c.json(
+      {
+        error: "Aufgabe inzwischen ge\xE4ndert oder nicht mehr verf\xFCgbar. Bitte neu laden."
+      },
+      409
+    );
   return c.json(row);
 });
 projectsRoute.delete("/tasks/:taskId", async (c) => {
@@ -2163,7 +2608,7 @@ projectsRoute.delete("/tasks/:taskId", async (c) => {
 projectsRoute.post("/:id/milestones", async (c) => {
   const parsed = milestoneInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
   const userId = c.get("userId");
   const projectId = c.req.param("id");
@@ -2181,7 +2626,7 @@ projectsRoute.post("/:id/milestones", async (c) => {
 projectsRoute.put("/milestones/:milestoneId", async (c) => {
   const parsed = milestoneInput.partial().safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z7.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
   const { dueDate, ...rest } = parsed.data;
   const [row] = await db.update(milestones).set({
@@ -2212,14 +2657,14 @@ init_client();
 init_schema();
 import { and as and8, desc as desc5, eq as eq8 } from "drizzle-orm";
 import { Hono as Hono8 } from "hono";
-import { z as z8 } from "zod";
-var base64 = z8.string().min(1).max(1e5).regex(/^[A-Za-z0-9+/=]+$/, "Kein g\xFCltiges Base64");
-var metaInput = z8.object({
+import { z as z11 } from "zod";
+var base64 = z11.string().min(1).max(1e5).regex(/^[A-Za-z0-9+/=]+$/, "Kein g\xFCltiges Base64");
+var metaInput = z11.object({
   salt: base64,
   verifier: base64
 });
-var entryInput = z8.object({
-  category: z8.enum(VAULT_CATEGORIES),
+var entryInput = z11.object({
+  category: z11.enum(VAULT_CATEGORIES),
   ciphertext: base64,
   iv: base64
 });
@@ -2231,7 +2676,7 @@ vaultRoute.get("/meta", async (c) => {
 vaultRoute.post("/meta", async (c) => {
   const parsed = metaInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z8.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z11.prettifyError(parsed.error) }, 400);
   }
   const userId = c.get("userId");
   const [existing] = await db.select({ userId: vaults.userId }).from(vaults).where(eq8(vaults.userId, userId));
@@ -2248,7 +2693,7 @@ vaultRoute.get("/entries", async (c) => {
 vaultRoute.post("/entries", async (c) => {
   const parsed = entryInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z8.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z11.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(vaultEntries).values({ ...parsed.data, userId: c.get("userId") }).returning();
   return c.json(row, 201);
@@ -2256,7 +2701,7 @@ vaultRoute.post("/entries", async (c) => {
 vaultRoute.put("/entries/:id", async (c) => {
   const parsed = entryInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z8.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z11.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(vaultEntries).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(
     and8(
@@ -2283,18 +2728,18 @@ init_client();
 init_schema();
 import { eq as eq9 } from "drizzle-orm";
 import { Hono as Hono9 } from "hono";
-import { z as z9 } from "zod";
+import { z as z12 } from "zod";
 var timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
-var dayAvailability = z9.object({
-  enabled: z9.boolean(),
-  from: z9.string().regex(timePattern),
-  to: z9.string().regex(timePattern)
+var dayAvailability = z12.object({
+  enabled: z12.boolean(),
+  from: z12.string().regex(timePattern),
+  to: z12.string().regex(timePattern)
 });
-var settingsInput = z9.object({
-  slug: z9.string().trim().toLowerCase().regex(/^[a-z0-9-]{3,50}$/, "Slug: 3\u201350 Zeichen, nur a-z, 0-9 und Bindestrich"),
-  active: z9.boolean(),
-  slotMinutes: z9.number().int().min(10).max(240),
-  availability: z9.object({
+var settingsInput = z12.object({
+  slug: z12.string().trim().toLowerCase().regex(/^[a-z0-9-]{3,50}$/, "Slug: 3\u201350 Zeichen, nur a-z, 0-9 und Bindestrich"),
+  active: z12.boolean(),
+  slotMinutes: z12.number().int().min(10).max(240),
+  availability: z12.object({
     mon: dayAvailability,
     tue: dayAvailability,
     wed: dayAvailability,
@@ -2312,7 +2757,7 @@ bookingRoute.get("/settings", async (c) => {
 bookingRoute.put("/settings", async (c) => {
   const parsed = settingsInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z9.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
   }
   const userId = c.get("userId");
   const [taken] = await db.select({ userId: bookingSettings.userId }).from(bookingSettings).where(eq9(bookingSettings.slug, parsed.data.slug));
@@ -2331,7 +2776,7 @@ init_client();
 init_schema();
 import { and as and9, eq as eq10, gte, lt } from "drizzle-orm";
 import { Hono as Hono10 } from "hono";
-import { z as z10 } from "zod";
+import { z as z13 } from "zod";
 
 // server/timezone.ts
 var BOOKING_TIMEZONE = "Europe/Berlin";
@@ -2448,19 +2893,19 @@ publicBookingRoute.get("/:slug/slots", async (c) => {
   });
   return c.json({ date: dateStr, slots: free.map(minutesToTime) });
 });
-var bookInput = z10.object({
-  date: z10.string().regex(datePattern),
-  time: z10.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  name: z10.string().trim().min(1, "Name fehlt").max(200),
-  email: z10.email("Ung\xFCltige E-Mail"),
-  topic: z10.string().trim().max(1e3).optional().default("")
+var bookInput = z13.object({
+  date: z13.string().regex(datePattern),
+  time: z13.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  name: z13.string().trim().min(1, "Name fehlt").max(200),
+  email: z13.email("Ung\xFCltige E-Mail"),
+  topic: z13.string().trim().max(1e3).optional().default("")
 });
 publicBookingRoute.post("/:slug/book", async (c) => {
   const settings2 = await activeSettingsBySlug(c.req.param("slug"));
   if (!settings2) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
   const parsed = bookInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z10.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
   }
   const { date, time, name, email, topic } = parsed.data;
   const [h, m] = time.split(":").map(Number);
@@ -2711,7 +3156,7 @@ import { setCookie } from "hono/cookie";
 
 // server/microsoft-auth.ts
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { z as z11 } from "zod";
+import { z as z14 } from "zod";
 var MICROSOFT_COOKIE = "omnidesk-ms-oauth";
 var MICROSOFT_COOKIE_PATH = "/api/integrations/microsoft";
 var MICROSOFT_SCOPES = ["offline_access", "User.Read", "Files.Read"];
@@ -2747,12 +3192,12 @@ function openMicrosoftValue(value, purpose) {
   decipher.setAuthTag(buffer.subarray(12, 28));
   return Buffer.concat([decipher.update(buffer.subarray(28)), decipher.final()]).toString("utf8");
 }
-var transactionSchema = z11.object({
-  userId: z11.string().min(1),
-  state: z11.string().min(32),
-  verifier: z11.string().min(43),
-  returnTo: z11.enum(["/settings", "/cloud-monitor"]),
-  createdAt: z11.number()
+var transactionSchema = z14.object({
+  userId: z14.string().min(1),
+  state: z14.string().min(32),
+  verifier: z14.string().min(43),
+  returnTo: z14.enum(["/settings", "/cloud-monitor"]),
+  createdAt: z14.number()
 });
 function startMicrosoftAuthorization(userId, returnTo) {
   const config = microsoftConfig();
@@ -2790,11 +3235,11 @@ function readMicrosoftTransaction(cookie, state2) {
   }
   return transaction;
 }
-var tokenSchema = z11.object({
-  access_token: z11.string().min(1),
-  refresh_token: z11.string().min(1).optional(),
-  expires_in: z11.number().positive(),
-  scope: z11.string().optional()
+var tokenSchema = z14.object({
+  access_token: z14.string().min(1),
+  refresh_token: z14.string().min(1).optional(),
+  expires_in: z14.number().positive(),
+  scope: z14.string().optional()
 });
 async function requestTokens(parameters) {
   const config = microsoftConfig();
@@ -2814,19 +3259,19 @@ async function requestTokens(parameters) {
 }
 var exchangeMicrosoftCode = (code, verifier) => requestTokens({ grant_type: "authorization_code", code, code_verifier: verifier });
 var refreshMicrosoftTokens = (refreshToken) => requestTokens({ grant_type: "refresh_token", refresh_token: refreshToken, scope: MICROSOFT_SCOPES.join(" ") });
-var bytes = z11.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-var driveSchema = z11.object({ id: z11.string().min(1), driveType: z11.string(), quota: z11.object({
+var bytes = z14.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+var driveSchema = z14.object({ id: z14.string().min(1), driveType: z14.string(), quota: z14.object({
   used: bytes,
   total: bytes.positive(),
   deleted: bytes.optional(),
   remaining: bytes.optional(),
-  state: z11.string().optional()
+  state: z14.string().optional()
 }) });
-var profileSchema = z11.object({
-  id: z11.string().min(1),
-  displayName: z11.string().optional(),
-  mail: z11.string().nullable().optional(),
-  userPrincipalName: z11.string().optional()
+var profileSchema = z14.object({
+  id: z14.string().min(1),
+  displayName: z14.string().optional(),
+  mail: z14.string().nullable().optional(),
+  userPrincipalName: z14.string().optional()
 });
 async function getMicrosoftStorage(accessToken) {
   const response = await fetch("https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType,quota", {
@@ -2917,7 +3362,7 @@ function publicAccount(account) {
 // server/routes/integrations.ts
 init_client();
 init_schema();
-import { z as z12 } from "zod";
+import { z as z15 } from "zod";
 
 // server/mega-auth.ts
 import { Storage } from "megajs";
@@ -2963,21 +3408,21 @@ async function syncMegaAccount(sessionJson) {
 }
 
 // server/routes/integrations.ts
-var createAccountInput = z12.object({
-  provider: z12.enum(["google", "mega"]),
-  email: z12.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
-  password: z12.string().optional(),
+var createAccountInput = z15.object({
+  provider: z15.enum(["google", "mega"]),
+  email: z15.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
+  password: z15.string().optional(),
   // Für Live-MEGA-Login
-  label: z12.string().trim().max(100).optional(),
-  accessToken: z12.string().trim().optional(),
-  refreshToken: z12.string().trim().optional(),
-  storageUsedBytes: z12.string().optional(),
-  storageTotalBytes: z12.string().optional(),
-  metadata: z12.record(z12.string(), z12.unknown()).optional()
+  label: z15.string().trim().max(100).optional(),
+  accessToken: z15.string().trim().optional(),
+  refreshToken: z15.string().trim().optional(),
+  storageUsedBytes: z15.string().optional(),
+  storageTotalBytes: z15.string().optional(),
+  metadata: z15.record(z15.string(), z15.unknown()).optional()
 });
-var updateAccountInput = z12.object({
-  label: z12.string().trim().max(100).optional(),
-  metadata: z12.record(z12.string(), z12.unknown()).optional()
+var updateAccountInput = z15.object({
+  label: z15.string().trim().max(100).optional(),
+  metadata: z15.record(z15.string(), z15.unknown()).optional()
 });
 var integrationsRoute = new Hono12();
 integrationsRoute.get("/microsoft/auth-url", (c) => {
@@ -3036,7 +3481,7 @@ integrationsRoute.get("/accounts", async (c) => {
 integrationsRoute.post("/accounts", async (c) => {
   const parsed = createAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
   }
   const {
     provider,
@@ -3102,7 +3547,7 @@ integrationsRoute.post("/accounts", async (c) => {
 integrationsRoute.put("/accounts/:id", async (c) => {
   const parsed = updateAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z12.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(connectedAccounts).set({
     ...parsed.data,
@@ -3434,15 +3879,15 @@ init_schema();
 init_uptime_check();
 import { and as and16, desc as desc8, eq as eq18, gte as gte2 } from "drizzle-orm";
 import { Hono as Hono15 } from "hono";
-import { z as z13 } from "zod";
-var monitorInput = z13.object({
-  name: z13.string().trim().min(1, "Name ist erforderlich").max(100),
-  type: z13.enum(MONITOR_TYPES).default("http"),
-  url: z13.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
-  port: z13.number().int().min(1).max(65535).nullable().optional(),
-  expectedStatus: z13.number().int().min(100).max(599).default(200),
-  timeoutMs: z13.number().int().min(1e3).max(3e4).default(1e4),
-  active: z13.boolean().default(true)
+import { z as z16 } from "zod";
+var monitorInput = z16.object({
+  name: z16.string().trim().min(1, "Name ist erforderlich").max(100),
+  type: z16.enum(MONITOR_TYPES).default("http"),
+  url: z16.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
+  port: z16.number().int().min(1).max(65535).nullable().optional(),
+  expectedStatus: z16.number().int().min(100).max(599).default(200),
+  timeoutMs: z16.number().int().min(1e3).max(3e4).default(1e4),
+  active: z16.boolean().default(true)
 });
 var uptimeRoute = new Hono15();
 uptimeRoute.get("/", async (c) => {
@@ -3523,7 +3968,7 @@ uptimeRoute.post("/", async (c) => {
   const userId = c.get("userId");
   const parsed = monitorInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(uptimeMonitors).values({
     ...parsed.data,
@@ -3541,7 +3986,7 @@ uptimeRoute.put("/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = monitorInput.partial().safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z13.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const [existing] = await db.select().from(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId)));
   if (!existing) {
@@ -3598,7 +4043,7 @@ init_neon_storage();
 init_neon_runner();
 import { and as and18, eq as eq20, inArray as inArray2 } from "drizzle-orm";
 import { Hono as Hono16 } from "hono";
-import { z as z17 } from "zod";
+import { z as z18 } from "zod";
 async function ownsProject2(link) {
   const [row] = await db.select({ id: projects.id }).from(projects).where(and18(eq20(projects.id, link.projectId), eq20(projects.userId, link.userId)));
   return Boolean(row);
@@ -3645,7 +4090,7 @@ function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, owns
     }
   });
   route.post("/:projectId/monitoring/alerts/:alertId/acknowledge", async (c) => {
-    if (!z17.uuid().safeParse(c.req.param("alertId")).success) return c.json({ error: "Ung\xFCltige Warnungskennung." }, 400);
+    if (!z18.uuid().safeParse(c.req.param("alertId")).success) return c.json({ error: "Ung\xFCltige Warnungskennung." }, 400);
     if (!await dependencies.acknowledgeNeonAlert(c.get("neonLink"), c.req.param("alertId"))) return c.json({ error: "Warnung nicht gefunden." }, 404);
     return c.json({ ok: true });
   });
@@ -3722,7 +4167,7 @@ var neonMonitorRoute = createNeonMonitorRoute();
 
 // server/routes/briefing.ts
 import { Hono as Hono18 } from "hono";
-import { z as z21 } from "zod";
+import { z as z22 } from "zod";
 
 // server/briefing-data.ts
 init_neon_storage();
@@ -3733,18 +4178,18 @@ import { createHash as createHash2 } from "node:crypto";
 init_neon_storage();
 
 // server/account-security-policy.ts
-import { z as z18 } from "zod";
+import { z as z19 } from "zod";
 
 // src/types/account-security.ts
 var SECURITY_STATES = ["unknown", "enabled", "disabled", "unsupported"];
 
 // server/account-security-policy.ts
-var state = z18.enum(SECURITY_STATES);
-var securityAccountSchema = z18.object({
-  name: z18.string().trim().min(1).max(120),
-  provider: z18.string().trim().max(100),
-  login: z18.string().trim().max(200),
-  securityUrl: z18.string().trim().max(1e3).refine((value) => {
+var state = z19.enum(SECURITY_STATES);
+var securityAccountSchema = z19.object({
+  name: z19.string().trim().min(1).max(120),
+  provider: z19.string().trim().max(100),
+  login: z19.string().trim().max(200),
+  securityUrl: z19.string().trim().max(1e3).refine((value) => {
     if (!value) return true;
     try {
       const url2 = new URL(value);
@@ -3753,18 +4198,18 @@ var securityAccountSchema = z18.object({
       return false;
     }
   }, "Nur HTTPS-Adressen ohne Zugangsdaten, Suchparameter oder Fragment verwenden."),
-  importance: z18.enum(["critical", "high", "normal"]),
+  importance: z19.enum(["critical", "high", "normal"]),
   passkey: state,
   twoFactor: state,
   recovery: state,
   recoveryCodes: state,
-  recoveryMethods: z18.array(z18.enum(["email", "phone", "trusted_contact", "recovery_key", "hardware_key"])).max(5).refine((items) => new Set(items).size === items.length),
-  reviewIntervalDays: z18.union([z18.literal(30), z18.literal(90), z18.literal(180), z18.literal(365)]),
-  connectedAccountId: z18.uuid().nullable(),
-  reviewed: z18.boolean()
+  recoveryMethods: z19.array(z19.enum(["email", "phone", "trusted_contact", "recovery_key", "hardware_key"])).max(5).refine((items) => new Set(items).size === items.length),
+  reviewIntervalDays: z19.union([z19.literal(30), z19.literal(90), z19.literal(180), z19.literal(365)]),
+  connectedAccountId: z19.uuid().nullable(),
+  reviewed: z19.boolean()
 }).strict().refine((value) => value.recovery === "enabled" || value.recoveryMethods.length === 0, "Wiederherstellungsarten nur bei vorhandenem Wiederherstellungsweg angeben.");
-var securityVersionSchema = z18.object({ version: z18.number().int().positive() }).strict();
-var securityUpdateSchema = z18.object({ account: securityAccountSchema, version: z18.number().int().positive() }).strict();
+var securityVersionSchema = z19.object({ version: z19.number().int().positive() }).strict();
+var securityUpdateSchema = z19.object({ account: securityAccountSchema, version: z19.number().int().positive() }).strict();
 var SecurityAccountError = class extends Error {
   status;
   constructor(message, status) {
@@ -3785,10 +4230,10 @@ var securityDdl = [
 ];
 var missing = (error) => error?.code === "42P01";
 async function initializeSecurityStorage() {
-  const sql7 = monitoringSql();
-  const [existing] = await sql7`SELECT to_regclass('v2_account_security') IS NOT NULL AND to_regclass('v2_account_security_connection') IS NOT NULL AND to_regclass('v2_account_security_user') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [existing] = await sql10`SELECT to_regclass('v2_account_security') IS NOT NULL AND to_regclass('v2_account_security_connection') IS NOT NULL AND to_regclass('v2_account_security_user') IS NOT NULL AS ready`;
   if (existing?.ready) return;
-  await sql7.transaction([sql7`SELECT pg_advisory_xact_lock(184730021)`, ...securityDdl.map((ddl) => sql7.query(ddl))]);
+  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730021)`, ...securityDdl.map((ddl) => sql10.query(ddl))]);
 }
 var iso = (value) => new Date(value).toISOString();
 function publicSecurityAccount(row, connections) {
@@ -3805,17 +4250,17 @@ function publicSecurityAccount(row, connections) {
   };
 }
 async function securityConnections(userId) {
-  const sql7 = monitoringSql();
-  return await sql7`SELECT id,provider,email,label FROM connected_accounts WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 500`;
+  const sql10 = monitoringSql();
+  return await sql10`SELECT id,provider,email,label FROM connected_accounts WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 500`;
 }
 async function readSecurityOverview(userId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   const connectionsResult = await Promise.allSettled([securityConnections(userId)]);
   const connections = connectionsResult[0].status === "fulfilled" ? connectionsResult[0].value : [];
   let rows = [];
   let setupRequired = false;
   try {
-    rows = await sql7`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
+    rows = await sql10`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
   } catch (error) {
     if (!missing(error)) throw error;
     setupRequired = true;
@@ -3844,12 +4289,12 @@ function translateStorageError(error) {
   throw error;
 }
 async function createSecurityAccount(userId, input) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   const value = await validatedDetails(userId, input);
   try {
-    const results = await sql7.transaction([
-      sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730022))`,
-      sql7`INSERT INTO v2_account_security(user_id,connected_account_id,details,manual_reviewed_at)
+    const results = await sql10.transaction([
+      sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730022))`,
+      sql10`INSERT INTO v2_account_security(user_id,connected_account_id,details,manual_reviewed_at)
         SELECT ${userId},${value.connectedAccountId}::uuid,${JSON.stringify(value.details)}::jsonb,CASE WHEN ${value.reviewed} THEN now() END
         WHERE (SELECT count(*) FROM v2_account_security WHERE user_id=${userId})<500
           AND (${value.connectedAccountId}::uuid IS NULL OR EXISTS (SELECT 1 FROM connected_accounts WHERE id=${value.connectedAccountId}::uuid AND user_id=${userId})) RETURNING id`
@@ -3861,10 +4306,10 @@ async function createSecurityAccount(userId, input) {
   }
 }
 async function updateSecurityAccount(userId, id, version, input) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   const value = await validatedDetails(userId, input);
   try {
-    const rows = await sql7`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
+    const rows = await sql10`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
       manual_reviewed_at=CASE WHEN ${value.reviewed} THEN now() END, updated_at=now(),version=version+1
       WHERE id=${id} AND user_id=${userId} AND version=${version}
         AND (${value.connectedAccountId}::uuid IS NULL OR EXISTS (SELECT 1 FROM connected_accounts WHERE id=${value.connectedAccountId}::uuid AND user_id=${userId})) RETURNING id`;
@@ -3875,14 +4320,14 @@ async function updateSecurityAccount(userId, id, version, input) {
   }
 }
 async function reviewSecurityAccount(userId, id, version) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
   if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 async function deleteSecurityAccount(userId, id, version) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
   if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
@@ -3962,15 +4407,15 @@ var briefingDdl = [
   `CREATE TABLE IF NOT EXISTS v2_briefing_visits(user_id text NOT NULL,visit_id uuid NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),previous_visit_at timestamptz,PRIMARY KEY(user_id,visit_id))`
 ];
 async function initializeBriefing() {
-  const sql7 = monitoringSql();
-  const [exists] = await sql7`SELECT to_regclass('v2_briefing_state') IS NOT NULL AND to_regclass('v2_briefing_visits') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [exists] = await sql10`SELECT to_regclass('v2_briefing_state') IS NOT NULL AND to_regclass('v2_briefing_visits') IS NOT NULL AS ready`;
   if (exists?.ready) return;
-  await sql7.transaction([sql7`SELECT pg_advisory_xact_lock(184730025)`, ...briefingDdl.map((ddl) => sql7.query(ddl))]);
+  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730025)`, ...briefingDdl.map((ddl) => sql10.query(ddl))]);
 }
 async function readBriefingState(userId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const [state2] = await sql7`SELECT preferences,version,ai_digest,ai_message,ai_generated_at,next_ai_at FROM v2_briefing_state WHERE user_id=${userId}`;
+    const [state2] = await sql10`SELECT preferences,version,ai_digest,ai_message,ai_generated_at,next_ai_at FROM v2_briefing_state WHERE user_id=${userId}`;
     return state2 ?? null;
   } catch (error) {
     if (error.code === "42P01") return null;
@@ -3979,21 +4424,21 @@ async function readBriefingState(userId) {
 }
 async function recordBriefingVisit(userId, visitId) {
   await initializeBriefing();
-  const sql7 = monitoringSql();
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730026))`,
-    sql7`INSERT INTO v2_briefing_state(user_id,preferences) VALUES(${userId},${JSON.stringify(DEFAULT_BRIEFING_PREFERENCES)}::jsonb) ON CONFLICT(user_id) DO NOTHING`,
-    sql7`INSERT INTO v2_briefing_visits(user_id,visit_id,created_at,previous_visit_at)
+  const sql10 = monitoringSql();
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730026))`,
+    sql10`INSERT INTO v2_briefing_state(user_id,preferences) VALUES(${userId},${JSON.stringify(DEFAULT_BRIEFING_PREFERENCES)}::jsonb) ON CONFLICT(user_id) DO NOTHING`,
+    sql10`INSERT INTO v2_briefing_visits(user_id,visit_id,created_at,previous_visit_at)
       SELECT ${userId},${visitId},clock_timestamp(),last_visit_at FROM v2_briefing_state WHERE user_id=${userId} ON CONFLICT(user_id,visit_id) DO NOTHING`,
-    sql7`UPDATE v2_briefing_state SET last_visit_at=v.created_at FROM v2_briefing_visits v WHERE v.user_id=${userId} AND v.visit_id=${visitId} AND v2_briefing_state.user_id=v.user_id AND (v2_briefing_state.last_visit_at IS NULL OR v2_briefing_state.last_visit_at<v.created_at)`,
-    sql7`DELETE FROM v2_briefing_visits WHERE user_id=${userId} AND created_at<now()-interval '30 days' AND visit_id<>${visitId}`
+    sql10`UPDATE v2_briefing_state SET last_visit_at=v.created_at FROM v2_briefing_visits v WHERE v.user_id=${userId} AND v.visit_id=${visitId} AND v2_briefing_state.user_id=v.user_id AND (v2_briefing_state.last_visit_at IS NULL OR v2_briefing_state.last_visit_at<v.created_at)`,
+    sql10`DELETE FROM v2_briefing_visits WHERE user_id=${userId} AND created_at<now()-interval '30 days' AND visit_id<>${visitId}`
   ]);
 }
 async function previousBriefingVisit(userId, visitId) {
   if (!visitId) return null;
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const [row] = await sql7`SELECT previous_visit_at FROM v2_briefing_visits WHERE user_id=${userId} AND visit_id=${visitId}`;
+    const [row] = await sql10`SELECT previous_visit_at FROM v2_briefing_visits WHERE user_id=${userId} AND visit_id=${visitId}`;
     return row?.previous_visit_at ? new Date(row.previous_visit_at).toISOString() : null;
   } catch (error) {
     if (error.code === "42P01") return null;
@@ -4001,8 +4446,8 @@ async function previousBriefingVisit(userId, visitId) {
   }
 }
 async function saveBriefingPreferences(userId, version, preferences) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`UPDATE v2_briefing_state SET preferences=${JSON.stringify(preferences)}::jsonb,version=version+1,
+  const sql10 = monitoringSql();
+  const rows = await sql10`UPDATE v2_briefing_state SET preferences=${JSON.stringify(preferences)}::jsonb,version=version+1,
     ai_digest=NULL,ai_message=NULL,ai_generated_at=NULL,lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND version=${version} RETURNING user_id`;
   if (!rows.length) throw new SecurityAccountError("Einstellungen zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
 }
@@ -4013,14 +4458,14 @@ var number = (value) => Number(value ?? 0);
 var item = (id, title2, href, kind, state2, at, reasons) => ({ id, title: String(title2).slice(0, 500), href, kind, state: state2, at: iso2(at), reasons });
 var partial = (source2, status) => ({ source: source2, status, counts: {}, items: [], changes: null });
 async function loadBriefingTasks(ctx) {
-  const sql7 = monitoringSql(), { userId, timeZone, day: day2, previousVisitAt: since } = ctx;
-  const [totals, rows] = await sql7.transaction([
-    sql7`SELECT count(*) FILTER(WHERE status<>'done')::int AS open,
+  const sql10 = monitoringSql(), { userId, timeZone, day: day2, previousVisitAt: since } = ctx;
+  const [totals, rows] = await sql10.transaction([
+    sql10`SELECT count(*) FILTER(WHERE status<>'done')::int AS open,
       count(*) FILTER(WHERE status<>'done' AND (due_date AT TIME ZONE ${timeZone})::date<${day2}::date)::int AS overdue,
       count(*) FILTER(WHERE status<>'done' AND (due_date AT TIME ZONE ${timeZone})::date=${day2}::date)::int AS today,
       CASE WHEN ${since}::timestamptz IS NULL THEN NULL ELSE count(*) FILTER(WHERE updated_at>${since}::timestamptz)::int END AS changes
       FROM tasks WHERE user_id=${userId}`,
-    sql7`SELECT id,title,status,priority,due_date FROM tasks WHERE user_id=${userId} AND status<>'done'
+    sql10`SELECT id,title,status,priority,due_date FROM tasks WHERE user_id=${userId} AND status<>'done'
       ORDER BY due_date ASC NULLS LAST,CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,id LIMIT 12`
   ], { isolationLevel: "RepeatableRead", readOnly: true });
   return {
@@ -4043,15 +4488,15 @@ async function loadBriefingTasks(ctx) {
   };
 }
 async function loadBriefingProjects(ctx) {
-  const sql7 = monitoringSql(), { userId, previousVisitAt: since } = ctx;
-  const [counts, projects2, taskCounts, tasks2, milestoneCounts, milestones2] = await sql7.transaction([
-    sql7`SELECT count(*) FILTER(WHERE status='active')::int AS active,count(*) FILTER(WHERE status='paused')::int AS paused,
+  const sql10 = monitoringSql(), { userId, previousVisitAt: since } = ctx;
+  const [counts, projects2, taskCounts, tasks2, milestoneCounts, milestones2] = await sql10.transaction([
+    sql10`SELECT count(*) FILTER(WHERE status='active')::int AS active,count(*) FILTER(WHERE status='paused')::int AS paused,
       CASE WHEN ${since}::timestamptz IS NULL THEN NULL ELSE count(*) FILTER(WHERE updated_at>${since}::timestamptz)::int END AS changes FROM projects WHERE user_id=${userId}`,
-    sql7`SELECT id,name,status,priority FROM projects WHERE user_id=${userId} AND status<>'done' ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,CASE priority WHEN 'high' THEN 0 ELSE 1 END,updated_at DESC,id LIMIT 8`,
-    sql7`SELECT count(*)::int AS open,count(*) FILTER(WHERE p.status='paused')::int AS paused FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND t.status<>'done'`,
-    sql7`SELECT t.id,t.project_id,t.title,t.priority,p.status AS project_status FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND t.status<>'done' ORDER BY CASE p.status WHEN 'active' THEN 0 ELSE 1 END,CASE t.priority WHEN 'high' THEN 0 ELSE 1 END,t.updated_at DESC,t.id LIMIT 12`,
-    sql7`SELECT count(*)::int AS open FROM milestones m JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND NOT m.done`,
-    sql7`SELECT m.id,m.project_id,m.title,m.due_date,p.status AS project_status FROM milestones m JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND NOT m.done AND m.due_date<${briefingDayStart(addBriefingDays(ctx.day, 7), ctx.timeZone)}::timestamptz ORDER BY m.due_date,m.id LIMIT 12`
+    sql10`SELECT id,name,status,priority FROM projects WHERE user_id=${userId} AND status<>'done' ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,CASE priority WHEN 'high' THEN 0 ELSE 1 END,updated_at DESC,id LIMIT 8`,
+    sql10`SELECT count(*)::int AS open,count(*) FILTER(WHERE p.status='paused')::int AS paused FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND t.status<>'done'`,
+    sql10`SELECT t.id,t.project_id,t.title,t.priority,p.status AS project_status FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND t.status<>'done' ORDER BY CASE p.status WHEN 'active' THEN 0 ELSE 1 END,CASE t.priority WHEN 'high' THEN 0 ELSE 1 END,t.updated_at DESC,t.id LIMIT 12`,
+    sql10`SELECT count(*)::int AS open FROM milestones m JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND NOT m.done`,
+    sql10`SELECT m.id,m.project_id,m.title,m.due_date,p.status AS project_status FROM milestones m JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE p.user_id=${userId} AND p.status<>'done' AND NOT m.done AND m.due_date<${briefingDayStart(addBriefingDays(ctx.day, 7), ctx.timeZone)}::timestamptz ORDER BY m.due_date,m.id LIMIT 12`
   ], { isolationLevel: "RepeatableRead", readOnly: true });
   return {
     source: "projects",
@@ -4077,17 +4522,17 @@ async function loadBriefingProjects(ctx) {
   };
 }
 async function loadBriefingCalendar(ctx) {
-  const sql7 = monitoringSql(), end = briefingDayStart(addBriefingDays(ctx.day, 7), ctx.timeZone), now = ctx.now.toISOString();
-  const [counts, rows] = await sql7.transaction([
-    sql7`SELECT count(*)::int AS upcoming,count(*) FILTER(WHERE (starts_at AT TIME ZONE ${ctx.timeZone})::date=${ctx.day}::date)::int AS today,
+  const sql10 = monitoringSql(), end = briefingDayStart(addBriefingDays(ctx.day, 7), ctx.timeZone), now = ctx.now.toISOString();
+  const [counts, rows] = await sql10.transaction([
+    sql10`SELECT count(*)::int AS upcoming,count(*) FILTER(WHERE (starts_at AT TIME ZONE ${ctx.timeZone})::date=${ctx.day}::date)::int AS today,
       CASE WHEN ${ctx.previousVisitAt}::timestamptz IS NULL THEN NULL ELSE count(*) FILTER(WHERE updated_at>${ctx.previousVisitAt}::timestamptz)::int END AS changes FROM appointments WHERE user_id=${ctx.userId} AND ends_at>${now}::timestamptz AND starts_at<${end}::timestamptz`,
-    sql7`SELECT id,title,starts_at,ends_at FROM appointments WHERE user_id=${ctx.userId} AND ends_at>${now}::timestamptz AND starts_at<${end}::timestamptz ORDER BY starts_at,id LIMIT 12`
+    sql10`SELECT id,title,starts_at,ends_at FROM appointments WHERE user_id=${ctx.userId} AND ends_at>${now}::timestamptz AND starts_at<${end}::timestamptz ORDER BY starts_at,id LIMIT 12`
   ], { isolationLevel: "RepeatableRead", readOnly: true });
   return { source: "calendar", status: "ready", counts: { upcoming: number(counts[0].upcoming), todayAppointments: number(counts[0].today) }, changes: counts[0].changes == null ? null : number(counts[0].changes), items: rows.map((row) => item(`appointment:${row.id}`, row.title, `/calendar?appointment=${row.id}`, "Termin", new Date(row.starts_at) <= ctx.now ? "ongoing" : "upcoming", row.starts_at, ["upcoming"])) };
 }
 async function loadBriefingUptime(ctx) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`SELECT m.id,m.name,c.status,c.checked_at,c.ssl_days_left FROM uptime_monitors m LEFT JOIN LATERAL
+  const sql10 = monitoringSql();
+  const rows = await sql10`SELECT m.id,m.name,c.status,c.checked_at,c.ssl_days_left FROM uptime_monitors m LEFT JOIN LATERAL
     (SELECT status,checked_at,ssl_days_left FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     WHERE m.user_id=${ctx.userId} AND m.active ORDER BY m.id`;
   const mapped = rows.map((row) => {
@@ -4106,12 +4551,12 @@ async function loadBriefingUptime(ctx) {
 async function loadBriefingNeon(ctx) {
   const links2 = readNeonLinks().filter((link) => link.userId === ctx.userId);
   if (!links2.length) return partial("neon", "not_configured");
-  const sql7 = monitoringSql(), allowed = JSON.stringify(links2);
+  const sql10 = monitoringSql(), allowed = JSON.stringify(links2);
   try {
-    const configs = await sql7`SELECT c.project_id,c.last_success_at,c.settings,p.name FROM v2_neon_config c JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
+    const configs = await sql10`SELECT c.project_id,c.last_success_at,c.settings,p.name FROM v2_neon_config c JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
       WHERE c.user_id=${ctx.userId} AND EXISTS(SELECT 1 FROM jsonb_array_elements(${allowed}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)`;
     if (!configs.length) return partial("neon", "not_configured");
-    const alerts = await sql7`SELECT a.id,a.project_id,a.message,a.started_at FROM v2_neon_alerts a JOIN projects p ON p.id=a.project_id AND p.user_id=a.user_id
+    const alerts = await sql10`SELECT a.id,a.project_id,a.message,a.started_at FROM v2_neon_alerts a JOIN projects p ON p.id=a.project_id AND p.user_id=a.user_id
       WHERE a.user_id=${ctx.userId} AND a.resolved_at IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(${allowed}::jsonb) l WHERE l->>'projectId'=a.project_id::text AND (l->>'neonProjectId')||':'||(l->>'branchId')=a.resource_key) ORDER BY a.started_at DESC`;
     const stale = configs.filter((c) => c.settings.enabled && (!c.last_success_at || ctx.now.getTime() - new Date(c.last_success_at).getTime() > Number(c.settings.intervalMinutes) * 12e4));
     return { source: "neon", status: "ready", counts: { projects: configs.length, alerts: alerts.length, stale: stale.length }, changes: null, items: [
@@ -4163,25 +4608,25 @@ var collectBriefing = createBriefingCollector();
 // server/briefing-ai.ts
 init_neon_storage();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { z as z20 } from "zod";
+import { z as z21 } from "zod";
 
 // server/briefing-policy.ts
-import { z as z19 } from "zod";
+import { z as z20 } from "zod";
 
 // src/types/briefing.ts
 var BRIEFING_SOURCES = ["tasks", "projects", "calendar", "uptime", "neon", "security"];
 
 // server/briefing-policy.ts
-var briefingPreferencesSchema = z19.object({ timeZone: z19.string().max(80).refine((value) => {
+var briefingPreferencesSchema = z20.object({ timeZone: z20.string().max(80).refine((value) => {
   try {
     new Intl.DateTimeFormat("de-DE", { timeZone: value });
     return true;
   } catch {
     return false;
   }
-}), showOnOpen: z19.boolean(), aiEnabled: z19.boolean(), sources: z19.object({ tasks: z19.boolean(), projects: z19.boolean(), calendar: z19.boolean(), uptime: z19.boolean(), neon: z19.boolean(), security: z19.boolean() }).strict() }).strict();
-var briefingContextSchema = z19.object({ visitId: z19.uuid().optional(), exclude: z19.array(z19.enum(BRIEFING_SOURCES)).max(6).default([]) }).strict();
-var briefingRecommendationsSchema = z19.object({ recommendations: z19.array(z19.object({ sourceId: z19.string().max(160), reason: z19.enum(["overdue", "today", "upcoming", "high_priority", "attention", "review"]) }).strict()).max(3) }).strict();
+}), showOnOpen: z20.boolean(), aiEnabled: z20.boolean(), sources: z20.object({ tasks: z20.boolean(), projects: z20.boolean(), calendar: z20.boolean(), uptime: z20.boolean(), neon: z20.boolean(), security: z20.boolean() }).strict() }).strict();
+var briefingContextSchema = z20.object({ visitId: z20.uuid().optional(), exclude: z20.array(z20.enum(BRIEFING_SOURCES)).max(6).default([]) }).strict();
+var briefingRecommendationsSchema = z20.object({ recommendations: z20.array(z20.object({ sourceId: z20.string().max(160), reason: z20.enum(["overdue", "today", "upcoming", "high_priority", "attention", "review"]) }).strict()).max(3) }).strict();
 
 // server/briefing-ai.ts
 function validateBriefingRecommendations(value, snapshot) {
@@ -4237,7 +4682,7 @@ async function callBriefingAI(snapshot) {
       } finally {
         reader.releaseLock();
       }
-      const payload = z20.object({ choices: z20.array(z20.object({ message: z20.object({ content: z20.string().max(8e3) }) })).min(1) }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      const payload = z21.object({ choices: z21.array(z21.object({ message: z21.object({ content: z21.string().max(8e3) }) })).min(1) }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       const content = payload.choices[0].message.content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
       return validateBriefingRecommendations(JSON.parse(content), snapshot);
     } catch {
@@ -4246,18 +4691,18 @@ async function callBriefingAI(snapshot) {
   throw new Error("AI unavailable");
 }
 async function claimBriefingAI(userId, token) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`UPDATE v2_briefing_state SET lease_token=${token},lease_until=now()+interval '40 seconds',next_ai_at=now()+interval '10 minutes'
+  const sql10 = monitoringSql();
+  const rows = await sql10`UPDATE v2_briefing_state SET lease_token=${token},lease_until=now()+interval '40 seconds',next_ai_at=now()+interval '10 minutes'
     WHERE user_id=${userId} AND (lease_until IS NULL OR lease_until<now()) AND (next_ai_at IS NULL OR next_ai_at<=now()) RETURNING user_id`;
   return rows.length > 0;
 }
 async function finishBriefingAI(userId, token, digest, message) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   if (!message) {
-    await sql7`UPDATE v2_briefing_state SET lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token}`;
+    await sql10`UPDATE v2_briefing_state SET lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token}`;
     return false;
   }
-  const rows = await sql7`UPDATE v2_briefing_state SET ai_digest=${digest},ai_message=${JSON.stringify(message)}::jsonb,ai_generated_at=now(),lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token} RETURNING user_id`;
+  const rows = await sql10`UPDATE v2_briefing_state SET ai_digest=${digest},ai_message=${JSON.stringify(message)}::jsonb,ai_generated_at=now(),lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token} RETURNING user_id`;
   return rows.length > 0;
 }
 function createBriefingMessageService(dependencies = { readBriefingState, claimBriefingAI, callBriefingAI, finishBriefingAI }) {
@@ -4301,13 +4746,13 @@ function createBriefingRoute(dependencies = { collectBriefing, generateBriefingM
     return c.json(await dependencies.collectBriefing(c.get("userId"), parsed.data.visitId, parsed.data.exclude));
   });
   route.post("/visit", async (c) => {
-    const parsed = z21.object({ visitId: z21.uuid() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z22.object({ visitId: z22.uuid() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Besuchskennung." }, 400);
     await dependencies.recordBriefingVisit(c.get("userId"), parsed.data.visitId);
     return c.json({ ok: true });
   });
   route.put("/preferences", async (c) => {
-    const parsed = z21.object({ preferences: briefingPreferencesSchema, version: z21.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z22.object({ preferences: briefingPreferencesSchema, version: z22.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Einstellungen, Zeitzone oder Version." }, 400);
     await dependencies.saveBriefingPreferences(c.get("userId"), parsed.data.version, parsed.data.preferences);
     return c.json({ ok: true });
@@ -4324,19 +4769,19 @@ var briefingRoute = createBriefingRoute();
 
 // server/routes/account-map.ts
 import { Hono as Hono19 } from "hono";
-import { z as z23 } from "zod";
+import { z as z24 } from "zod";
 
 // server/account-map-policy.ts
-import { z as z22 } from "zod";
-var accountRelationSchema = z22.object({
-  fromAccountId: z22.uuid(),
-  toAccountId: z22.uuid(),
-  type: z22.enum(["login", "recovery_email", "recovery_other"]),
-  loginDependency: z22.enum(["only_known", "alternative_known", "unknown"]).nullable(),
-  reviewed: z22.boolean()
+import { z as z23 } from "zod";
+var accountRelationSchema = z23.object({
+  fromAccountId: z23.uuid(),
+  toAccountId: z23.uuid(),
+  type: z23.enum(["login", "recovery_email", "recovery_other"]),
+  loginDependency: z23.enum(["only_known", "alternative_known", "unknown"]).nullable(),
+  reviewed: z23.boolean()
 }).strict().refine((value) => value.fromAccountId !== value.toAccountId, "Ein Konto kann nicht auf sich selbst verweisen.").refine((value) => value.type === "login" ? value.loginDependency !== null : value.loginDependency === null, "Anmeldeabh\xE4ngigkeit passt nicht zum Verbindungstyp.");
-var relationVersionSchema = z22.object({ version: z22.number().int().positive() }).strict();
-var relationUpdateSchema = z22.object({ relation: accountRelationSchema, version: z22.number().int().positive() }).strict();
+var relationVersionSchema = z23.object({ version: z23.number().int().positive() }).strict();
+var relationUpdateSchema = z23.object({ relation: accountRelationSchema, version: z23.number().int().positive() }).strict();
 
 // server/account-map-store.ts
 init_neon_storage();
@@ -4356,10 +4801,10 @@ var accountMapDdl = [
 ];
 async function initializeAccountMap() {
   await initializeSecurityStorage();
-  const sql7 = monitoringSql();
-  const [exists] = await sql7`SELECT to_regclass('v2_account_relations') IS NOT NULL AND to_regclass('v2_account_relations_pair') IS NOT NULL AND to_regclass('v2_account_relations_user') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [exists] = await sql10`SELECT to_regclass('v2_account_relations') IS NOT NULL AND to_regclass('v2_account_relations_pair') IS NOT NULL AND to_regclass('v2_account_relations_user') IS NOT NULL AS ready`;
   if (exists?.ready) return;
-  await sql7.transaction([sql7`SELECT pg_advisory_xact_lock(184730023)`, ...accountMapDdl.map((ddl) => sql7.query(ddl))]);
+  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730023)`, ...accountMapDdl.map((ddl) => sql10.query(ddl))]);
 }
 var iso3 = (value) => new Date(value).toISOString();
 async function readAccountMap(userId) {
@@ -4367,8 +4812,8 @@ async function readAccountMap(userId) {
   let relations = [];
   let setupRequired = false;
   try {
-    const sql7 = monitoringSql();
-    const rows = await sql7`SELECT r.* FROM v2_account_relations r
+    const sql10 = monitoringSql();
+    const rows = await sql10`SELECT r.* FROM v2_account_relations r
       JOIN v2_account_security a ON a.id=r.from_account_id AND a.user_id=r.user_id
       JOIN v2_account_security b ON b.id=r.to_account_id AND b.user_id=r.user_id
       WHERE r.user_id=${userId} ORDER BY r.created_at DESC LIMIT 1001`;
@@ -4395,11 +4840,11 @@ function translate(error) {
   throw error;
 }
 async function createAccountRelation(userId, relation) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const results = await sql7.transaction([
-      sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730024))`,
-      sql7`INSERT INTO v2_account_relations(user_id,from_account_id,to_account_id,type,login_dependency,manual_reviewed_at)
+    const results = await sql10.transaction([
+      sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730024))`,
+      sql10`INSERT INTO v2_account_relations(user_id,from_account_id,to_account_id,type,login_dependency,manual_reviewed_at)
         SELECT ${userId},a.id,b.id,${relation.type},${relation.loginDependency},CASE WHEN ${relation.reviewed} THEN now() END
         FROM v2_account_security a,v2_account_security b WHERE a.id=${relation.fromAccountId} AND b.id=${relation.toAccountId}
           AND a.user_id=${userId} AND b.user_id=${userId} AND a.id<>b.id
@@ -4412,9 +4857,9 @@ async function createAccountRelation(userId, relation) {
   }
 }
 async function updateAccountRelation(userId, id, version, relation) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const rows = await sql7`UPDATE v2_account_relations r SET from_account_id=a.id,to_account_id=b.id,type=${relation.type},login_dependency=${relation.loginDependency},
+    const rows = await sql10`UPDATE v2_account_relations r SET from_account_id=a.id,to_account_id=b.id,type=${relation.type},login_dependency=${relation.loginDependency},
       manual_reviewed_at=CASE WHEN ${relation.reviewed} THEN now() END,updated_at=now(),version=r.version+1
       FROM v2_account_security a,v2_account_security b WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version}
         AND a.id=${relation.fromAccountId} AND b.id=${relation.toAccountId} AND a.user_id=${userId} AND b.user_id=${userId} AND a.id<>b.id RETURNING r.id`;
@@ -4425,8 +4870,8 @@ async function updateAccountRelation(userId, id, version, relation) {
   }
 }
 async function deleteAccountRelation(userId, id, version) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`DELETE FROM v2_account_relations r USING v2_account_security a,v2_account_security b
+  const sql10 = monitoringSql();
+  const rows = await sql10`DELETE FROM v2_account_relations r USING v2_account_security a,v2_account_security b
     WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version} AND a.id=r.from_account_id AND b.id=r.to_account_id AND a.user_id=${userId} AND b.user_id=${userId} RETURNING r.id`;
   if (!rows.length) throw new SecurityAccountError("Verbindung nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
@@ -4451,13 +4896,13 @@ function createAccountMapRoute(dependencies = { createAccountRelation, deleteAcc
     return c.json(await dependencies.createAccountRelation(c.get("userId"), parsed.data), 201);
   });
   route.put("/:id", async (c) => {
-    if (!z23.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     const parsed = relationUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Verbindung oder Eintragsversion." }, 400);
     return c.json(await dependencies.updateAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.relation));
   });
   route.delete("/:id", async (c) => {
-    if (!z23.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     const parsed = relationVersionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
     return c.json(await dependencies.deleteAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version));
@@ -4468,7 +4913,7 @@ var accountMapRoute = createAccountMapRoute();
 
 // server/routes/account-security.ts
 import { Hono as Hono20 } from "hono";
-import { z as z24 } from "zod";
+import { z as z25 } from "zod";
 function createAccountSecurityRoute(dependencies = { createSecurityAccount, deleteSecurityAccount, initializeSecurityStorage, readSecurityOverview, reviewSecurityAccount, updateSecurityAccount }) {
   const route = new Hono20();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Sicherheits\xFCbersicht nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
@@ -4488,11 +4933,11 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.createSecurityAccount(c.get("userId"), parsed.data), 201);
   });
   route.use("/:id/*", async (c, next) => {
-    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     await next();
   });
   route.put("/:id", async (c) => {
-    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Kontodaten oder Eintragsversion." }, 400);
     return c.json(await dependencies.updateSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.account));
@@ -4503,7 +4948,7 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.reviewSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
   });
   route.delete("/:id", async (c) => {
-    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityVersionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
     return c.json(await dependencies.deleteSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
@@ -4514,13 +4959,13 @@ var accountSecurityRoute = createAccountSecurityRoute();
 
 // server/routes/github.ts
 import { Hono as Hono21 } from "hono";
-import { z as z26 } from "zod";
+import { z as z27 } from "zod";
 
 // server/github-monitor.ts
-import { z as z25 } from "zod";
-var githubOwner = z25.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
-var githubRepo = z25.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
-var repositoryName = z25.string().refine((value) => {
+import { z as z26 } from "zod";
+var githubOwner = z26.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
+var githubRepo = z26.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
+var repositoryName = z26.string().refine((value) => {
   const parts = value.split("/");
   return parts.length === 2 && githubOwner.safeParse(parts[0]).success && githubRepo.safeParse(parts[1]).success;
 });
@@ -4531,9 +4976,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text24 = z25.string();
-var nullableDate = z25.string().nullable().optional();
-var repoSchema = z25.object({ id: z25.number(), full_name: text24, name: text24, private: z25.boolean(), default_branch: text24, updated_at: nullableDate, html_url: text24 });
+var text25 = z26.string();
+var nullableDate = z26.string().nullable().optional();
+var repoSchema = z26.object({ id: z26.number(), full_name: text25, name: text25, private: z26.boolean(), default_branch: text25, updated_at: nullableDate, html_url: text25 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -4595,7 +5040,7 @@ async function githubGet(path, query = {}) {
 async function listGitHubRepositories() {
   const repositories = [];
   for (let page = 1; page <= 10; page++) {
-    const items = z25.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
+    const items = z26.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
     for (const item2 of items) if (!repositories.some((repo) => repo.id === item2.id)) repositories.push(project(item2));
     if (items.length < 100) return { repositories, limited: false };
   }
@@ -4607,14 +5052,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text24, html_url: text24, state: text24, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
+  const issueSchema = z26.object({ id: z26.number(), number: z26.number(), title: text25, html_url: text25, state: text25, updated_at: nullableDate, draft: z26.boolean().optional(), pull_request: z26.unknown().optional() });
   const loaders2 = {
-    branches: async () => z25.array(z25.object({ name: text24, protected: z25.boolean(), commit: z25.object({ sha: text24 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z25.array(z25.object({ sha: text24, html_url: text24, commit: z25.object({ message: text24, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
-    issues: async () => z25.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
-    pulls: async () => z25.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text24.nullable(), html_url: text24, status: text24, conclusion: text24.nullable(), updated_at: nullableDate, head_sha: text24, head_branch: text24.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z25.array(z25.object({ id: z25.number(), name: text24.nullable(), tag_name: text24, html_url: text24, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    branches: async () => z26.array(z26.object({ name: text25, protected: z26.boolean(), commit: z26.object({ sha: text25 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z26.array(z26.object({ sha: text25, html_url: text25, commit: z26.object({ message: text25, committer: z26.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    issues: async () => z26.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
+    pulls: async () => z26.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
+    runs: async () => z26.object({ workflow_runs: z26.array(z26.object({ id: z26.number(), name: text25.nullable(), html_url: text25, status: text25, conclusion: text25.nullable(), updated_at: nullableDate, head_sha: text25, head_branch: text25.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z26.array(z26.object({ id: z26.number(), name: text25.nullable(), tag_name: text25, html_url: text25, published_at: nullableDate, draft: z26.boolean(), prerelease: z26.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -4635,9 +5080,9 @@ async function ownsGitHubProject(userId, projectId) {
   return Boolean(row);
 }
 async function listGitHubLinks(userId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const rows = await sql7`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
+    const rows = await sql10`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
       JOIN projects p ON p.id=l.project_id AND p.user_id=l.user_id WHERE l.user_id=${userId}`;
     return rows;
   } catch (error) {
@@ -4649,17 +5094,17 @@ var githubLinksDdl = `CREATE TABLE IF NOT EXISTS v2_github_links (
   project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   user_id text NOT NULL, repository text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
 async function saveGitHubLink(userId, projectId, repository) {
-  const sql7 = monitoringSql();
-  const [exists] = await sql7`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
-  if (!exists?.ready) await sql7.transaction([sql7`SELECT pg_advisory_xact_lock(184730020)`, sql7.query(githubLinksDdl)]);
-  const rows = await sql7`INSERT INTO v2_github_links(project_id,user_id,repository)
+  const sql10 = monitoringSql();
+  const [exists] = await sql10`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
+  if (!exists?.ready) await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730020)`, sql10.query(githubLinksDdl)]);
+  const rows = await sql10`INSERT INTO v2_github_links(project_id,user_id,repository)
     SELECT id,user_id,${repository} FROM projects WHERE id=${projectId} AND user_id=${userId}
     ON CONFLICT(project_id) DO UPDATE SET user_id=EXCLUDED.user_id,repository=EXCLUDED.repository,updated_at=now() RETURNING project_id`;
   return rows.length > 0;
 }
 async function deleteGitHubLink(userId, projectId) {
-  const sql7 = monitoringSql();
-  await sql7`DELETE FROM v2_github_links l USING projects p WHERE l.project_id=${projectId} AND l.user_id=${userId} AND p.id=l.project_id AND p.user_id=${userId}`;
+  const sql10 = monitoringSql();
+  await sql10`DELETE FROM v2_github_links l USING projects p WHERE l.project_id=${projectId} AND l.user_id=${userId} AND p.id=l.project_id AND p.user_id=${userId}`;
 }
 
 // server/routes/github.ts
@@ -4689,8 +5134,8 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.put("/links/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
     const userId = c.get("userId");
-    const parsed = z26.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!z26.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
+    const parsed = z27.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!z27.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, projectId)) return c.json({ error: "Eigenes OMNIDESK-Projekt nicht gefunden." }, 404);
     await dependencies.fetchGitHubSnapshot(parsed.data.repository);
     if (!await dependencies.saveGitHubLink(userId, projectId, parsed.data.repository)) return c.json({ error: "Projekt nicht mehr verf\xFCgbar." }, 404);
@@ -4699,7 +5144,7 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.delete("/links/:projectId", async (c) => {
     const id = c.req.param("projectId");
     const userId = c.get("userId");
-    if (!z26.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (!z27.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, id)) return c.json({ error: "Projekt nicht gefunden." }, 404);
     await dependencies.deleteGitHubLink(userId, id);
     return c.json({ ok: true });
@@ -4715,11 +5160,11 @@ import { and as and21, eq as eq23 } from "drizzle-orm";
 import { Hono as Hono22 } from "hono";
 
 // server/vercel-monitor.ts
-import { z as z27 } from "zod";
-var identifier = z27.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
-var linkSchema = z27.object({
-  userId: z27.string().min(1),
-  projectId: z27.uuid(),
+import { z as z28 } from "zod";
+var identifier = z28.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z28.object({
+  userId: z28.string().min(1),
+  projectId: z28.uuid(),
   vercelProjectId: identifier,
   teamId: identifier.optional()
 });
@@ -4742,7 +5187,7 @@ function readVercelLinks() {
   } catch {
     throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
   }
-  const result = z27.array(linkSchema).max(100).safeParse(parsed);
+  const result = z28.array(linkSchema).max(100).safeParse(parsed);
   if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
   const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
   if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
@@ -4789,23 +5234,23 @@ async function vercelGet(path, link, query = {}) {
   if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
   return boundedJson(response);
 }
-var deploymentSchema = z27.object({
-  id: z27.string().optional(),
-  uid: z27.string().optional(),
-  projectId: z27.string().optional(),
-  url: z27.string().optional().nullable(),
-  state: z27.string().optional(),
-  readyState: z27.string().optional(),
-  target: z27.string().optional().nullable(),
-  createdAt: z27.number().optional(),
-  created: z27.number().optional(),
-  meta: z27.record(z27.string(), z27.unknown()).optional()
+var deploymentSchema = z28.object({
+  id: z28.string().optional(),
+  uid: z28.string().optional(),
+  projectId: z28.string().optional(),
+  url: z28.string().optional().nullable(),
+  state: z28.string().optional(),
+  readyState: z28.string().optional(),
+  target: z28.string().optional().nullable(),
+  createdAt: z28.number().optional(),
+  created: z28.number().optional(),
+  meta: z28.record(z28.string(), z28.unknown()).optional()
 }).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
-var projectSchema2 = z27.object({
-  id: z27.string(),
-  name: z27.string(),
-  link: z27.object({ type: z27.string().optional(), org: z27.string().optional(), repo: z27.string().optional() }).nullable().optional(),
-  targets: z27.object({ production: deploymentSchema.nullable().optional() }).optional()
+var projectSchema2 = z28.object({
+  id: z28.string(),
+  name: z28.string(),
+  link: z28.object({ type: z28.string().optional(), org: z28.string().optional(), repo: z28.string().optional() }).nullable().optional(),
+  targets: z28.object({ production: deploymentSchema.nullable().optional() }).optional()
 });
 function safeDeploymentUrl(value) {
   if (!value) return null;
@@ -4818,7 +5263,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text25 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text26 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -4826,16 +5271,16 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text25("githubCommitSha") || text25("gitlabCommitSha") || text25("bitbucketCommitSha"),
-      message: text25("githubCommitMessage") || text25("gitlabCommitMessage") || text25("bitbucketCommitMessage"),
-      branch: text25("githubCommitRef") || text25("gitlabCommitRef") || text25("bitbucketCommitRef")
+      sha: text26("githubCommitSha") || text26("gitlabCommitSha") || text26("bitbucketCommitSha"),
+      message: text26("githubCommitMessage") || text26("gitlabCommitMessage") || text26("bitbucketCommitMessage"),
+      branch: text26("githubCommitRef") || text26("gitlabCommitRef") || text26("bitbucketCommitRef")
     }
   };
 }
 async function fetchVercelSnapshot(link) {
   const [projectResult, deploymentsResult] = await Promise.allSettled([
     vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
-    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z27.object({ deployments: z27.array(deploymentSchema) }).parse(value).deployments)
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z28.object({ deployments: z28.array(deploymentSchema) }).parse(value).deployments)
   ]);
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
     throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
@@ -4863,9 +5308,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item2) => Boolean(item2))
   };
 }
-function redactBuildLog(text25) {
+function redactBuildLog(text26) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text25.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text26.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -4874,19 +5319,19 @@ function redactBuildLog(text25) {
 }
 async function fetchVercelLogs(link, deploymentId) {
   if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
-  const detail = z27.object({ id: z27.string(), projectId: z27.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  const detail = z28.object({ id: z28.string(), projectId: z28.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
   if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
   const raw = await vercelGet(
     `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
     link,
     { follow: "0", builds: "1", direction: "backward", limit: "100" }
   );
-  const parsedEvents = z27.array(z27.object({
-    text: z27.string().nullable().optional(),
-    type: z27.string().optional(),
-    created: z27.number().optional(),
-    date: z27.number().optional(),
-    deploymentId: z27.string().optional()
+  const parsedEvents = z28.array(z28.object({
+    text: z28.string().nullable().optional(),
+    type: z28.string().optional(),
+    created: z28.number().optional(),
+    date: z28.number().optional(),
+    deploymentId: z28.string().optional()
   }).nullable()).parse(raw);
   const events = parsedEvents.filter((event) => event !== null);
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
@@ -4902,14 +5347,14 @@ async function fetchVercelProjects() {
   const projects2 = [];
   const unavailable = [];
   let limited = false;
-  const pageSchema = z27.object({ pagination: z27.object({ next: z27.number().nullable().optional() }).optional() });
+  const pageSchema = z28.object({ pagination: z28.object({ next: z28.number().nullable().optional() }).optional() });
   async function pages(path, field, teamId) {
     const items = [];
     let until;
     for (let page = 0; page < 10; page++) {
       const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
       const parsed = pageSchema.parse(raw);
-      items.push(...z27.array(z27.unknown()).parse(z27.record(z27.string(), z27.unknown()).parse(raw)[field]));
+      items.push(...z28.array(z28.unknown()).parse(z28.record(z28.string(), z28.unknown()).parse(raw)[field]));
       const next = parsed.pagination?.next;
       if (next == null) return items;
       if (String(next) === until) {
@@ -4923,7 +5368,7 @@ async function fetchVercelProjects() {
   }
   const teams = [];
   try {
-    teams.push(...z27.array(z27.object({ id: identifier, name: z27.string() })).parse(await pages("/v2/teams", "teams")));
+    teams.push(...z28.array(z28.object({ id: identifier, name: z28.string() })).parse(await pages("/v2/teams", "teams")));
   } catch {
     unavailable.push("Team-Liste");
   }
@@ -4932,7 +5377,7 @@ async function fetchVercelProjects() {
   for (let i = 0; i < scopes.length; i += 4) {
     await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
       try {
-        const items = z27.array(z27.object({ id: identifier, name: z27.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        const items = z28.array(z28.object({ id: identifier, name: z28.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
         for (const item2 of items) {
           const teamId = item2.accountId?.startsWith("team_") ? item2.accountId : scope.id ?? null;
           if (!projects2.some((project2) => project2.id === item2.id && project2.teamId === teamId)) {
@@ -5044,7 +5489,7 @@ var deploymentsRoute = createDeploymentsRoute();
 
 // server/routes/omni-memory-auto.ts
 import { Hono as Hono23 } from "hono";
-import { z as z29 } from "zod";
+import { z as z30 } from "zod";
 
 // server/omni-memory-auto-storage.ts
 init_neon_storage();
@@ -5054,7 +5499,7 @@ import { randomUUID as randomUUID3 } from "node:crypto";
 init_neon_storage();
 
 // server/omni-memory-policy.ts
-import { z as z28 } from "zod";
+import { z as z29 } from "zod";
 
 // src/types/omni-memory.ts
 var MEMORY_CATEGORIES = [
@@ -5071,20 +5516,20 @@ var OmniMemoryError = class extends Error {
     this.status = status;
   }
 };
-var memoryInputSchema = z28.object({
-  title: z28.string().trim().min(1).max(160),
-  content: z28.string().trim().min(1).max(4e3),
-  category: z28.enum(MEMORY_CATEGORIES),
-  projectId: z28.uuid().nullable(),
-  pinned: z28.boolean(),
-  archived: z28.boolean()
+var memoryInputSchema = z29.object({
+  title: z29.string().trim().min(1).max(160),
+  content: z29.string().trim().min(1).max(4e3),
+  category: z29.enum(MEMORY_CATEGORIES),
+  projectId: z29.uuid().nullable(),
+  pinned: z29.boolean(),
+  archived: z29.boolean()
 }).strict();
-var createMemorySchema = memoryInputSchema.extend({ id: z28.uuid(), sourceMessageId: z28.uuid().nullable().default(null) }).strict();
-var updateMemorySchema = memoryInputSchema.extend({ version: z28.number().int().positive() }).strict();
-var chatMemoryOptions = z28.object({
-  enabled: z28.boolean(),
-  projectId: z28.uuid().nullable(),
-  autoCapture: z28.boolean().optional()
+var createMemorySchema = memoryInputSchema.extend({ id: z29.uuid(), sourceMessageId: z29.uuid().nullable().default(null) }).strict();
+var updateMemorySchema = memoryInputSchema.extend({ version: z29.number().int().positive() }).strict();
+var chatMemoryOptions = z29.object({
+  enabled: z29.boolean(),
+  projectId: z29.uuid().nullable(),
+  autoCapture: z29.boolean().optional()
 }).strict();
 
 // server/omni-memory-storage.ts
@@ -5095,17 +5540,17 @@ var omniMemoryDdl = [
   `CREATE TABLE IF NOT EXISTS v2_omni_memory_receipts(message_id uuid PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,user_id text NOT NULL,status text NOT NULL CHECK(status IN ('used','none','disabled','unavailable')),project_id uuid,refs jsonb NOT NULL DEFAULT '[]',created_at timestamptz NOT NULL DEFAULT now())`
 ];
 async function initializeOmniMemory() {
-  const sql7 = monitoringSql();
-  const [exists] = await sql7`SELECT to_regclass('v2_omni_memories') IS NOT NULL AND to_regclass('v2_omni_memory_versions') IS NOT NULL AND to_regclass('v2_omni_memory_receipts') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [exists] = await sql10`SELECT to_regclass('v2_omni_memories') IS NOT NULL AND to_regclass('v2_omni_memory_versions') IS NOT NULL AND to_regclass('v2_omni_memory_receipts') IS NOT NULL AS ready`;
   if (exists?.ready) return;
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(184730028)`,
-    ...omniMemoryDdl.map((ddl) => sql7.query(ddl))
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(184730028)`,
+    ...omniMemoryDdl.map((ddl) => sql10.query(ddl))
   ]);
 }
 async function memoryIsReady() {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`SELECT to_regclass('v2_omni_memories') IS NOT NULL AND to_regclass('v2_omni_memory_receipts') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [row] = await sql10`SELECT to_regclass('v2_omni_memories') IS NOT NULL AND to_regclass('v2_omni_memory_receipts') IS NOT NULL AS ready`;
   return Boolean(row?.ready);
 }
 function serialize(row) {
@@ -5130,22 +5575,22 @@ function serialize(row) {
 }
 async function readOmniMemories(userId) {
   await initializeOmniMemory();
-  const sql7 = monitoringSql();
-  return (await sql7`SELECT m.*,p.name AS project_name,msg.id AS source_id,msg.session_id AS source_session_id,msg.role AS source_role FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id LEFT JOIN (chat_messages msg JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=${userId}) ON msg.id=m.source_message_id WHERE m.user_id=${userId} ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`).map(serialize);
+  const sql10 = monitoringSql();
+  return (await sql10`SELECT m.*,p.name AS project_name,msg.id AS source_id,msg.session_id AS source_session_id,msg.role AS source_role FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id LEFT JOIN (chat_messages msg JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=${userId}) ON msg.id=m.source_message_id WHERE m.user_id=${userId} ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`).map(serialize);
 }
 async function createOmniMemory(userId, input) {
   await initializeOmniMemory();
-  const sql7 = monitoringSql();
-  const results = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730029))`,
-    sql7`WITH added AS(INSERT INTO v2_omni_memories(id,user_id,title,content,category,project_id,pinned,archived,source_message_id)
+  const sql10 = monitoringSql();
+  const results = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730029))`,
+    sql10`WITH added AS(INSERT INTO v2_omni_memories(id,user_id,title,content,category,project_id,pinned,archived,source_message_id)
    SELECT ${input.id},${userId},${input.title},${input.content},${input.category},${input.projectId},${input.pinned},${input.archived},${input.sourceMessageId}
    WHERE (SELECT count(*) FROM v2_omni_memories WHERE user_id=${userId})<500
     AND (${input.projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND user_id=${userId}))
     AND (${input.sourceMessageId}::uuid IS NULL OR EXISTS(SELECT 1 FROM chat_messages msg JOIN chat_sessions s ON s.id=msg.session_id WHERE msg.id=${input.sourceMessageId} AND s.user_id=${userId} AND msg.role IN ('user','assistant')))
    ON CONFLICT(id) DO NOTHING RETURNING *)
    INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM added RETURNING memory_id`,
-    sql7`SELECT id FROM v2_omni_memories WHERE id=${input.id} AND user_id=${userId}`
+    sql10`SELECT id FROM v2_omni_memories WHERE id=${input.id} AND user_id=${userId}`
   ]);
   if (!results[2].length)
     throw new OmniMemoryError(
@@ -5155,8 +5600,8 @@ async function createOmniMemory(userId, input) {
   return { id: input.id };
 }
 async function updateOmniMemory(userId, id, input) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`WITH changed AS(UPDATE v2_omni_memories SET title=${input.title},content=${input.content},category=${input.category},project_id=${input.projectId},pinned=${input.pinned},archived=${input.archived},version=version+1,updated_at=clock_timestamp() WHERE id=${id} AND user_id=${userId} AND version=${input.version} AND (${input.projectId}::uuid IS NULL OR project_id=${input.projectId}::uuid OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND user_id=${userId})) RETURNING *) INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`WITH changed AS(UPDATE v2_omni_memories SET title=${input.title},content=${input.content},category=${input.category},project_id=${input.projectId},pinned=${input.pinned},archived=${input.archived},version=version+1,updated_at=clock_timestamp() WHERE id=${id} AND user_id=${userId} AND version=${input.version} AND (${input.projectId}::uuid IS NULL OR project_id=${input.projectId}::uuid OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND user_id=${userId})) RETURNING *) INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id`;
   if (!rows.length)
     throw new OmniMemoryError(
       "Eintrag zwischenzeitlich ge\xE4ndert, entfernt oder Projekt nicht verf\xFCgbar. Bitte neu laden.",
@@ -5165,8 +5610,8 @@ async function updateOmniMemory(userId, id, input) {
   return { ok: true };
 }
 async function deleteOmniMemory(userId, id, version) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`DELETE FROM v2_omni_memories WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`DELETE FROM v2_omni_memories WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
   if (!rows.length)
     throw new OmniMemoryError(
       "Eintrag zwischenzeitlich ge\xE4ndert oder entfernt. Bitte neu laden.",
@@ -5175,8 +5620,8 @@ async function deleteOmniMemory(userId, id, version) {
   return { ok: true };
 }
 async function readMemoryVersions(userId, id) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`SELECT v.* FROM v2_omni_memory_versions v JOIN v2_omni_memories m ON m.id=v.memory_id AND m.user_id=v.user_id WHERE v.memory_id=${id} AND v.user_id=${userId} ORDER BY v.version DESC LIMIT 50`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`SELECT v.* FROM v2_omni_memory_versions v JOIN v2_omni_memories m ON m.id=v.memory_id AND m.user_id=v.user_id WHERE v.memory_id=${id} AND v.user_id=${userId} ORDER BY v.version DESC LIMIT 50`;
   return rows.map((row) => ({
     title: String(row.title),
     content: String(row.content),
@@ -5197,43 +5642,43 @@ var autoMemoryDdl = [
 ];
 async function initializeAutoMemory() {
   await initializeOmniMemory();
-  const sql7 = monitoringSql();
-  const [row] = await sql7`SELECT to_regclass('v2_omni_memory_captures') IS NOT NULL AND to_regclass('v2_omni_memory_auto_events') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [row] = await sql10`SELECT to_regclass('v2_omni_memory_captures') IS NOT NULL AND to_regclass('v2_omni_memory_auto_events') IS NOT NULL AS ready`;
   if (row?.ready) return;
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(184730030)`,
-    ...autoMemoryDdl.map((ddl) => sql7.query(ddl))
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(184730030)`,
+    ...autoMemoryDdl.map((ddl) => sql10.query(ddl))
   ]);
 }
 async function claimAutoCapture(userId, sourceId, assistantId, projectId) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`INSERT INTO v2_omni_memory_captures(source_id,assistant_id,user_id,project_id,status) SELECT u.id,a.id,${userId},${projectId},'processing' FROM chat_messages u JOIN chat_messages a ON a.session_id=u.session_id JOIN chat_sessions s ON s.id=u.session_id WHERE u.id=${sourceId} AND a.id=${assistantId} AND u.role='user' AND a.role='assistant' AND s.user_id=${userId} AND (${projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId})) ON CONFLICT(source_id) DO NOTHING RETURNING source_id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`INSERT INTO v2_omni_memory_captures(source_id,assistant_id,user_id,project_id,status) SELECT u.id,a.id,${userId},${projectId},'processing' FROM chat_messages u JOIN chat_messages a ON a.session_id=u.session_id JOIN chat_sessions s ON s.id=u.session_id WHERE u.id=${sourceId} AND a.id=${assistantId} AND u.role='user' AND a.role='assistant' AND s.user_id=${userId} AND (${projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId})) ON CONFLICT(source_id) DO NOTHING RETURNING source_id`;
   return Boolean(rows.length);
 }
 async function finishAutoCapture(userId, sourceId, failed = false) {
-  const sql7 = monitoringSql();
-  await sql7`UPDATE v2_omni_memory_captures SET status=${failed ? "failed" : "done"} WHERE source_id=${sourceId} AND user_id=${userId}`;
+  const sql10 = monitoringSql();
+  await sql10`UPDATE v2_omni_memory_captures SET status=${failed ? "failed" : "done"} WHERE source_id=${sourceId} AND user_id=${userId}`;
 }
 async function createAutoEvent(userId, sourceId, slot, projectId, proposal, target) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   const id = randomUUID3(), targetId = target?.id ?? randomUUID3();
-  const rows = await sql7`INSERT INTO v2_omni_memory_auto_events(id,user_id,source_id,slot,project_id,target_id,target_version,memory_id,status,proposal) SELECT ${id},${userId},source_id,${slot},${projectId},${targetId},${target?.version ?? null},${target?.id ?? null},'pending',${JSON.stringify(proposal)}::jsonb FROM v2_omni_memory_captures WHERE source_id=${sourceId} AND user_id=${userId} AND project_id IS NOT DISTINCT FROM ${projectId}::uuid ON CONFLICT(source_id,slot) DO NOTHING RETURNING id`;
+  const rows = await sql10`INSERT INTO v2_omni_memory_auto_events(id,user_id,source_id,slot,project_id,target_id,target_version,memory_id,status,proposal) SELECT ${id},${userId},source_id,${slot},${projectId},${targetId},${target?.version ?? null},${target?.id ?? null},'pending',${JSON.stringify(proposal)}::jsonb FROM v2_omni_memory_captures WHERE source_id=${sourceId} AND user_id=${userId} AND project_id IS NOT DISTINCT FROM ${projectId}::uuid ON CONFLICT(source_id,slot) DO NOTHING RETURNING id`;
   return rows[0] ? String(rows[0].id) : null;
 }
 async function applyAutoMemoryEvent(userId, id) {
-  const sql7 = monitoringSql();
-  const [event] = await sql7`SELECT target_version FROM v2_omni_memory_auto_events WHERE id=${id} AND user_id=${userId}`;
+  const sql10 = monitoringSql();
+  const [event] = await sql10`SELECT target_version FROM v2_omni_memory_auto_events WHERE id=${id} AND user_id=${userId}`;
   if (!event)
     throw new OmniMemoryError("Ged\xE4chtnisvorschlag nicht gefunden.", 404);
-  const locked = sql7`SELECT e.* FROM v2_omni_memory_auto_events e WHERE e.id=${id} AND e.user_id=${userId} AND e.status='pending' AND e.proposal IS NOT NULL AND (e.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=e.project_id AND p.user_id=${userId})) FOR UPDATE`;
-  const mutation = event.target_version == null ? sql7`WITH e AS(${locked}),changed AS(INSERT INTO v2_omni_memories(id,user_id,title,content,category,project_id,source_message_id)
+  const locked = sql10`SELECT e.* FROM v2_omni_memory_auto_events e WHERE e.id=${id} AND e.user_id=${userId} AND e.status='pending' AND e.proposal IS NOT NULL AND (e.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=e.project_id AND p.user_id=${userId})) FOR UPDATE`;
+  const mutation = event.target_version == null ? sql10`WITH e AS(${locked}),changed AS(INSERT INTO v2_omni_memories(id,user_id,title,content,category,project_id,source_message_id)
  SELECT target_id,user_id,proposal->>'title',proposal->>'content',proposal->>'category',project_id,source_id FROM e WHERE (SELECT count(*) FROM v2_omni_memories WHERE user_id=${userId})<500 AND NOT EXISTS(SELECT 1 FROM v2_omni_memories m WHERE m.user_id=${userId} AND m.project_id IS NOT DISTINCT FROM e.project_id AND lower(regexp_replace(trim(m.content),'[[:space:]]+',' ','g'))=lower(regexp_replace(trim(e.proposal->>'content'),'[[:space:]]+',' ','g'))) RETURNING *),v AS(INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id,version)
- UPDATE v2_omni_memory_auto_events SET status='saved',memory_id=v.memory_id,saved_version=v.version,proposal=NULL FROM v WHERE id=${id} AND user_id=${userId} RETURNING id` : sql7`WITH e AS(${locked}),changed AS(UPDATE v2_omni_memories m SET title=e.proposal->>'title',content=e.proposal->>'content',category=e.proposal->>'category',source_message_id=e.source_id,version=m.version+1,updated_at=clock_timestamp() FROM e WHERE m.id=e.target_id AND m.user_id=e.user_id AND m.version=e.target_version AND m.archived=false AND m.project_id IS NOT DISTINCT FROM e.project_id RETURNING m.*),v AS(INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id,version)
+ UPDATE v2_omni_memory_auto_events SET status='saved',memory_id=v.memory_id,saved_version=v.version,proposal=NULL FROM v WHERE id=${id} AND user_id=${userId} RETURNING id` : sql10`WITH e AS(${locked}),changed AS(UPDATE v2_omni_memories m SET title=e.proposal->>'title',content=e.proposal->>'content',category=e.proposal->>'category',source_message_id=e.source_id,version=m.version+1,updated_at=clock_timestamp() FROM e WHERE m.id=e.target_id AND m.user_id=e.user_id AND m.version=e.target_version AND m.archived=false AND m.project_id IS NOT DISTINCT FROM e.project_id RETURNING m.*),v AS(INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id,version)
  UPDATE v2_omni_memory_auto_events SET status='saved',memory_id=v.memory_id,saved_version=v.version,proposal=NULL FROM v WHERE id=${id} AND user_id=${userId} RETURNING id`;
-  const results = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730029))`,
+  const results = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId},184730029))`,
     mutation,
-    sql7`SELECT status FROM v2_omni_memory_auto_events WHERE id=${id} AND user_id=${userId}`
+    sql10`SELECT status FROM v2_omni_memory_auto_events WHERE id=${id} AND user_id=${userId}`
   ]);
   if (results[2][0]?.status !== "saved")
     throw new OmniMemoryError(
@@ -5243,19 +5688,19 @@ async function applyAutoMemoryEvent(userId, id) {
   return { ok: true };
 }
 async function dismissAutoMemoryEvent(userId, id) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`UPDATE v2_omni_memory_auto_events SET status='dismissed',proposal=NULL WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`UPDATE v2_omni_memory_auto_events SET status='dismissed',proposal=NULL WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
   if (!rows.length)
     throw new OmniMemoryError("Vorschlag nicht mehr offen.", 409);
   return { ok: true };
 }
 async function readAutoMemoryStates(userId, sessionId) {
   try {
-    const sql7 = monitoringSql();
-    const [ready2] = await sql7`SELECT to_regclass('v2_omni_memory_auto_events') IS NOT NULL AS ready`;
+    const sql10 = monitoringSql();
+    const [ready2] = await sql10`SELECT to_regclass('v2_omni_memory_auto_events') IS NOT NULL AS ready`;
     if (!ready2?.ready) return {};
-    const captures = await sql7`SELECT c.* FROM v2_omni_memory_captures c JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id WHERE c.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId}`;
-    const rows = await sql7`SELECT e.*,m.title,m.content,m.version AS current_version,m.archived,m.category,m.project_id AS current_project FROM v2_omni_memory_auto_events e JOIN v2_omni_memory_captures c ON c.source_id=e.source_id JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id LEFT JOIN v2_omni_memories m ON m.id=e.memory_id AND m.user_id=e.user_id WHERE e.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId} AND e.status<>'dismissed' ORDER BY e.created_at,e.slot`;
+    const captures = await sql10`SELECT c.* FROM v2_omni_memory_captures c JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id WHERE c.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId}`;
+    const rows = await sql10`SELECT e.*,m.title,m.content,m.version AS current_version,m.archived,m.category,m.project_id AS current_project FROM v2_omni_memory_auto_events e JOIN v2_omni_memory_captures c ON c.source_id=e.source_id JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id LEFT JOIN v2_omni_memories m ON m.id=e.memory_id AND m.user_id=e.user_id WHERE e.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId} AND e.status<>'dismissed' ORDER BY e.created_at,e.slot`;
     return Object.fromEntries(
       captures.map((c) => [
         String(c.assistant_id),
@@ -5305,7 +5750,7 @@ function createAutoMemoryRoute(dependencies = { applyAutoMemoryEvent, dismissAut
   for (const action of ["accept", "dismiss"])
     route.post(`/:id/${action}`, async (c) => {
       const id = c.req.param("id");
-      if (!z29.uuid().safeParse(id).success || !z29.object({}).strict().safeParse(await c.req.json().catch(() => null)).success)
+      if (!z30.uuid().safeParse(id).success || !z30.object({}).strict().safeParse(await c.req.json().catch(() => null)).success)
         return c.json({ error: "Ung\xFCltiger Ged\xE4chtnisvorschlag." }, 400);
       return c.json(
         await (action === "accept" ? dependencies.applyAutoMemoryEvent : dependencies.dismissAutoMemoryEvent)(c.get("userId"), id)
@@ -5317,7 +5762,7 @@ var autoMemoryRoute = createAutoMemoryRoute();
 
 // server/routes/omni-memory.ts
 import { Hono as Hono24 } from "hono";
-import { z as z30 } from "zod";
+import { z as z31 } from "zod";
 function createOmniMemoryRoute(dependencies = {
   readOmniMemories,
   createOmniMemory,
@@ -5357,7 +5802,7 @@ function createOmniMemoryRoute(dependencies = {
     );
   });
   route.use("/:id/*", async (c, next) => {
-    if (!z30.uuid().safeParse(c.req.param("id")).success)
+    if (!z31.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
     await next();
   });
@@ -5368,7 +5813,7 @@ function createOmniMemoryRoute(dependencies = {
     )
   );
   route.put("/:id", async (c) => {
-    if (!z30.uuid().safeParse(c.req.param("id")).success)
+    if (!z31.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
     const parsed = updateMemorySchema.safeParse(
       await c.req.json().catch(() => null)
@@ -5384,9 +5829,9 @@ function createOmniMemoryRoute(dependencies = {
     );
   });
   route.delete("/:id", async (c) => {
-    if (!z30.uuid().safeParse(c.req.param("id")).success)
+    if (!z31.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
-    const parsed = z30.object({ version: z30.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z31.object({ version: z31.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Version fehlt." }, 400);
     return c.json(
       await dependencies.deleteOmniMemory(
@@ -5402,17 +5847,17 @@ var omniMemoryRoute = createOmniMemoryRoute();
 
 // server/routes/omni-actions.ts
 import { Hono as Hono25 } from "hono";
-import { z as z32 } from "zod";
+import { z as z33 } from "zod";
 
 // server/omni-actions-context.ts
 init_neon_storage();
 async function loadOmniContext(userId) {
-  const sql7 = monitoringSql();
-  const [tasks2, projects2, projectTasks2] = await sql7.transaction(
+  const sql10 = monitoringSql();
+  const [tasks2, projects2, projectTasks2] = await sql10.transaction(
     [
-      sql7`SELECT t.id,t.title,t.status,t.priority,t.due_date AS "dueDate",t.description,md5(to_jsonb(t)::text) AS version FROM tasks t WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 201`,
-      sql7`SELECT p.id,p.name,p.status,p.description,md5(to_jsonb(p)::text) AS version FROM projects p WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 101`,
-      sql7`SELECT t.id,t.project_id AS "projectId",t.title,t.status,t.priority,md5(to_jsonb(t)::text) AS version FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE t.user_id=${userId} ORDER BY t.updated_at DESC,t.id LIMIT 201`
+      sql10`SELECT t.id,t.title,t.status,t.priority,t.due_date AS "dueDate",t.description,md5(to_jsonb(t)::text) AS version FROM tasks t WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 201`,
+      sql10`SELECT p.id,p.name,p.status,p.description,md5(to_jsonb(p)::text) AS version FROM projects p WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 101`,
+      sql10`SELECT t.id,t.project_id AS "projectId",t.title,t.status,t.priority,md5(to_jsonb(t)::text) AS version FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE t.user_id=${userId} ORDER BY t.updated_at DESC,t.id LIMIT 201`
     ],
     { isolationLevel: "RepeatableRead", readOnly: true }
   );
@@ -5442,7 +5887,7 @@ function publicOmniContext(context) {
 }
 
 // server/omni-actions-policy.ts
-import { z as z31 } from "zod";
+import { z as z32 } from "zod";
 var OmniActionError = class extends Error {
   status;
   constructor(message, status = 400) {
@@ -5450,13 +5895,13 @@ var OmniActionError = class extends Error {
     this.status = status;
   }
 };
-var title = z31.string().trim().min(1).max(300);
-var priority = z31.enum(["high", "medium", "low"]);
-var day = z31.iso.date().refine(
+var title = z32.string().trim().min(1).max(300);
+var priority = z32.enum(["high", "medium", "low"]);
+var day = z32.iso.date().refine(
   (v) => !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v
 );
-var localTime = z31.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-var omniTimeZone = z31.string().max(80).refine((v) => {
+var localTime = z32.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+var omniTimeZone = z32.string().max(80).refine((v) => {
   try {
     new Intl.DateTimeFormat("de-DE", { timeZone: v });
     return true;
@@ -5464,67 +5909,67 @@ var omniTimeZone = z31.string().max(80).refine((v) => {
     return false;
   }
 });
-var personalFields = z31.object({
+var personalFields = z32.object({
   title: title.optional(),
-  description: z31.string().max(1e4).optional(),
+  description: z32.string().max(1e4).optional(),
   priority: priority.optional(),
-  status: z31.enum(["todo", "in_progress", "done"]).optional(),
+  status: z32.enum(["todo", "in_progress", "done"]).optional(),
   dueDate: day.nullable().optional()
 }).strict().refine((v) => Object.keys(v).length > 0);
-var projectFields = z31.object({
+var projectFields = z32.object({
   title: title.optional(),
   priority: priority.optional(),
-  status: z31.enum(["backlog", "todo", "in_progress", "done"]).optional()
+  status: z32.enum(["backlog", "todo", "in_progress", "done"]).optional()
 }).strict().refine((v) => Object.keys(v).length > 0);
-var omniOperationSchema = z31.discriminatedUnion("kind", [
-  z31.object({
-    kind: z31.literal("create_task"),
+var omniOperationSchema = z32.discriminatedUnion("kind", [
+  z32.object({
+    kind: z32.literal("create_task"),
     title,
-    description: z31.string().max(1e4),
+    description: z32.string().max(1e4),
     priority,
-    status: z31.enum(["todo", "in_progress", "done"]),
+    status: z32.enum(["todo", "in_progress", "done"]),
     dueDate: day.nullable()
   }).strict(),
-  z31.object({
-    kind: z31.literal("update_task"),
-    taskId: z31.uuid(),
+  z32.object({
+    kind: z32.literal("update_task"),
+    taskId: z32.uuid(),
     changes: personalFields
   }).strict(),
-  z31.object({
-    kind: z31.literal("create_project_task"),
-    projectId: z31.uuid(),
+  z32.object({
+    kind: z32.literal("create_project_task"),
+    projectId: z32.uuid(),
     title,
     priority,
-    status: z31.enum(["backlog", "todo", "in_progress", "done"])
+    status: z32.enum(["backlog", "todo", "in_progress", "done"])
   }).strict(),
-  z31.object({
-    kind: z31.literal("update_project_task"),
-    taskId: z31.uuid(),
+  z32.object({
+    kind: z32.literal("update_project_task"),
+    taskId: z32.uuid(),
     changes: projectFields
   }).strict(),
-  z31.object({
-    kind: z31.literal("create_appointment"),
+  z32.object({
+    kind: z32.literal("create_appointment"),
     title,
-    description: z31.string().max(1e4),
-    location: z31.string().max(300),
+    description: z32.string().max(1e4),
+    location: z32.string().max(300),
     priority,
     startLocal: localTime,
     endLocal: localTime
   }).strict(),
-  z31.object({
-    kind: z31.literal("append_project_note"),
-    projectId: z31.uuid(),
-    text: z31.string().trim().min(1).max(5e3)
+  z32.object({
+    kind: z32.literal("append_project_note"),
+    projectId: z32.uuid(),
+    text: z32.string().trim().min(1).max(5e3)
   }).strict()
 ]);
-var omniPlannerOutput = z31.discriminatedUnion("type", [
-  z31.object({
-    type: z31.literal("clarification"),
-    message: z31.string().trim().min(1).max(1500)
+var omniPlannerOutput = z32.discriminatedUnion("type", [
+  z32.object({
+    type: z32.literal("clarification"),
+    message: z32.string().trim().min(1).max(1500)
   }).strict(),
-  z31.object({
-    type: z31.literal("plan"),
-    operations: z31.array(omniOperationSchema).min(1).max(5)
+  z32.object({
+    type: z32.literal("plan"),
+    operations: z32.array(omniOperationSchema).min(1).max(5)
   }).strict()
 ]);
 function localTimeToIso(local, timeZone) {
@@ -5878,12 +6323,12 @@ var omniActionsDdl = [
  $omni$`
 ];
 async function initializeOmniActions() {
-  const sql7 = monitoringSql();
-  const [exists] = await sql7`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v2(text,uuid)') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [exists] = await sql10`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v2(text,uuid)') IS NOT NULL AS ready`;
   if (exists?.ready) return;
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(184730027)`,
-    ...omniActionsDdl.map((ddl) => sql7.query(ddl))
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(184730027)`,
+    ...omniActionsDdl.map((ddl) => sql10.query(ddl))
   ]);
 }
 function serialize2(row) {
@@ -5901,17 +6346,17 @@ function serialize2(row) {
 }
 async function readOmniPlans(userId) {
   await initializeOmniActions();
-  const sql7 = monitoringSql();
-  return (await sql7`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE user_id=${userId} ORDER BY created_at DESC,id LIMIT 20`).map(serialize2);
+  const sql10 = monitoringSql();
+  return (await sql10`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE user_id=${userId} ORDER BY created_at DESC,id LIMIT 20`).map(serialize2);
 }
 async function findOmniRequest(userId, requestId) {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE user_id=${userId} AND request_id=${requestId}`;
+  const sql10 = monitoringSql();
+  const [row] = await sql10`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE user_id=${userId} AND request_id=${requestId}`;
   return row ? serialize2(row) : null;
 }
 async function claimOmniPlanning(userId) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`INSERT INTO v2_omni_action_limits(user_id,next_plan_at) VALUES(${userId},now()+interval '20 seconds') ON CONFLICT(user_id) DO UPDATE SET next_plan_at=excluded.next_plan_at WHERE v2_omni_action_limits.next_plan_at<=now() RETURNING user_id`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`INSERT INTO v2_omni_action_limits(user_id,next_plan_at) VALUES(${userId},now()+interval '20 seconds') ON CONFLICT(user_id) DO UPDATE SET next_plan_at=excluded.next_plan_at WHERE v2_omni_action_limits.next_plan_at<=now() RETURNING user_id`;
   if (!rows.length)
     throw new OmniActionError(
       "Bitte kurz warten: Omni kann alle 20 Sekunden einen neuen Vorschlag planen.",
@@ -5919,14 +6364,15 @@ async function claimOmniPlanning(userId) {
     );
 }
 async function saveOmniPlan(userId, requestId, prompt, timeZone, prepared) {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`INSERT INTO v2_omni_action_plans(id,user_id,request_id,prompt,time_zone,operations,previews,result_links) VALUES(${randomUUID5()},${userId},${requestId},${prompt},${timeZone},${JSON.stringify(prepared.stored)}::jsonb,${JSON.stringify(prepared.previews)}::jsonb,${JSON.stringify(prepared.results)}::jsonb) ON CONFLICT(user_id,request_id) DO UPDATE SET request_id=excluded.request_id RETURNING id,status,prompt,time_zone,created_at,expires_at,previews,result_links`;
+  const sql10 = monitoringSql();
+  const [row] = await sql10`INSERT INTO v2_omni_action_plans(id,user_id,request_id,prompt,time_zone,operations,previews,result_links) VALUES(${randomUUID5()},${userId},${requestId},${prompt},${timeZone},${JSON.stringify(prepared.stored)}::jsonb,${JSON.stringify(prepared.previews)}::jsonb,${JSON.stringify(prepared.results)}::jsonb) ON CONFLICT(user_id,request_id) DO UPDATE SET request_id=excluded.request_id RETURNING id,status,prompt,time_zone,created_at,expires_at,previews,result_links`;
   return serialize2(row);
 }
 async function executeOmniPlan(userId, id) {
-  const sql7 = monitoringSql();
+  await initializeWorkingHistory();
+  const sql10 = monitoringSql();
   try {
-    await sql7`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`;
+    await sql10.transaction([sql10`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`working-history:${userId}`},0)),set_config('omnidesk.history_source','omni',true)`, sql10`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`]);
   } catch (error) {
     const message = error.message;
     if (message.includes("OMNI_NOT_FOUND"))
@@ -5943,13 +6389,13 @@ async function executeOmniPlan(userId, id) {
       );
     throw error;
   }
-  const [row] = await sql7`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE id=${id} AND user_id=${userId}`;
+  const [row] = await sql10`SELECT id,status,prompt,time_zone,created_at,expires_at,previews,result_links FROM v2_omni_action_plans WHERE id=${id} AND user_id=${userId}`;
   if (!row) throw new OmniActionError("Vorschlag nicht gefunden.", 404);
   return serialize2(row);
 }
 async function cancelOmniPlan(userId, id) {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`UPDATE v2_omni_action_plans SET status='cancelled' WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
+  const sql10 = monitoringSql();
+  const [row] = await sql10`UPDATE v2_omni_action_plans SET status='cancelled' WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
   if (!row)
     throw new OmniActionError(
       "Vorschlag nicht mehr offen oder nicht gefunden.",
@@ -5988,9 +6434,9 @@ function createOmniActionsRoute(dependencies = {
     async (c) => c.json(await dependencies.readOmniPlans(c.get("userId")))
   );
   route.post("/plan", async (c) => {
-    const parsed = z32.object({
-      requestId: z32.uuid(),
-      prompt: z32.string().trim().min(1).max(4e3),
+    const parsed = z33.object({
+      requestId: z33.uuid(),
+      prompt: z33.string().trim().min(1).max(4e3),
       timeZone: omniTimeZone
     }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
@@ -6024,9 +6470,9 @@ function createOmniActionsRoute(dependencies = {
   for (const action of ["confirm", "cancel"])
     route.post(`/:id/${action}`, async (c) => {
       const id = c.req.param("id");
-      if (!z32.uuid().safeParse(id).success)
+      if (!z33.uuid().safeParse(id).success)
         return c.json({ error: "Ung\xFCltige Vorschlagskennung." }, 400);
-      const body = z32.object({}).strict().safeParse(await c.req.json().catch(() => null));
+      const body = z33.object({}).strict().safeParse(await c.req.json().catch(() => null));
       if (!body.success)
         return c.json(
           {
@@ -6043,22 +6489,22 @@ function createOmniActionsRoute(dependencies = {
 var omniActionsRoute = createOmniActionsRoute();
 
 // server/omni-memory-auto-policy.ts
-import { z as z33 } from "zod";
-var autoExtractionSchema = z33.object({
-  items: z33.array(
-    z33.object({
-      title: z33.string().trim().min(1).max(160),
-      evidence: z33.string().trim().min(6).max(1500),
-      category: z33.enum(MEMORY_CATEGORIES),
-      targetId: z33.uuid().nullable(),
-      certainty: z33.enum(["explicit", "uncertain"]),
-      correction: z33.boolean()
+import { z as z34 } from "zod";
+var autoExtractionSchema = z34.object({
+  items: z34.array(
+    z34.object({
+      title: z34.string().trim().min(1).max(160),
+      evidence: z34.string().trim().min(6).max(1500),
+      category: z34.enum(MEMORY_CATEGORIES),
+      targetId: z34.uuid().nullable(),
+      certainty: z34.enum(["explicit", "uncertain"]),
+      correction: z34.boolean()
     }).strict()
   ).max(3)
 }).strict();
-function sensitiveMemoryText(text25) {
+function sensitiveMemoryText(text26) {
   return /(?:sk[-_](?:proj[-_])?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{15,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|\bBearer\s+[a-z0-9._~+/-]{10,}|(?:password|passwort|api[ -_]?key|secret|token|wiederherstellungscode|recovery[ -]?code)\s*(?:ist|lautet|[:=])\s*\S{4,})/i.test(
-    text25
+    text26
   );
 }
 function needsMemoryQuestion(evidence, certainty, update, correction) {
@@ -6137,11 +6583,11 @@ async function extractAutoMemory(content, memories) {
   } finally {
     reader.releaseLock();
   }
-  const text25 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
-  if (typeof text25 !== "string") throw new Error("Invalid response");
+  const text26 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
+  if (typeof text26 !== "string") throw new Error("Invalid response");
   return autoExtractionSchema.parse(
     JSON.parse(
-      text25.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+      text26.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
     )
   );
 }
@@ -6280,8 +6726,8 @@ async function prepareChatMemory(userId, query, options) {
   try {
     if (!await memoryIsReady())
       return { status: "none", projectId: options.projectId, items: [] };
-    const sql7 = monitoringSql();
-    const rows = await sql7`SELECT m.id,m.title,m.content,m.category,m.project_id AS "projectId",m.pinned,m.version,m.updated_at AS "updatedAt" FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.archived=false AND (m.project_id IS NULL OR (m.project_id=${options.projectId}::uuid AND p.id IS NOT NULL)) ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`;
+    const sql10 = monitoringSql();
+    const rows = await sql10`SELECT m.id,m.title,m.content,m.category,m.project_id AS "projectId",m.pinned,m.version,m.updated_at AS "updatedAt" FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.archived=false AND (m.project_id IS NULL OR (m.project_id=${options.projectId}::uuid AND p.id IS NOT NULL)) ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`;
     const items = selectChatMemories(
       rows,
       query,
@@ -6319,14 +6765,14 @@ function ephemeralMemoryReceipt(memory) {
 }
 async function saveMemoryReceipt(userId, messageId, memory) {
   if (!await memoryIsReady()) return;
-  const sql7 = monitoringSql();
-  await sql7`INSERT INTO v2_omni_memory_receipts(message_id,user_id,status,project_id,refs) SELECT msg.id,${userId},${memory.status},${memory.projectId},${JSON.stringify(memory.items.map(({ id, version }) => ({ id, version })))}::jsonb FROM chat_messages msg JOIN chat_sessions s ON s.id=msg.session_id WHERE msg.id=${messageId} AND msg.role='assistant' AND s.user_id=${userId} ON CONFLICT(message_id) DO NOTHING`;
+  const sql10 = monitoringSql();
+  await sql10`INSERT INTO v2_omni_memory_receipts(message_id,user_id,status,project_id,refs) SELECT msg.id,${userId},${memory.status},${memory.projectId},${JSON.stringify(memory.items.map(({ id, version }) => ({ id, version })))}::jsonb FROM chat_messages msg JOIN chat_sessions s ON s.id=msg.session_id WHERE msg.id=${messageId} AND msg.role='assistant' AND s.user_id=${userId} ON CONFLICT(message_id) DO NOTHING`;
 }
 async function readMemoryReceipts(userId, sessionId) {
   try {
     if (!await memoryIsReady()) return {};
-    const sql7 = monitoringSql();
-    const rows = await sql7`SELECT r.message_id,r.status,r.project_id,r.refs FROM v2_omni_memory_receipts r JOIN chat_messages msg ON msg.id=r.message_id JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=r.user_id WHERE r.user_id=${userId} AND s.id=${sessionId}`;
+    const sql10 = monitoringSql();
+    const rows = await sql10`SELECT r.message_id,r.status,r.project_id,r.refs FROM v2_omni_memory_receipts r JOIN chat_messages msg ON msg.id=r.message_id JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=r.user_id WHERE r.user_id=${userId} AND s.id=${sessionId}`;
     const ids = [
       ...new Set(
         rows.flatMap(
@@ -6334,7 +6780,7 @@ async function readMemoryReceipts(userId, sessionId) {
         )
       )
     ];
-    const current = ids.length ? await sql7`SELECT m.id,m.title,m.version,m.archived,m.project_id,p.id AS valid_project FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.id=ANY(${ids}::uuid[])` : [];
+    const current = ids.length ? await sql10`SELECT m.id,m.title,m.version,m.archived,m.project_id,p.id AS valid_project FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.id=ANY(${ids}::uuid[])` : [];
     return Object.fromEntries(
       rows.map((row) => [
         String(row.message_id),
@@ -6370,7 +6816,7 @@ init_client();
 init_schema();
 import { and as and22, asc as asc5, desc as desc9, eq as eq24 } from "drizzle-orm";
 import { Hono as Hono26 } from "hono";
-import { z as z34 } from "zod";
+import { z as z35 } from "zod";
 var chatRoute = new Hono26();
 var preferredKeyIndex = 0;
 function getApiKeys() {
@@ -6383,14 +6829,14 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z34.object({
-  title: z34.string().trim().max(200).optional()
+var createSessionSchema = z35.object({
+  title: z35.string().trim().max(200).optional()
 });
-var updateSessionSchema = z34.object({
-  title: z34.string().trim().min(1).max(200)
+var updateSessionSchema = z35.object({
+  title: z35.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z34.object({
-  content: z34.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4),
+var sendMessageSchema = z35.object({
+  content: z35.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4),
   memory: chatMemoryOptions.optional()
 });
 chatRoute.get("/sessions", async (c) => {
@@ -6414,7 +6860,7 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z34.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z35.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
@@ -6461,7 +6907,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z34.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z35.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const memoryOptions = parsed.data.memory ?? {
@@ -6637,7 +7083,7 @@ ${lastError}`;
 
 // server/routes/mission-control.ts
 import { Hono as Hono27 } from "hono";
-import { z as z35 } from "zod";
+import { z as z36 } from "zod";
 
 // server/mission-control.ts
 init_neon_storage();
@@ -7002,18 +7448,18 @@ var missionDdl = [
   `CREATE TABLE IF NOT EXISTS v2_mission_ai_limits(user_id text PRIMARY KEY,next_at timestamptz NOT NULL)`
 ];
 async function initializeMissionStorage() {
-  const sql7 = monitoringSql();
-  const [existing] = await sql7`SELECT to_regclass('v2_mission_settings') IS NOT NULL AND to_regclass('v2_mission_visits') IS NOT NULL AND to_regclass('v2_mission_ai_limits') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [existing] = await sql10`SELECT to_regclass('v2_mission_settings') IS NOT NULL AND to_regclass('v2_mission_visits') IS NOT NULL AND to_regclass('v2_mission_ai_limits') IS NOT NULL AS ready`;
   if (existing?.ready) return;
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(184730021)`,
-    ...missionDdl.map((s) => sql7.query(s))
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(184730021)`,
+    ...missionDdl.map((s) => sql10.query(s))
   ]);
 }
 async function settings(userId, projectId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const [row] = await sql7`SELECT s.monitor_ids,s.version FROM v2_mission_settings s JOIN projects p ON p.id=s.project_id AND p.user_id=s.user_id WHERE s.user_id=${userId} AND s.project_id=${projectId}`;
+    const [row] = await sql10`SELECT s.monitor_ids,s.version FROM v2_mission_settings s JOIN projects p ON p.id=s.project_id AND p.user_id=s.user_id WHERE s.user_id=${userId} AND s.project_id=${projectId}`;
     return row;
   } catch (e) {
     if (missingNeonStorage(e)) return void 0;
@@ -7046,8 +7492,8 @@ async function selectedMonitors(userId, projectId) {
   };
 }
 async function readMissionMonitorOptions(userId, projectId) {
-  const sql7 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
-  const monitors = await sql7`SELECT m.id,m.name,m.active FROM uptime_monitors m WHERE m.user_id=${userId} AND EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId}) ORDER BY m.name,m.id`;
+  const sql10 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
+  const monitors = await sql10`SELECT m.id,m.name,m.active FROM uptime_monitors m WHERE m.user_id=${userId} AND EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId}) ORDER BY m.name,m.id`;
   return {
     version: selected.version,
     origin: selected.origin,
@@ -7057,8 +7503,8 @@ async function readMissionMonitorOptions(userId, projectId) {
 }
 async function saveMissionMonitors(userId, projectId, ids, version) {
   await initializeMissionStorage();
-  const sql7 = monitoringSql(), json = JSON.stringify(ids);
-  const rows = await sql7`INSERT INTO v2_mission_settings(project_id,user_id,monitor_ids)
+  const sql10 = monitoringSql(), json = JSON.stringify(ids);
+  const rows = await sql10`INSERT INTO v2_mission_settings(project_id,user_id,monitor_ids)
     SELECT p.id,p.user_id,${json}::jsonb FROM projects p WHERE p.id=${projectId} AND p.user_id=${userId}
     AND (SELECT count(*) FROM uptime_monitors m WHERE m.user_id=${userId} AND m.id IN(SELECT value::uuid FROM jsonb_array_elements_text(${json}::jsonb)))=jsonb_array_length(${json}::jsonb)
     AND (${version}=0 OR EXISTS(SELECT 1 FROM v2_mission_settings s WHERE s.project_id=p.id AND s.user_id=p.user_id AND s.version=${version}))
@@ -7073,8 +7519,8 @@ async function saveMissionMonitors(userId, projectId, ids, version) {
   return { version: Number(rows[0].version) };
 }
 async function readMissionUptime(userId, projectId) {
-  const sql7 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
-  const rows = await sql7`SELECT m.id,m.name,m.active,c.status,c.response_time_ms AS "responseTimeMs",c.checked_at AS "checkedAt",
+  const sql10 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
+  const rows = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms AS "responseTimeMs",c.checked_at AS "checkedAt",
     COALESCE(h.checks,'[]'::jsonb) AS "recentChecks" FROM uptime_monitors m
     LEFT JOIN LATERAL(SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     LEFT JOIN LATERAL(SELECT jsonb_agg(jsonb_build_object('at',checked_at,'status',status,'responseTimeMs',response_time_ms) ORDER BY checked_at) AS checks
@@ -7175,16 +7621,16 @@ function compareMission(before, after, previousAt) {
 }
 async function recordMissionVisit(userId, projectId, visitId, snapshot) {
   await initializeMissionStorage();
-  const sql7 = monitoringSql(), observation = missionObservation(snapshot);
-  const [, rows] = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ":" + projectId},0))`,
-    sql7`INSERT INTO v2_mission_visits(project_id,user_id,visit_id,baseline,baseline_at,latest)
+  const sql10 = monitoringSql(), observation = missionObservation(snapshot);
+  const [, rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ":" + projectId},0))`,
+    sql10`INSERT INTO v2_mission_visits(project_id,user_id,visit_id,baseline,baseline_at,latest)
       SELECT p.id,p.user_id,${visitId}::uuid,previous.latest,previous.last_visit_at,${JSON.stringify(observation)}::jsonb
       FROM projects p LEFT JOIN LATERAL(SELECT latest,last_visit_at FROM v2_mission_visits WHERE project_id=p.id AND user_id=p.user_id ORDER BY last_visit_at DESC,visit_id DESC LIMIT 1) previous ON true
       WHERE p.id=${projectId} AND p.user_id=${userId}
       ON CONFLICT(project_id,user_id,visit_id) DO UPDATE SET latest=excluded.latest
       RETURNING baseline,baseline_at`,
-    sql7`DELETE FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} AND visit_id IN(SELECT visit_id FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} ORDER BY last_visit_at DESC,visit_id DESC OFFSET 10)`
+    sql10`DELETE FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} AND visit_id IN(SELECT visit_id FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} ORDER BY last_visit_at DESC,visit_id DESC OFFSET 10)`
   ]);
   const row = rows[0];
   if (!row)
@@ -7197,8 +7643,8 @@ async function recordMissionVisit(userId, projectId, visitId, snapshot) {
 }
 async function claimMissionAI(userId) {
   await initializeMissionStorage();
-  const sql7 = monitoringSql();
-  const rows = await sql7`INSERT INTO v2_mission_ai_limits(user_id,next_at) VALUES(${userId},now()+interval '1 minute')
+  const sql10 = monitoringSql();
+  const rows = await sql10`INSERT INTO v2_mission_ai_limits(user_id,next_at) VALUES(${userId},now()+interval '1 minute')
     ON CONFLICT(user_id) DO UPDATE SET next_at=excluded.next_at WHERE v2_mission_ai_limits.next_at<=now() RETURNING user_id`;
   return rows.length > 0;
 }
@@ -7207,13 +7653,13 @@ async function claimMissionAI(userId) {
 init_neon_monitor();
 init_neon_storage();
 async function readMissionProject(userId, projectId) {
-  const sql7 = monitoringSql();
-  const rows = await sql7`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
+  const sql10 = monitoringSql();
+  const rows = await sql10`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
   return rows[0] ?? null;
 }
 async function readMissionTasks(userId, projectId) {
-  const sql7 = monitoringSql();
-  return await sql7`SELECT t.id,t.title,t.status,t.priority,t.updated_at AS "updatedAt" FROM project_tasks t
+  const sql10 = monitoringSql();
+  return await sql10`SELECT t.id,t.title,t.status,t.priority,t.updated_at AS "updatedAt" FROM project_tasks t
     JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id
     WHERE t.user_id=${userId} AND t.project_id=${projectId} ORDER BY t.updated_at DESC,t.id`;
 }
@@ -7394,10 +7840,10 @@ function createMissionReport(select = callBriefingAI) {
 var generateMissionReport = createMissionReport();
 
 // server/routes/mission-control.ts
-var visitInput = z35.object({ visitId: z35.uuid() }).strict();
-var monitorInput2 = z35.object({
-  monitorIds: z35.array(z35.uuid()).max(30).refine((v) => new Set(v).size === v.length),
-  version: z35.number().int().min(0)
+var visitInput = z36.object({ visitId: z36.uuid() }).strict();
+var monitorInput2 = z36.object({
+  monitorIds: z36.array(z36.uuid()).max(30).refine((v) => new Set(v).size === v.length),
+  version: z36.number().int().min(0)
 }).strict();
 var missionRouteDependencies = {
   loadMission,
@@ -7424,7 +7870,7 @@ function createMissionRoute(deps = missionRouteDependencies) {
   );
   route.use("/:projectId/*", async (c, next) => {
     const id = c.req.param("projectId");
-    if (!z35.uuid().safeParse(id).success)
+    if (!z36.uuid().safeParse(id).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     await next();
   });
@@ -7514,10 +7960,10 @@ var missionRoute = createMissionRoute();
 // server/routes/browser-desk.ts
 import { Hono as Hono28 } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { z as z37 } from "zod";
+import { z as z38 } from "zod";
 
 // server/browser-policy.ts
-import { z as z36 } from "zod";
+import { z as z37 } from "zod";
 
 // src/lib/browser-url.ts
 function browserSourceUrl(value) {
@@ -7547,10 +7993,10 @@ var BrowserDeskError = class extends Error {
     this.status = status;
   }
 };
-var browserItemInput = z36.object({
-  id: z36.uuid(),
-  title: z36.string().trim().min(1).max(300),
-  url: z36.string().max(4096).transform((value, ctx) => {
+var browserItemInput = z37.object({
+  id: z37.uuid(),
+  title: z37.string().trim().min(1).max(300),
+  url: z37.string().max(4096).transform((value, ctx) => {
     try {
       return browserSourceUrl(value);
     } catch {
@@ -7558,27 +8004,27 @@ var browserItemInput = z36.object({
         code: "custom",
         message: "Ung\xFCltige oder nicht unterst\xFCtzte Seitenadresse."
       });
-      return z36.NEVER;
+      return z37.NEVER;
     }
   }),
-  selection: z36.string().max(1e4),
-  annotation: z36.string().max(2e4),
-  projectId: z36.uuid().nullable()
+  selection: z37.string().max(1e4),
+  annotation: z37.string().max(2e4),
+  projectId: z37.uuid().nullable()
 }).strict().refine(
   (v) => Boolean(v.selection.trim() || v.annotation.trim()),
   "Eine Textauswahl oder Anmerkung fehlt."
 );
-var browserUpdateInput = z36.object({
-  title: z36.string().trim().min(1).max(300),
-  selection: z36.string().max(1e4),
-  annotation: z36.string().max(2e4),
-  projectId: z36.uuid().nullable(),
-  version: z36.number().int().positive()
+var browserUpdateInput = z37.object({
+  title: z37.string().trim().min(1).max(300),
+  selection: z37.string().max(1e4),
+  annotation: z37.string().max(2e4),
+  projectId: z37.uuid().nullable(),
+  version: z37.number().int().positive()
 }).strict().refine((v) => Boolean(v.selection.trim() || v.annotation.trim()));
-var browserPairInput = z36.object({ challenge: z36.string().regex(/^[a-f0-9]{64}$/) }).strict();
-var browserExchangeInput = z36.object({
-  code: z36.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  verifier: z36.string().regex(/^[A-Za-z0-9_-]{43}$/)
+var browserPairInput = z37.object({ challenge: z37.string().regex(/^[a-f0-9]{64}$/) }).strict();
+var browserExchangeInput = z37.object({
+  code: z37.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  verifier: z37.string().regex(/^[A-Za-z0-9_-]{43}$/)
 }).strict();
 
 // server/browser-storage.ts
@@ -7592,12 +8038,12 @@ var browserDdl = [
   `CREATE TABLE IF NOT EXISTS v2_browser_devices(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,token_hash text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,last_used_at timestamptz,revoked_at timestamptz)`
 ];
 async function initializeBrowserStorage() {
-  const sql7 = monitoringSql();
-  const [state2] = await sql7`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [state2] = await sql10`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`;
   if (state2?.ready) return;
-  await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(184730022)`,
-    ...browserDdl.map((s) => sql7.query(s))
+  await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(184730022)`,
+    ...browserDdl.map((s) => sql10.query(s))
   ]);
 }
 async function browserProjects(userId) {
@@ -7619,9 +8065,9 @@ function boundBrowserItems(rows) {
   return { items, limited: rows.length > items.length };
 }
 async function listBrowserItems(userId, filters = {}) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   try {
-    const rows = await sql7`SELECT i.id,i.title,i.url,i.selection,i.annotation,p.id AS "projectId",p.name AS "projectName",i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt"
+    const rows = await sql10`SELECT i.id,i.title,i.url,i.selection,i.annotation,p.id AS "projectId",p.name AS "projectName",i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt"
       FROM v2_browser_items i LEFT JOIN projects p ON p.id=i.project_id AND p.user_id=i.user_id
       WHERE i.user_id=${userId} AND (${filters.url ?? null}::text IS NULL OR i.url=${filters.url ?? null})
       AND (${filters.projectId ?? null}::uuid IS NULL OR p.id=${filters.projectId ?? null}::uuid) ORDER BY i.updated_at DESC,i.id LIMIT 101`;
@@ -7633,8 +8079,8 @@ async function listBrowserItems(userId, filters = {}) {
 }
 async function saveBrowserItem(userId, input) {
   await initializeBrowserStorage();
-  const sql7 = monitoringSql();
-  const [item2] = await sql7`INSERT INTO v2_browser_items(id,user_id,url,title,selection,annotation,project_id)
+  const sql10 = monitoringSql();
+  const [item2] = await sql10`INSERT INTO v2_browser_items(id,user_id,url,title,selection,annotation,project_id)
     SELECT ${input.id}::uuid,${userId},${input.url},${input.title},${input.selection},${input.annotation},${input.projectId}::uuid
     WHERE ${input.projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
     ON CONFLICT(id) DO UPDATE SET id=v2_browser_items.id WHERE v2_browser_items.user_id=excluded.user_id AND v2_browser_items.url=excluded.url AND v2_browser_items.title=excluded.title AND v2_browser_items.selection=excluded.selection AND v2_browser_items.annotation=excluded.annotation AND v2_browser_items.project_id IS NOT DISTINCT FROM excluded.project_id
@@ -7647,8 +8093,8 @@ async function saveBrowserItem(userId, input) {
   return { ...item2, projectName: null };
 }
 async function updateBrowserItem(userId, id, input) {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`UPDATE v2_browser_items SET title=${input.title},selection=${input.selection},annotation=${input.annotation},project_id=${input.projectId}::uuid,version=version+1,updated_at=now()
+  const sql10 = monitoringSql();
+  const [row] = await sql10`UPDATE v2_browser_items SET title=${input.title},selection=${input.selection},annotation=${input.annotation},project_id=${input.projectId}::uuid,version=version+1,updated_at=now()
     WHERE id=${id} AND user_id=${userId} AND version=${input.version}
     AND (${input.projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId}))
     RETURNING id,title,url,selection,annotation,project_id AS "projectId",version,created_at AS "createdAt",updated_at AS "updatedAt"`;
@@ -7669,14 +8115,14 @@ async function deleteBrowserItem(userId, id, version) {
 }
 async function createBrowserPairing(userId, challenge) {
   await initializeBrowserStorage();
-  const sql7 = monitoringSql(), code = randomBytes2(32).toString("base64url");
-  const [, rows] = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`browser-pair:${userId}`},0))`,
-    sql7`INSERT INTO v2_browser_pairings(code_hash,user_id,challenge,expires_at)
+  const sql10 = monitoringSql(), code = randomBytes2(32).toString("base64url");
+  const [, rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`browser-pair:${userId}`},0))`,
+    sql10`INSERT INTO v2_browser_pairings(code_hash,user_id,challenge,expires_at)
       SELECT ${browserHash(code)},${userId},${challenge},now()+interval '5 minutes'
       WHERE (SELECT count(*) FROM v2_browser_pairings WHERE user_id=${userId} AND created_at>now()-interval '1 hour')<20
       AND (SELECT count(*) FROM v2_browser_devices WHERE user_id=${userId} AND revoked_at IS NULL AND expires_at>now())<20 RETURNING code_hash`,
-    sql7`DELETE FROM v2_browser_pairings WHERE user_id=${userId} AND created_at<now()-interval '1 day'`
+    sql10`DELETE FROM v2_browser_pairings WHERE user_id=${userId} AND created_at<now()-interval '1 day'`
   ]);
   if (!rows.length)
     throw new BrowserDeskError(
@@ -7686,9 +8132,9 @@ async function createBrowserPairing(userId, challenge) {
   return { code };
 }
 async function exchangeBrowserPairing(code, verifier) {
-  const sql7 = monitoringSql(), token = "omni_ext_" + randomBytes2(32).toString("base64url"), deviceId = randomUUID6();
+  const sql10 = monitoringSql(), token = "omni_ext_" + randomBytes2(32).toString("base64url"), deviceId = randomUUID6();
   try {
-    const [row] = await sql7`WITH consumed AS(UPDATE v2_browser_pairings SET consumed_at=now() WHERE code_hash=${browserHash(code)} AND challenge=${browserHash(verifier)} AND expires_at>now() AND consumed_at IS NULL RETURNING user_id)
+    const [row] = await sql10`WITH consumed AS(UPDATE v2_browser_pairings SET consumed_at=now() WHERE code_hash=${browserHash(code)} AND challenge=${browserHash(verifier)} AND expires_at>now() AND consumed_at IS NULL RETURNING user_id)
       INSERT INTO v2_browser_devices(id,user_id,name,token_hash,expires_at) SELECT ${deviceId},user_id,'Browser-Kommandoebene',${browserHash(token)},now()+interval '30 days' FROM consumed RETURNING id,expires_at AS "expiresAt"`;
     if (!row)
       throw new BrowserDeskError(
@@ -7728,7 +8174,7 @@ async function revokeBrowserDevice(userId, deviceId) {
 }
 
 // server/routes/browser-desk.ts
-var versionInput = z37.object({ version: z37.number().int().positive() }).strict();
+var versionInput = z38.object({ version: z38.number().int().positive() }).strict();
 var browserDataDependencies = {
   browserProjects,
   ownsBrowserProject,
@@ -7768,7 +8214,7 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
   );
   route.get("/items", async (c) => {
     const projectId = c.req.query("projectId"), rawUrl = c.req.query("url");
-    if (projectId && !z37.uuid().safeParse(projectId).success)
+    if (projectId && !z38.uuid().safeParse(projectId).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     let url2;
     if (rawUrl) {
@@ -7798,7 +8244,7 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
     return c.json(await deps.saveBrowserItem(c.get("userId"), input.data), 201);
   });
   route.use("/items/:id", async (c, next) => {
-    if (!z37.uuid().safeParse(c.req.param("id")).success)
+    if (!z38.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Eintragskennung." }, 400);
     await next();
   });
@@ -7856,7 +8302,7 @@ function createBrowserWebRoute(deps = browserWebDependencies) {
     async (c) => c.json(await deps.listBrowserDevices(c.get("userId")))
   );
   route.delete("/devices/:id", async (c) => {
-    if (!z37.uuid().safeParse(c.req.param("id")).success)
+    if (!z38.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     await deps.revokeBrowserDevice(c.get("userId"), c.req.param("id"));
     return c.json({ ok: true });
@@ -7912,10 +8358,10 @@ var browserExtensionRoute = createBrowserExtensionRoute();
 // server/routes/shared-rooms.ts
 import { Hono as Hono29 } from "hono";
 import { bodyLimit as bodyLimit2 } from "hono/body-limit";
-import { z as z39 } from "zod";
+import { z as z40 } from "zod";
 
 // server/rooms-policy.ts
-import { z as z38 } from "zod";
+import { z as z39 } from "zod";
 var RoomError = class extends Error {
   status;
   constructor(message, status = 409) {
@@ -7923,30 +8369,30 @@ var RoomError = class extends Error {
     this.status = status;
   }
 };
-var roomRole = z38.enum(["reader", "editor"]);
-var roomExpiry = z38.iso.datetime({ offset: true }).refine((value) => {
+var roomRole = z39.enum(["reader", "editor"]);
+var roomExpiry = z39.iso.datetime({ offset: true }).refine((value) => {
   const delta = Date.parse(value) - Date.now();
   return delta > 0 && delta <= 366 * 864e5;
 }, "Ablauf muss in der Zukunft und innerhalb eines Jahres liegen.");
-var roomText = z38.string().trim().min(1).max(5e3);
-var roomCreate = z38.object({
-  id: z38.uuid(),
-  title: z38.string().trim().min(1).max(120),
-  description: z38.string().trim().max(5e3),
+var roomText = z39.string().trim().min(1).max(5e3);
+var roomCreate = z39.object({
+  id: z39.uuid(),
+  title: z39.string().trim().min(1).max(120),
+  description: z39.string().trim().max(5e3),
   expiresAt: roomExpiry,
-  initialItems: z38.array(
-    z38.object({ kind: z38.enum(["list", "pin"]), text: roomText }).strict()
+  initialItems: z39.array(
+    z39.object({ kind: z39.enum(["list", "pin"]), text: roomText }).strict()
   ).max(100)
 }).strict();
-var roomVersion = z38.object({ version: z38.number().int().positive() }).strict();
-var roomItemCreate = z38.object({ id: z38.uuid(), kind: z38.enum(["list", "pin"]), text: roomText }).strict();
-var roomItemUpdate = z38.object({
+var roomVersion = z39.object({ version: z39.number().int().positive() }).strict();
+var roomItemCreate = z39.object({ id: z39.uuid(), kind: z39.enum(["list", "pin"]), text: roomText }).strict();
+var roomItemUpdate = z39.object({
   text: roomText,
-  done: z38.boolean(),
-  version: z38.number().int().positive()
+  done: z39.boolean(),
+  version: z39.number().int().positive()
 }).strict();
-var roomToken = z38.string().regex(/^[A-Za-z0-9_-]{43}$/);
-var roomJoin = z38.object({ token: roomToken, name: z38.string().trim().min(1).max(60) }).strict();
+var roomToken = z39.string().regex(/^[A-Za-z0-9_-]{43}$/);
+var roomJoin = z39.object({ token: roomToken, name: z39.string().trim().min(1).max(60) }).strict();
 
 // server/rooms-storage.ts
 init_neon_storage();
@@ -7962,12 +8408,12 @@ var roomDdl = [
 ];
 var hash = (s) => createHash5("sha256").update(s).digest("hex");
 async function initializeRooms() {
-  const sql7 = monitoringSql();
-  const [state2] = await sql7`SELECT to_regclass('v2_shared_rooms_owner') IS NOT NULL AND to_regclass('v2_room_members_user') IS NOT NULL AND to_regclass('v2_room_invites') IS NOT NULL AND to_regclass('v2_room_items_room') IS NOT NULL AS ready`;
+  const sql10 = monitoringSql();
+  const [state2] = await sql10`SELECT to_regclass('v2_shared_rooms_owner') IS NOT NULL AND to_regclass('v2_room_members_user') IS NOT NULL AND to_regclass('v2_room_invites') IS NOT NULL AND to_regclass('v2_room_items_room') IS NOT NULL AS ready`;
   if (!state2?.ready)
-    await sql7.transaction([
-      sql7`SELECT pg_advisory_xact_lock(184730023)`,
-      ...roomDdl.map((s) => sql7.query(s))
+    await sql10.transaction([
+      sql10`SELECT pg_advisory_xact_lock(184730023)`,
+      ...roomDdl.map((s) => sql10.query(s))
     ]);
 }
 function denied() {
@@ -7976,9 +8422,9 @@ function denied() {
   );
 }
 async function mutate(id, statement) {
-  const sql7 = monitoringSql();
-  const [, rows] = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`room:${id}`},0))`,
+  const sql10 = monitoringSql();
+  const [, rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`room:${id}`},0))`,
     statement
   ]);
   if (!rows.length) denied();
@@ -7997,23 +8443,23 @@ async function listRooms(userId) {
 }
 async function createRoom(userId, input) {
   await initializeRooms();
-  const sql7 = monitoringSql();
-  const results = await sql7.transaction([
-    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`room-owner:${userId}`},0))`,
-    sql7`WITH made AS(INSERT INTO v2_shared_rooms(id,owner_id,creation_hash,title,description,expires_at)
+  const sql10 = monitoringSql();
+  const results = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`room-owner:${userId}`},0))`,
+    sql10`WITH made AS(INSERT INTO v2_shared_rooms(id,owner_id,creation_hash,title,description,expires_at)
       SELECT ${input.id},${userId},${hash(JSON.stringify(input))},${input.title},${input.description},${input.expiresAt}::timestamptz
       WHERE (SELECT count(*) FROM v2_shared_rooms WHERE owner_id=${userId})<100
       ON CONFLICT(id) DO NOTHING RETURNING id)
       INSERT INTO v2_room_items(id,room_id,kind,text)
       SELECT gen_random_uuid(),made.id,x.kind,x.text FROM made CROSS JOIN jsonb_to_recordset(${JSON.stringify(input.initialItems)}::jsonb) AS x(kind text,text text) RETURNING id`,
-    sql7`SELECT id FROM v2_shared_rooms WHERE id=${input.id} AND owner_id=${userId} AND creation_hash=${hash(JSON.stringify(input))}`
+    sql10`SELECT id FROM v2_shared_rooms WHERE id=${input.id} AND owner_id=${userId} AND creation_hash=${hash(JSON.stringify(input))}`
   ]);
   if (!results[2].length) denied();
   return { id: input.id };
 }
 async function roomDetail(userId, id) {
-  const sql7 = monitoringSql();
-  const [row] = await sql7`SELECT jsonb_build_object('id',r.id,'title',r.title,'description',r.description,'expiresAt',r.expires_at,'closed',r.closed,'version',r.version,
+  const sql10 = monitoringSql();
+  const [row] = await sql10`SELECT jsonb_build_object('id',r.id,'title',r.title,'description',r.description,'expiresAt',r.expires_at,'closed',r.closed,'version',r.version,
     'role',CASE WHEN r.owner_id=${userId} THEN 'owner' ELSE m.role END,'active',NOT r.closed AND r.expires_at>clock_timestamp()) AS room,
     coalesce((SELECT jsonb_agg(jsonb_build_object('id',i.id,'kind',i.kind,'text',i.text,'done',i.done,'version',i.version) ORDER BY i.created_at,i.id) FROM v2_room_items i WHERE i.room_id=r.id),'[]'::jsonb) AS items,
     CASE WHEN r.owner_id=${userId} THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'role',a.role,'version',a.version) ORDER BY a.name,a.id) FROM v2_room_members a WHERE a.room_id=r.id AND NOT a.revoked),'[]'::jsonb) ELSE '[]'::jsonb END AS members,
@@ -8028,10 +8474,10 @@ async function roomDetail(userId, id) {
   return row;
 }
 async function createRoomItem(userId, roomId, input) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`INSERT INTO v2_room_items(id,room_id,kind,text)
+    sql10`INSERT INTO v2_room_items(id,room_id,kind,text)
     SELECT ${input.id},r.id,${input.kind},${input.text} FROM v2_shared_rooms r
     WHERE r.id=${roomId} AND NOT r.closed AND r.expires_at>clock_timestamp()
     AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor'))
@@ -8041,41 +8487,41 @@ async function createRoomItem(userId, roomId, input) {
   return { id: input.id };
 }
 async function updateRoomItem(userId, roomId, id, input) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`UPDATE v2_room_items i SET text=${input.text},done=CASE WHEN i.kind='list' THEN ${input.done} ELSE false END,version=i.version+1
+    sql10`UPDATE v2_room_items i SET text=${input.text},done=CASE WHEN i.kind='list' THEN ${input.done} ELSE false END,version=i.version+1
     FROM v2_shared_rooms r WHERE i.id=${id} AND i.room_id=r.id AND r.id=${roomId} AND i.version=${input.version} AND NOT r.closed AND r.expires_at>clock_timestamp()
     AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor')) RETURNING i.id`
   );
 }
 async function deleteRoomItem(userId, roomId, id, version) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`DELETE FROM v2_room_items i USING v2_shared_rooms r WHERE i.id=${id} AND i.room_id=r.id AND r.id=${roomId} AND i.version=${version} AND NOT r.closed AND r.expires_at>clock_timestamp()
+    sql10`DELETE FROM v2_room_items i USING v2_shared_rooms r WHERE i.id=${id} AND i.room_id=r.id AND r.id=${roomId} AND i.version=${version} AND NOT r.closed AND r.expires_at>clock_timestamp()
     AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor')) RETURNING i.id`
   );
 }
 async function closeRoom(userId, id, version) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     id,
-    sql7`UPDATE v2_shared_rooms SET closed=true,version=version+1 WHERE id=${id} AND owner_id=${userId} AND version=${version} AND NOT closed RETURNING id`
+    sql10`UPDATE v2_shared_rooms SET closed=true,version=version+1 WHERE id=${id} AND owner_id=${userId} AND version=${version} AND NOT closed RETURNING id`
   );
 }
 async function deleteRoom(userId, id, version) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     id,
-    sql7`DELETE FROM v2_shared_rooms WHERE id=${id} AND owner_id=${userId} AND version=${version} RETURNING id`
+    sql10`DELETE FROM v2_shared_rooms WHERE id=${id} AND owner_id=${userId} AND version=${version} RETURNING id`
   );
 }
 async function inviteToRoom(userId, id, role, expiresAt) {
-  const sql7 = monitoringSql(), token = randomBytes3(32).toString("base64url"), inviteId = randomUUID7();
+  const sql10 = monitoringSql(), token = randomBytes3(32).toString("base64url"), inviteId = randomUUID7();
   await mutate(
     id,
-    sql7`INSERT INTO v2_room_invites(id,room_id,token_hash,role,expires_at)
+    sql10`INSERT INTO v2_room_invites(id,room_id,token_hash,role,expires_at)
     SELECT ${inviteId},id,${hash(token)},${role},least(expires_at,${expiresAt}::timestamptz) FROM v2_shared_rooms
     WHERE id=${id} AND owner_id=${userId} AND NOT closed AND expires_at>clock_timestamp()
     AND (SELECT count(*) FROM v2_room_invites WHERE room_id=${id} AND NOT revoked AND consumed_by IS NULL AND expires_at>clock_timestamp())<20 RETURNING id`
@@ -8083,10 +8529,10 @@ async function inviteToRoom(userId, id, role, expiresAt) {
   return { id: inviteId, token };
 }
 async function revokeRoomInvite(userId, roomId, id) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`UPDATE v2_room_invites v SET revoked=true FROM v2_shared_rooms r WHERE v.id=${id} AND v.room_id=r.id AND r.id=${roomId} AND r.owner_id=${userId} RETURNING v.id`
+    sql10`UPDATE v2_room_invites v SET revoked=true FROM v2_shared_rooms r WHERE v.id=${id} AND v.room_id=r.id AND r.id=${roomId} AND r.owner_id=${userId} RETURNING v.id`
   );
 }
 async function previewRoomInvite(token) {
@@ -8103,13 +8549,13 @@ async function previewRoomInvite(token) {
   }
 }
 async function joinRoom(userId, token, name) {
-  const sql7 = monitoringSql();
-  const [found] = await sql7`SELECT room_id AS id FROM v2_room_invites WHERE token_hash=${hash(token)}`;
+  const sql10 = monitoringSql();
+  const [found] = await sql10`SELECT room_id AS id FROM v2_room_invites WHERE token_hash=${hash(token)}`;
   if (!found) denied();
   const roomId = String(found.id);
   const rows = await mutate(
     roomId,
-    sql7`WITH used AS(UPDATE v2_room_invites v SET consumed_by=${userId} FROM v2_shared_rooms r
+    sql10`WITH used AS(UPDATE v2_room_invites v SET consumed_by=${userId} FROM v2_shared_rooms r
     WHERE v.token_hash=${hash(token)} AND v.room_id=r.id AND r.owner_id<>${userId} AND NOT v.revoked AND v.consumed_by IS NULL
     AND v.expires_at>clock_timestamp() AND NOT r.closed AND r.expires_at>clock_timestamp()
     AND (SELECT count(*) FROM v2_room_members WHERE room_id=r.id AND NOT revoked)<50
@@ -8123,18 +8569,18 @@ async function joinRoom(userId, token, name) {
   return { id: String(rows[0].id) };
 }
 async function updateRoomMember(userId, roomId, id, role, revoked, version) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`UPDATE v2_room_members m SET role=${role},revoked=${revoked},version=m.version+1 FROM v2_shared_rooms r
+    sql10`UPDATE v2_room_members m SET role=${role},revoked=${revoked},version=m.version+1 FROM v2_shared_rooms r
     WHERE m.id=${id} AND m.room_id=r.id AND r.id=${roomId} AND r.owner_id=${userId} AND m.version=${version} AND NOT m.revoked RETURNING m.id`
   );
 }
 async function leaveRoom(userId, roomId) {
-  const sql7 = monitoringSql();
+  const sql10 = monitoringSql();
   await mutate(
     roomId,
-    sql7`UPDATE v2_room_members SET revoked=true,version=version+1 WHERE room_id=${roomId} AND user_id=${userId} AND NOT revoked RETURNING id`
+    sql10`UPDATE v2_room_members SET revoked=true,version=version+1 WHERE room_id=${roomId} AND user_id=${userId} AND NOT revoked RETURNING id`
   );
 }
 async function roomSource(userId, projectId) {
@@ -8200,7 +8646,7 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json(await deps.createRoom(c.get("userId"), input.data), 201);
   });
   route.post("/invitation/preview", async (c) => {
-    const input = z39.object({ token: roomToken }).strict().safeParse(await c.req.json().catch(() => null));
+    const input = z40.object({ token: roomToken }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success) return c.json({ error: "Ung\xFCltige Einladung." }, 400);
     return c.json(await deps.previewRoomInvite(input.data.token));
   });
@@ -8214,16 +8660,16 @@ function createRoomsRoute(deps = roomDependencies) {
   });
   route.get("/source/:projectId", async (c) => {
     const id = c.req.param("projectId");
-    if (!z39.uuid().safeParse(id).success)
+    if (!z40.uuid().safeParse(id).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     return c.json(await deps.roomSource(c.get("userId"), id));
   });
   route.use("/:roomId/*", async (c, next) => {
-    if (!z39.uuid().safeParse(c.req.param("roomId")).success)
+    if (!z40.uuid().safeParse(c.req.param("roomId")).success)
       return c.json({ error: "Ung\xFCltige Raumkennung." }, 400);
     for (const key of ["itemId", "memberId", "inviteId"]) {
       const id = c.req.param(key);
-      if (id && !z39.uuid().safeParse(id).success)
+      if (id && !z40.uuid().safeParse(id).success)
         return c.json({ error: "Ung\xFCltige Kennung." }, 400);
     }
     await next();
@@ -8269,7 +8715,7 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json({ ok: true });
   });
   route.post("/:roomId/invites", async (c) => {
-    const input = z39.object({ role: roomRole, expiresAt: roomExpiry }).strict().safeParse(await c.req.json().catch(() => null));
+    const input = z40.object({ role: roomRole, expiresAt: roomExpiry }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Rolle und Ablaufdatum pr\xFCfen." }, 400);
     return c.json(
@@ -8291,10 +8737,10 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json({ ok: true });
   });
   route.put("/:roomId/members/:memberId", async (c) => {
-    const input = z39.object({
+    const input = z40.object({
       role: roomRole,
-      revoked: z39.boolean(),
-      version: z39.number().int().positive()
+      revoked: z40.boolean(),
+      version: z40.number().int().positive()
     }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Rolle und Versionsstand pr\xFCfen." }, 400);
@@ -8336,9 +8782,341 @@ function createRoomsRoute(deps = roomDependencies) {
 }
 var sharedRoomsRoute = createRoomsRoute();
 
+// server/routes/working-history.ts
+import { Hono as Hono30 } from "hono";
+import { bodyLimit as bodyLimit3 } from "hono/body-limit";
+import { z as z41 } from "zod";
+var historyDependencies = {
+  readHistorySettings,
+  saveHistorySettings,
+  clearWorkingHistory,
+  historyTimeline,
+  historyDetail,
+  compareHistory,
+  restoreHistory
+};
+function createHistoryRoute(deps = historyDependencies) {
+  const route = new Hono30();
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.use(
+    "*",
+    bodyLimit3({
+      maxSize: 8e3,
+      onError: (c) => c.json({ error: "Anfrage ist zu gro\xDF." }, 413)
+    })
+  );
+  route.onError(
+    (e, c) => c.json(
+      {
+        error: e instanceof HistoryError ? e.message : "Arbeitsverlauf gerade nicht verf\xFCgbar. Verbindung und Speichereinrichtung pr\xFCfen."
+      },
+      e instanceof HistoryError ? e.status : 503
+    )
+  );
+  route.get(
+    "/settings",
+    async (c) => c.json(await deps.readHistorySettings(c.get("userId")))
+  );
+  route.put("/settings", async (c) => {
+    const input = historyPreferences.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json({ error: "Ung\xFCltige Verlaufseinstellungen." }, 400);
+    return c.json(await deps.saveHistorySettings(c.get("userId"), input.data));
+  });
+  route.delete("/", async (c) => {
+    const input = z41.object({ confirm: z41.literal("Verlauf l\xF6schen") }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "L\xF6schen bitte ausdr\xFCcklich best\xE4tigen." }, 400);
+    await deps.clearWorkingHistory(c.get("userId"));
+    return c.json({ ok: true });
+  });
+  route.get("/", async (c) => {
+    const kind = c.req.query("kind"), search = c.req.query("search") ?? "";
+    if (kind && !historyKind.safeParse(kind).success || search.length > 200)
+      return c.json({ error: "Ung\xFCltiger Filter." }, 400);
+    return c.json(
+      await deps.historyTimeline(
+        c.get("userId"),
+        kind ? historyKind.parse(kind) : null,
+        search
+      )
+    );
+  });
+  route.use("/:kind/:id/*", async (c, next) => {
+    if (!historyKind.safeParse(c.req.param("kind")).success || !z41.uuid().safeParse(c.req.param("id")).success)
+      return c.json({ error: "Ung\xFCltige Quelle." }, 400);
+    await next();
+  });
+  route.get(
+    "/:kind/:id",
+    async (c) => c.json(
+      await deps.historyDetail(
+        c.get("userId"),
+        historyKind.parse(c.req.param("kind")),
+        c.req.param("id")
+      )
+    )
+  );
+  route.get("/:kind/:id/versions/:versionId", async (c) => {
+    if (!z41.uuid().safeParse(c.req.param("versionId")).success)
+      return c.json({ error: "Ung\xFCltige Version." }, 400);
+    return c.json(
+      await deps.compareHistory(
+        c.get("userId"),
+        historyKind.parse(c.req.param("kind")),
+        c.req.param("id"),
+        c.req.param("versionId")
+      )
+    );
+  });
+  route.post("/:kind/:id/restore", async (c) => {
+    const input = historyRestore.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json(
+        { error: "Version, Vergleichsstand und Feldauswahl pr\xFCfen." },
+        400
+      );
+    return c.json(
+      await deps.restoreHistory(
+        c.get("userId"),
+        historyKind.parse(c.req.param("kind")),
+        c.req.param("id"),
+        input.data.versionId,
+        input.data.expectedFingerprint,
+        input.data.fields
+      )
+    );
+  });
+  return route;
+}
+var workingHistoryRoute = createHistoryRoute();
+
+// server/routes/mission-records.ts
+import { Hono as Hono31 } from "hono";
+import { bodyLimit as bodyLimit4 } from "hono/body-limit";
+import { z as z43 } from "zod";
+
+// server/mission-records-storage.ts
+init_neon_storage();
+import { createHash as createHash6 } from "node:crypto";
+import { z as z42 } from "zod";
+var missionRecordInput = z42.object({
+  title: z42.string().trim().min(1).max(300),
+  projectId: z42.uuid().nullable(),
+  state: z42.enum(["active", "paused", "archived"]),
+  context: z42.string().trim().max(5e3),
+  decisions: z42.string().trim().max(5e3),
+  outcome: z42.string().trim().max(5e3),
+  questions: z42.string().trim().max(5e3),
+  nextSteps: z42.string().trim().max(5e3),
+  sources: z42.array(z42.object({ kind: historyKind, id: z42.uuid() }).strict()).max(30)
+}).strict().refine((v) => v.state !== "archived" || v.outcome.length > 0, {
+  message: "F\xFCr den Archivabschluss ein Ergebnis festhalten."
+});
+var missionRecordsDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_mission_records(id uuid PRIMARY KEY,user_id text NOT NULL,creation_hash text NOT NULL,title text NOT NULL,project_id uuid REFERENCES projects(id) ON DELETE SET NULL,state text NOT NULL CHECK(state IN ('active','paused','archived')),context text NOT NULL,decisions text NOT NULL,outcome text NOT NULL,questions text NOT NULL,next_steps text NOT NULL,sources jsonb NOT NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),archived_at timestamptz)`,
+  `CREATE INDEX IF NOT EXISTS v2_mission_records_owner ON v2_mission_records(user_id,state,updated_at DESC)`
+];
+async function initializeMissionRecords() {
+  const sql10 = monitoringSql();
+  const [row] = await sql10`SELECT to_regclass('v2_mission_records_owner') IS NOT NULL AS ready`;
+  if (!row?.ready)
+    await sql10.transaction([
+      sql10`SELECT pg_advisory_xact_lock(184730031)`,
+      ...missionRecordsDdl.map((d) => sql10.query(d))
+    ]);
+}
+var sourceObjects = `SELECT 'note'::text AS kind,n.id,n.user_id,n.title,NULL::uuid AS project_id FROM notes n UNION ALL SELECT 'task',t.id,t.user_id,t.title,NULL::uuid FROM tasks t UNION ALL SELECT 'project_task',t.id,t.user_id,t.title,t.project_id FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id`;
+async function missionReferenceChoices(userId, kind, search) {
+  const rows = await monitoringSql().query(
+    `WITH objects AS(${sourceObjects}) SELECT kind,id,title,project_id AS "projectId",true AS available FROM objects WHERE user_id=$1 AND kind=$2 AND strpos(lower(title),lower($3))>0 ORDER BY title,id LIMIT 51`,
+    [userId, kind, search]
+  );
+  return {
+    sources: rows.slice(0, 50),
+    limited: rows.length > 50
+  };
+}
+async function missionRecordProjects(userId) {
+  return await monitoringSql()`SELECT id,name FROM projects WHERE user_id=${userId} ORDER BY name,id`;
+}
+async function listMissionRecords(userId, state2, search) {
+  await initializeMissionRecords();
+  const rows = await monitoringSql()`SELECT r.id,r.title,r.state,p.name AS "projectName",r.updated_at AS "updatedAt",r.archived_at AS "archivedAt" FROM v2_mission_records r LEFT JOIN projects p ON p.id=r.project_id AND p.user_id=r.user_id
+  WHERE r.user_id=${userId} AND (${state2}::text IS NULL OR r.state=${state2}) AND (strpos(lower(r.title||' '||r.context||' '||r.decisions||' '||r.outcome||' '||r.questions||' '||r.next_steps),lower(${search}))>0) ORDER BY r.updated_at DESC,r.id LIMIT 101`;
+  return {
+    records: rows.slice(0, 100),
+    limited: rows.length > 100
+  };
+}
+async function readMissionRecord(userId, id) {
+  await initializeMissionRecords();
+  const [row] = await monitoringSql().query(
+    `WITH objects AS(${sourceObjects}) SELECT r.id,r.title,p.id AS "projectId",p.name AS "projectName",r.state,r.context,r.decisions,r.outcome,r.questions,r.next_steps AS "nextSteps",r.version,r.updated_at AS "updatedAt",r.archived_at AS "archivedAt",
+    coalesce((SELECT jsonb_agg(jsonb_build_object('kind',x.kind,'id',x.id,'title',o.title,'projectId',o.project_id,'available',o.id IS NOT NULL)) FROM jsonb_to_recordset(r.sources) x(kind text,id uuid) LEFT JOIN objects o ON o.kind=x.kind AND o.id=x.id AND o.user_id=r.user_id),'[]'::jsonb) AS sources
+    FROM v2_mission_records r LEFT JOIN projects p ON p.id=r.project_id AND p.user_id=r.user_id WHERE r.id=$1 AND r.user_id=$2`,
+    [id, userId]
+  );
+  if (!row) throw new HistoryError("Arbeitsstand nicht mehr verf\xFCgbar.", 404);
+  return row;
+}
+async function writeMissionRecord(userId, id, input, version) {
+  await initializeMissionRecords();
+  const sql10 = monitoringSql(), hash2 = createHash6("sha256").update(JSON.stringify(input)).digest("hex"), sources = JSON.stringify(input.sources);
+  const guard = `($12::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=$12 AND user_id=$2)) AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($13::jsonb) x(kind text,id uuid) WHERE NOT EXISTS(SELECT 1 FROM objects o WHERE o.user_id=$2 AND o.kind=x.kind AND o.id=x.id))`;
+  const params = [
+    id,
+    userId,
+    input.title,
+    input.state,
+    input.context,
+    input.decisions,
+    input.outcome,
+    input.questions,
+    input.nextSteps,
+    hash2,
+    version,
+    input.projectId,
+    sources
+  ];
+  const statement = version === null ? `WITH objects AS(${sourceObjects}) INSERT INTO v2_mission_records(id,user_id,title,state,context,decisions,outcome,questions,next_steps,creation_hash,project_id,sources,archived_at)
+    SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12::uuid,$13::jsonb,CASE WHEN $4='archived' THEN clock_timestamp() ELSE NULL END WHERE ${guard} AND (SELECT count(*) FROM v2_mission_records WHERE user_id=$2)<200
+    ON CONFLICT(id) DO UPDATE SET id=v2_mission_records.id WHERE v2_mission_records.user_id=excluded.user_id AND v2_mission_records.creation_hash=excluded.creation_hash RETURNING id` : `WITH objects AS(${sourceObjects}) UPDATE v2_mission_records SET title=$3,state=$4,context=$5,decisions=$6,outcome=$7,questions=$8,next_steps=$9,project_id=$12::uuid,sources=$13::jsonb,version=version+1,updated_at=clock_timestamp(),archived_at=CASE WHEN $4='archived' THEN coalesce(archived_at,clock_timestamp()) ELSE NULL END WHERE id=$1 AND user_id=$2 AND version=$11 AND ${guard} RETURNING id`;
+  const casted = statement.replace(
+    `WITH objects AS(${sourceObjects})`,
+    `WITH unused AS(SELECT $10::text AS hash,$11::integer AS version),objects AS(${sourceObjects})`
+  );
+  const [, rows] = await sql10.transaction([
+    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`mission-records:${userId}`},0))`,
+    sql10.query(casted, params)
+  ]);
+  if (!rows.length)
+    throw new HistoryError(
+      "Arbeitsstand ver\xE4ndert, Quelle nicht zug\xE4nglich oder Grenze von 200 Eintr\xE4gen erreicht. Bitte neu laden."
+    );
+  return { id };
+}
+async function deleteMissionRecord(userId, id, version) {
+  const rows = await monitoringSql()`DELETE FROM v2_mission_records WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows.length)
+    throw new HistoryError(
+      "Arbeitsstand ver\xE4ndert oder nicht mehr verf\xFCgbar. Bitte neu laden."
+    );
+}
+
+// server/routes/mission-records.ts
+function createMissionRecordsRoute() {
+  const route = new Hono31();
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.use(
+    "*",
+    bodyLimit4({
+      maxSize: 2e5,
+      onError: (c) => c.json({ error: "Anfrage zu gro\xDF." }, 413)
+    })
+  );
+  route.onError(
+    (e, c) => c.json(
+      {
+        error: e instanceof HistoryError ? e.message : "Arbeitsstand konnte nicht verarbeitet werden. Verbindung und Speichereinrichtung pr\xFCfen."
+      },
+      e instanceof HistoryError ? e.status : 503
+    )
+  );
+  route.get(
+    "/projects",
+    async (c) => c.json(await missionRecordProjects(c.get("userId")))
+  );
+  route.get("/sources", async (c) => {
+    const kind = historyKind.safeParse(c.req.query("kind")), search = c.req.query("search") ?? "";
+    if (!kind.success || search.length > 200)
+      return c.json({ error: "Quellenfilter pr\xFCfen." }, 400);
+    return c.json(
+      await missionReferenceChoices(c.get("userId"), kind.data, search)
+    );
+  });
+  route.get("/", async (c) => {
+    const state2 = c.req.query("state") ?? null, search = c.req.query("search") ?? "";
+    if (state2 && !["active", "paused", "archived"].includes(state2) || search.length > 200)
+      return c.json({ error: "Filter pr\xFCfen." }, 400);
+    return c.json(
+      await listMissionRecords(c.get("userId"), state2, search)
+    );
+  });
+  route.post("/", async (c) => {
+    const input = z43.object({ id: z43.uuid(), data: missionRecordInput }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json(
+        {
+          error: "Titel, Quellen und Texte pr\xFCfen. F\xFCr das Archiv ist ein Ergebnis erforderlich."
+        },
+        400
+      );
+    return c.json(
+      await writeMissionRecord(
+        c.get("userId"),
+        input.data.id,
+        input.data.data,
+        null
+      ),
+      201
+    );
+  });
+  route.use("/:id/*", async (c, next) => {
+    if (!z43.uuid().safeParse(c.req.param("id")).success)
+      return c.json({ error: "Ung\xFCltige Kennung." }, 400);
+    await next();
+  });
+  route.get(
+    "/:id",
+    async (c) => c.json(await readMissionRecord(c.get("userId"), c.req.param("id")))
+  );
+  route.put("/:id", async (c) => {
+    const input = z43.object({
+      version: z43.number().int().positive(),
+      data: missionRecordInput
+    }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json(
+        {
+          error: "Versionsstand, Texte und Quellen pr\xFCfen. F\xFCr das Archiv ist ein Ergebnis erforderlich."
+        },
+        400
+      );
+    return c.json(
+      await writeMissionRecord(
+        c.get("userId"),
+        c.req.param("id"),
+        input.data.data,
+        input.data.version
+      )
+    );
+  });
+  route.delete("/:id", async (c) => {
+    const input = z43.object({ version: z43.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
+    await deleteMissionRecord(
+      c.get("userId"),
+      c.req.param("id"),
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  return route;
+}
+var missionRecordsRoute = createMissionRecordsRoute();
+
 // server/app.ts
 function createApp() {
-  const app = new Hono30().basePath("/api");
+  const app = new Hono32().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -8373,7 +9151,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z40.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z44.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -8393,6 +9171,8 @@ function createApp() {
   app.route("/mission-control", missionRoute);
   app.route("/browser", browserWebRoute);
   app.route("/shared-rooms", sharedRoomsRoute);
+  app.route("/working-history", workingHistoryRoute);
+  app.route("/mission-records", missionRecordsRoute);
   app.route("/vault", vaultRoute);
   app.route("/booking", bookingRoute);
   app.route("/integrations", integrationsRoute);

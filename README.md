@@ -135,3 +135,7 @@ Die Browser-Kommandoebene bietet ein Seitenpanel zum bewussten Speichern von Tex
 ## Gemeinsame Räume in V2
 
 Das Modul `/shared-rooms` bietet zeitlich begrenzte Räume mit Liste und Pinnwand. Einladungen erfordern OMNIDESK-Anmeldung und gewähren Lesen oder Bearbeiten. Aus Mission Control werden nur ausdrücklich ausgewählte und in einer Vorschau bestätigte Projekttexte als Kopien geteilt. Bestehende Neon-/Clerk-Konfiguration reicht aus. Details und Mehrkonto-Abnahme: [Gemeinsame Räume](docs/GEMEINSAME-RAEUME.md).
+
+## Arbeitsgedächtnis und Missionsarchiv in V2
+
+Das Modul `/working-history` verbindet Notiz-/Aufgabenverlauf mit Vergleich und gezielter Wiederherstellung sowie private dokumentierte Arbeitsstände und ein durchsuchbares Missionsarchiv. Die Aufzeichnung lässt sich pausieren und begrenzen. Originalbearbeitungen sind gegen veraltete Stände geschützt; kein universelles Infrastruktur-Undo. Bestehende Clerk-/Neon-Konfiguration reicht aus. [Einrichtung und Abnahme](docs/ARBEITSGEDAECHTNIS.md) · [Gemeinsamer V2-Rundgang](docs/V2-RUNDGANG.md).

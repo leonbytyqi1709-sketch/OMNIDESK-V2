@@ -1,8 +1,16 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../../src/db/client'
 import { notes } from '../../src/db/schema/index'
+
+import { initializeWorkingHistory } from '../history-storage'
+import { historyFingerprint } from '../history-policy'
+
+const rowFields = {
+  ...getTableColumns(notes),
+  fingerprint: sql<string>`md5(to_jsonb(${notes})::text)`,
+}
 
 const noteInput = z.object({
   title: z.string().trim().min(1, 'Titel fehlt').max(300),
@@ -10,10 +18,15 @@ const noteInput = z.object({
 })
 
 export const notesRoute = new Hono()
+notesRoute.use('*', async (c, next) => {
+  c.header('Cache-Control', 'no-store')
+  await initializeWorkingHistory()
+  await next()
+})
 
 notesRoute.get('/', async (c) => {
   const rows = await db
-    .select()
+    .select(rowFields)
     .from(notes)
     .where(eq(notes.userId, c.get('userId')))
     .orderBy(desc(notes.updatedAt))
@@ -25,28 +38,50 @@ notesRoute.post('/', async (c) => {
   const [row] = await db
     .insert(notes)
     .values({ userId: c.get('userId') })
-    .returning()
+    .returning(rowFields)
   return c.json(row, 201)
 })
 
 notesRoute.put('/:id', async (c) => {
-  const parsed = noteInput.safeParse(await c.req.json())
+  const parsed = noteInput
+    .extend({ expectedFingerprint: historyFingerprint })
+    .strict()
+    .safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
     return c.json({ error: z.prettifyError(parsed.error) }, 400)
   }
   const [row] = await db
     .update(notes)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(and(eq(notes.id, c.req.param('id')), eq(notes.userId, c.get('userId'))))
-    .returning()
-  if (!row) return c.json({ error: 'Notiz nicht gefunden' }, 404)
+    .set({
+      title: parsed.data.title,
+      content: parsed.data.content,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(notes.id, c.req.param('id')),
+        eq(notes.userId, c.get('userId')),
+        sql`md5(to_jsonb(${notes})::text)=${parsed.data.expectedFingerprint}`,
+      ),
+    )
+    .returning(rowFields)
+  if (!row)
+    return c.json(
+      {
+        error:
+          'Notiz inzwischen geändert oder nicht mehr verfügbar. Bitte neu laden',
+      },
+      409,
+    )
   return c.json(row)
 })
 
 notesRoute.delete('/:id', async (c) => {
   const [row] = await db
     .delete(notes)
-    .where(and(eq(notes.id, c.req.param('id')), eq(notes.userId, c.get('userId'))))
+    .where(
+      and(eq(notes.id, c.req.param('id')), eq(notes.userId, c.get('userId'))),
+    )
     .returning({ id: notes.id })
   if (!row) return c.json({ error: 'Notiz nicht gefunden' }, 404)
   return c.json({ ok: true })
