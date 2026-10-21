@@ -32,6 +32,11 @@ Automatisierte Tests führen die tatsächlichen parameterisierten SQL-Anweisunge
 
 Lokaler Prüfstand am 21.10.2026: 159 automatisierte Tests erfolgreich, Produktionsbuild erfolgreich, Lint ohne Fehler mit den sieben bestehenden Fast-Refresh-Warnungen. Die Desktop-/Mobilprüfung (1440 bzw. 390 Pixel) besteht einschließlich Hash-Linköffnung im bereits geöffneten Modul und dem Ausblenden zuvor geladener Inhalte nach Zugriffsfehler.
 
-Die produktive Mehrkonto-Abnahme bleibt erforderlich: Mit Konto A Raum erstellen, ein einzelnes Projekt-To-do bewusst kopieren und Konto B mit Leserecht einladen. Mit B anmelden, ausdrücklich annehmen, private Inhalte von A dürfen nirgends zugänglich sein. A stellt auf Bearbeiten um; B ändert einen Eintrag. A entzieht B den Zugang; B darf weder neu laden noch schreiben, und der alte Link darf den Zugang nicht wiederherstellen. Zusätzlich eine offene Einladung widerrufen, einen zweiten Raum kurz ablaufen lassen, einen Raum schließen und schließlich einen Testraum endgültig löschen. Originalprojekt prüfen: unverändert.
+Prüfablauf für die produktive Mehrkonto-Abnahme (Nutzerrückmeldung siehe unten): Mit Konto A Raum erstellen, ein einzelnes Projekt-To-do bewusst kopieren und Konto B mit Leserecht einladen. Mit B anmelden, ausdrücklich annehmen, private Inhalte von A dürfen nirgends zugänglich sein. A stellt auf Bearbeiten um; B ändert einen Eintrag. A entzieht B den Zugang; B darf weder neu laden noch schreiben, und der alte Link darf den Zugang nicht wiederherstellen. Zusätzlich eine offene Einladung widerrufen, einen zweiten Raum kurz ablaufen lassen, einen Raum schließen und schließlich einen Testraum endgültig löschen. Originalprojekt prüfen: unverändert.
 
 Dies ersetzt nicht den vom Nutzer verbindlich beauftragten vollständigen App-Test nach den übrigen vereinbarten Änderungen. Das übergreifende Arbeitsgedächtnis/Missionsarchiv bleibt ein eigenes offenes Paket.
+
+
+### Nutzerrückmeldung · 21.10.2026
+
+Der Nutzer bestätigt das Speichern eines Listeneintrags sowie Einladungslink und Beitritt mit einem Testkonto. Nach weiteren eigenen Tests bestätigt er: „alles getestet und funktioniert alles gut“. Die produktive erste Version ist damit vom Nutzer live abgenommen. Die Rückmeldung ist kein einzeln protokolliertes Ergebnis jedes oben genannten Sonderfalls. Der vollständige App-Test nach den restlichen Änderungen bleibt separat eingeplant.
