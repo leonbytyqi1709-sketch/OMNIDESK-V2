@@ -844,6 +844,77 @@ var init_browser_desk = __esm({
   }
 });
 
+// src/db/schema/shared-rooms.ts
+import {
+  boolean as boolean6,
+  index as index19,
+  integer as integer11,
+  pgTable as pgTable23,
+  text as text23,
+  timestamp as timestamp23,
+  unique as unique3,
+  uuid as uuid22
+} from "drizzle-orm/pg-core";
+var sharedRooms, roomMembers, roomInvites, roomItems;
+var init_shared_rooms = __esm({
+  "src/db/schema/shared-rooms.ts"() {
+    sharedRooms = pgTable23(
+      "v2_shared_rooms",
+      {
+        id: uuid22("id").primaryKey(),
+        ownerId: text23("owner_id").notNull(),
+        creationHash: text23("creation_hash").notNull(),
+        title: text23("title").notNull(),
+        description: text23("description").notNull(),
+        expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
+        closed: boolean6("closed").notNull().default(false),
+        version: integer11("version").notNull().default(1),
+        createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
+      },
+      (t) => [index19("v2_shared_rooms_owner").on(t.ownerId)]
+    );
+    roomMembers = pgTable23(
+      "v2_room_members",
+      {
+        id: uuid22("id").primaryKey(),
+        roomId: uuid22("room_id").notNull().references(() => sharedRooms.id, { onDelete: "cascade" }),
+        userId: text23("user_id").notNull(),
+        name: text23("name").notNull(),
+        role: text23("role").$type().notNull(),
+        revoked: boolean6("revoked").notNull().default(false),
+        version: integer11("version").notNull().default(1)
+      },
+      (t) => [
+        unique3("v2_room_members_room_id_user_id_key").on(t.roomId, t.userId),
+        index19("v2_room_members_user").on(t.userId)
+      ]
+    );
+    roomInvites = pgTable23("v2_room_invites", {
+      id: uuid22("id").primaryKey(),
+      roomId: uuid22("room_id").notNull().references(() => sharedRooms.id, { onDelete: "cascade" }),
+      tokenHash: text23("token_hash").notNull().unique(),
+      role: text23("role").$type().notNull(),
+      expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
+      revoked: boolean6("revoked").notNull().default(false),
+      consumedBy: text23("consumed_by"),
+      createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
+    });
+    roomItems = pgTable23(
+      "v2_room_items",
+      {
+        id: uuid22("id").primaryKey(),
+        roomId: uuid22("room_id").notNull().references(() => sharedRooms.id, { onDelete: "cascade" }),
+        kind: text23("kind").$type().notNull(),
+        text: text23("text").notNull(),
+        done: boolean6("done").notNull().default(false),
+        version: integer11("version").notNull().default(1),
+        createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
+      },
+      (t) => [index19("v2_room_items_room").on(t.roomId)]
+    );
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -889,6 +960,10 @@ __export(schema_exports, {
   omniMemoryVersions: () => omniMemoryVersions,
   projectTasks: () => projectTasks,
   projects: () => projects,
+  roomInvites: () => roomInvites,
+  roomItems: () => roomItems,
+  roomMembers: () => roomMembers,
+  sharedRooms: () => sharedRooms,
   tasks: () => tasks,
   uptimeChecks: () => uptimeChecks,
   uptimeMonitors: () => uptimeMonitors,
@@ -919,6 +994,7 @@ var init_schema = __esm({
     init_omni_memory_auto();
     init_mission_control();
     init_browser_desk();
+    init_shared_rooms();
   }
 });
 
@@ -1213,7 +1289,7 @@ async function fetchNeonSnapshot(link) {
       periodStart: project2.consumption_period_start ?? null,
       periodEnd: project2.consumption_period_end ?? null
     } : null,
-    unavailable: results.flatMap((result, index19) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index19]] : [])
+    unavailable: results.flatMap((result, index20) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index20]] : [])
   };
 }
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
@@ -1643,8 +1719,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono29 } from "hono";
-import { z as z38 } from "zod";
+import { Hono as Hono30 } from "hono";
+import { z as z40 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -4455,9 +4531,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text23 = z25.string();
+var text24 = z25.string();
 var nullableDate = z25.string().nullable().optional();
-var repoSchema = z25.object({ id: z25.number(), full_name: text23, name: text23, private: z25.boolean(), default_branch: text23, updated_at: nullableDate, html_url: text23 });
+var repoSchema = z25.object({ id: z25.number(), full_name: text24, name: text24, private: z25.boolean(), default_branch: text24, updated_at: nullableDate, html_url: text24 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -4531,14 +4607,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text23, html_url: text23, state: text23, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
+  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text24, html_url: text24, state: text24, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
   const loaders2 = {
-    branches: async () => z25.array(z25.object({ name: text23, protected: z25.boolean(), commit: z25.object({ sha: text23 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z25.array(z25.object({ sha: text23, html_url: text23, commit: z25.object({ message: text23, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    branches: async () => z25.array(z25.object({ name: text24, protected: z25.boolean(), commit: z25.object({ sha: text24 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z25.array(z25.object({ sha: text24, html_url: text24, commit: z25.object({ message: text24, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
     issues: async () => z25.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
     pulls: async () => z25.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text23.nullable(), html_url: text23, status: text23, conclusion: text23.nullable(), updated_at: nullableDate, head_sha: text23, head_branch: text23.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z25.array(z25.object({ id: z25.number(), name: text23.nullable(), tag_name: text23, html_url: text23, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text24.nullable(), html_url: text24, status: text24, conclusion: text24.nullable(), updated_at: nullableDate, head_sha: text24, head_branch: text24.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z25.array(z25.object({ id: z25.number(), name: text24.nullable(), tag_name: text24, html_url: text24, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -4742,7 +4818,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text24 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text25 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -4750,9 +4826,9 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text24("githubCommitSha") || text24("gitlabCommitSha") || text24("bitbucketCommitSha"),
-      message: text24("githubCommitMessage") || text24("gitlabCommitMessage") || text24("bitbucketCommitMessage"),
-      branch: text24("githubCommitRef") || text24("gitlabCommitRef") || text24("bitbucketCommitRef")
+      sha: text25("githubCommitSha") || text25("gitlabCommitSha") || text25("bitbucketCommitSha"),
+      message: text25("githubCommitMessage") || text25("gitlabCommitMessage") || text25("bitbucketCommitMessage"),
+      branch: text25("githubCommitRef") || text25("gitlabCommitRef") || text25("bitbucketCommitRef")
     }
   };
 }
@@ -4787,9 +4863,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item2) => Boolean(item2))
   };
 }
-function redactBuildLog(text24) {
+function redactBuildLog(text25) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text24.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text25.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -5980,9 +6056,9 @@ var autoExtractionSchema = z33.object({
     }).strict()
   ).max(3)
 }).strict();
-function sensitiveMemoryText(text24) {
+function sensitiveMemoryText(text25) {
   return /(?:sk[-_](?:proj[-_])?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{15,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|\bBearer\s+[a-z0-9._~+/-]{10,}|(?:password|passwort|api[ -_]?key|secret|token|wiederherstellungscode|recovery[ -]?code)\s*(?:ist|lautet|[:=])\s*\S{4,})/i.test(
-    text24
+    text25
   );
 }
 function needsMemoryQuestion(evidence, certainty, update, correction) {
@@ -6061,11 +6137,11 @@ async function extractAutoMemory(content, memories) {
   } finally {
     reader.releaseLock();
   }
-  const text24 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
-  if (typeof text24 !== "string") throw new Error("Invalid response");
+  const text25 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
+  if (typeof text25 !== "string") throw new Error("Invalid response");
   return autoExtractionSchema.parse(
     JSON.parse(
-      text24.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+      text25.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
     )
   );
 }
@@ -7833,9 +7909,436 @@ function createBrowserExtensionRoute(deps = browserExtensionDependencies) {
 var browserWebRoute = createBrowserWebRoute();
 var browserExtensionRoute = createBrowserExtensionRoute();
 
+// server/routes/shared-rooms.ts
+import { Hono as Hono29 } from "hono";
+import { bodyLimit as bodyLimit2 } from "hono/body-limit";
+import { z as z39 } from "zod";
+
+// server/rooms-policy.ts
+import { z as z38 } from "zod";
+var RoomError = class extends Error {
+  status;
+  constructor(message, status = 409) {
+    super(message);
+    this.status = status;
+  }
+};
+var roomRole = z38.enum(["reader", "editor"]);
+var roomExpiry = z38.iso.datetime({ offset: true }).refine((value) => {
+  const delta = Date.parse(value) - Date.now();
+  return delta > 0 && delta <= 366 * 864e5;
+}, "Ablauf muss in der Zukunft und innerhalb eines Jahres liegen.");
+var roomText = z38.string().trim().min(1).max(5e3);
+var roomCreate = z38.object({
+  id: z38.uuid(),
+  title: z38.string().trim().min(1).max(120),
+  description: z38.string().trim().max(5e3),
+  expiresAt: roomExpiry,
+  initialItems: z38.array(
+    z38.object({ kind: z38.enum(["list", "pin"]), text: roomText }).strict()
+  ).max(100)
+}).strict();
+var roomVersion = z38.object({ version: z38.number().int().positive() }).strict();
+var roomItemCreate = z38.object({ id: z38.uuid(), kind: z38.enum(["list", "pin"]), text: roomText }).strict();
+var roomItemUpdate = z38.object({
+  text: roomText,
+  done: z38.boolean(),
+  version: z38.number().int().positive()
+}).strict();
+var roomToken = z38.string().regex(/^[A-Za-z0-9_-]{43}$/);
+var roomJoin = z38.object({ token: roomToken, name: z38.string().trim().min(1).max(60) }).strict();
+
+// server/rooms-storage.ts
+init_neon_storage();
+import { createHash as createHash5, randomBytes as randomBytes3, randomUUID as randomUUID7 } from "node:crypto";
+var roomDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_shared_rooms(id uuid PRIMARY KEY,owner_id text NOT NULL,creation_hash text NOT NULL,title text NOT NULL,description text NOT NULL,expires_at timestamptz NOT NULL,closed boolean NOT NULL DEFAULT false,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS v2_shared_rooms_owner ON v2_shared_rooms(owner_id)`,
+  `CREATE TABLE IF NOT EXISTS v2_room_members(id uuid PRIMARY KEY,room_id uuid NOT NULL REFERENCES v2_shared_rooms(id) ON DELETE CASCADE,user_id text NOT NULL,name text NOT NULL,role text NOT NULL CHECK(role IN ('reader','editor')),revoked boolean NOT NULL DEFAULT false,version integer NOT NULL DEFAULT 1,UNIQUE(room_id,user_id))`,
+  `CREATE INDEX IF NOT EXISTS v2_room_members_user ON v2_room_members(user_id)`,
+  `CREATE TABLE IF NOT EXISTS v2_room_invites(id uuid PRIMARY KEY,room_id uuid NOT NULL REFERENCES v2_shared_rooms(id) ON DELETE CASCADE,token_hash text NOT NULL UNIQUE,role text NOT NULL CHECK(role IN ('reader','editor')),expires_at timestamptz NOT NULL,revoked boolean NOT NULL DEFAULT false,consumed_by text,created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS v2_room_items(id uuid PRIMARY KEY,room_id uuid NOT NULL REFERENCES v2_shared_rooms(id) ON DELETE CASCADE,kind text NOT NULL CHECK(kind IN ('list','pin')),text text NOT NULL,done boolean NOT NULL DEFAULT false,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS v2_room_items_room ON v2_room_items(room_id)`
+];
+var hash = (s) => createHash5("sha256").update(s).digest("hex");
+async function initializeRooms() {
+  const sql7 = monitoringSql();
+  const [state2] = await sql7`SELECT to_regclass('v2_shared_rooms_owner') IS NOT NULL AND to_regclass('v2_room_members_user') IS NOT NULL AND to_regclass('v2_room_invites') IS NOT NULL AND to_regclass('v2_room_items_room') IS NOT NULL AS ready`;
+  if (!state2?.ready)
+    await sql7.transaction([
+      sql7`SELECT pg_advisory_xact_lock(184730023)`,
+      ...roomDdl.map((s) => sql7.query(s))
+    ]);
+}
+function denied() {
+  throw new RoomError(
+    "Nicht mehr zug\xE4nglich, ver\xE4ndert oder Grenze erreicht. Bitte neu laden."
+  );
+}
+async function mutate(id, statement) {
+  const sql7 = monitoringSql();
+  const [, rows] = await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`room:${id}`},0))`,
+    statement
+  ]);
+  if (!rows.length) denied();
+  return rows;
+}
+async function listRooms(userId) {
+  try {
+    return await monitoringSql()`SELECT r.id,r.title,r.description,r.expires_at AS "expiresAt",r.closed,r.version,
+      CASE WHEN r.owner_id=${userId} THEN 'owner' ELSE m.role END AS role, (NOT r.closed AND r.expires_at>clock_timestamp()) AS active
+      FROM v2_shared_rooms r LEFT JOIN v2_room_members m ON m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked
+      WHERE r.owner_id=${userId} OR (m.id IS NOT NULL AND NOT r.closed AND r.expires_at>clock_timestamp()) ORDER BY r.created_at DESC,r.id`;
+  } catch (e) {
+    if (missingNeonStorage(e)) return [];
+    throw e;
+  }
+}
+async function createRoom(userId, input) {
+  await initializeRooms();
+  const sql7 = monitoringSql();
+  const results = await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`room-owner:${userId}`},0))`,
+    sql7`WITH made AS(INSERT INTO v2_shared_rooms(id,owner_id,creation_hash,title,description,expires_at)
+      SELECT ${input.id},${userId},${hash(JSON.stringify(input))},${input.title},${input.description},${input.expiresAt}::timestamptz
+      WHERE (SELECT count(*) FROM v2_shared_rooms WHERE owner_id=${userId})<100
+      ON CONFLICT(id) DO NOTHING RETURNING id)
+      INSERT INTO v2_room_items(id,room_id,kind,text)
+      SELECT gen_random_uuid(),made.id,x.kind,x.text FROM made CROSS JOIN jsonb_to_recordset(${JSON.stringify(input.initialItems)}::jsonb) AS x(kind text,text text) RETURNING id`,
+    sql7`SELECT id FROM v2_shared_rooms WHERE id=${input.id} AND owner_id=${userId} AND creation_hash=${hash(JSON.stringify(input))}`
+  ]);
+  if (!results[2].length) denied();
+  return { id: input.id };
+}
+async function roomDetail(userId, id) {
+  const sql7 = monitoringSql();
+  const [row] = await sql7`SELECT jsonb_build_object('id',r.id,'title',r.title,'description',r.description,'expiresAt',r.expires_at,'closed',r.closed,'version',r.version,
+    'role',CASE WHEN r.owner_id=${userId} THEN 'owner' ELSE m.role END,'active',NOT r.closed AND r.expires_at>clock_timestamp()) AS room,
+    coalesce((SELECT jsonb_agg(jsonb_build_object('id',i.id,'kind',i.kind,'text',i.text,'done',i.done,'version',i.version) ORDER BY i.created_at,i.id) FROM v2_room_items i WHERE i.room_id=r.id),'[]'::jsonb) AS items,
+    CASE WHEN r.owner_id=${userId} THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'role',a.role,'version',a.version) ORDER BY a.name,a.id) FROM v2_room_members a WHERE a.room_id=r.id AND NOT a.revoked),'[]'::jsonb) ELSE '[]'::jsonb END AS members,
+    CASE WHEN r.owner_id=${userId} THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',v.id,'role',v.role,'expiresAt',v.expires_at) ORDER BY v.created_at) FROM v2_room_invites v WHERE v.room_id=r.id AND NOT v.revoked AND v.consumed_by IS NULL AND v.expires_at>clock_timestamp()),'[]'::jsonb) ELSE '[]'::jsonb END AS invites
+    FROM v2_shared_rooms r LEFT JOIN v2_room_members m ON m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked
+    WHERE r.id=${id} AND (r.owner_id=${userId} OR (m.id IS NOT NULL AND NOT r.closed AND r.expires_at>clock_timestamp()))`;
+  if (!row)
+    throw new RoomError(
+      "Raum nicht zug\xE4nglich, geschlossen oder abgelaufen.",
+      404
+    );
+  return row;
+}
+async function createRoomItem(userId, roomId, input) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`INSERT INTO v2_room_items(id,room_id,kind,text)
+    SELECT ${input.id},r.id,${input.kind},${input.text} FROM v2_shared_rooms r
+    WHERE r.id=${roomId} AND NOT r.closed AND r.expires_at>clock_timestamp()
+    AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor'))
+    AND (SELECT count(*) FROM v2_room_items WHERE room_id=r.id)<200
+    ON CONFLICT(id) DO UPDATE SET id=v2_room_items.id WHERE v2_room_items.room_id=excluded.room_id AND v2_room_items.kind=excluded.kind AND v2_room_items.text=excluded.text RETURNING id`
+  );
+  return { id: input.id };
+}
+async function updateRoomItem(userId, roomId, id, input) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`UPDATE v2_room_items i SET text=${input.text},done=CASE WHEN i.kind='list' THEN ${input.done} ELSE false END,version=i.version+1
+    FROM v2_shared_rooms r WHERE i.id=${id} AND i.room_id=r.id AND r.id=${roomId} AND i.version=${input.version} AND NOT r.closed AND r.expires_at>clock_timestamp()
+    AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor')) RETURNING i.id`
+  );
+}
+async function deleteRoomItem(userId, roomId, id, version) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`DELETE FROM v2_room_items i USING v2_shared_rooms r WHERE i.id=${id} AND i.room_id=r.id AND r.id=${roomId} AND i.version=${version} AND NOT r.closed AND r.expires_at>clock_timestamp()
+    AND (r.owner_id=${userId} OR EXISTS(SELECT 1 FROM v2_room_members m WHERE m.room_id=r.id AND m.user_id=${userId} AND NOT m.revoked AND m.role='editor')) RETURNING i.id`
+  );
+}
+async function closeRoom(userId, id, version) {
+  const sql7 = monitoringSql();
+  await mutate(
+    id,
+    sql7`UPDATE v2_shared_rooms SET closed=true,version=version+1 WHERE id=${id} AND owner_id=${userId} AND version=${version} AND NOT closed RETURNING id`
+  );
+}
+async function deleteRoom(userId, id, version) {
+  const sql7 = monitoringSql();
+  await mutate(
+    id,
+    sql7`DELETE FROM v2_shared_rooms WHERE id=${id} AND owner_id=${userId} AND version=${version} RETURNING id`
+  );
+}
+async function inviteToRoom(userId, id, role, expiresAt) {
+  const sql7 = monitoringSql(), token = randomBytes3(32).toString("base64url"), inviteId = randomUUID7();
+  await mutate(
+    id,
+    sql7`INSERT INTO v2_room_invites(id,room_id,token_hash,role,expires_at)
+    SELECT ${inviteId},id,${hash(token)},${role},least(expires_at,${expiresAt}::timestamptz) FROM v2_shared_rooms
+    WHERE id=${id} AND owner_id=${userId} AND NOT closed AND expires_at>clock_timestamp()
+    AND (SELECT count(*) FROM v2_room_invites WHERE room_id=${id} AND NOT revoked AND consumed_by IS NULL AND expires_at>clock_timestamp())<20 RETURNING id`
+  );
+  return { id: inviteId, token };
+}
+async function revokeRoomInvite(userId, roomId, id) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`UPDATE v2_room_invites v SET revoked=true FROM v2_shared_rooms r WHERE v.id=${id} AND v.room_id=r.id AND r.id=${roomId} AND r.owner_id=${userId} RETURNING v.id`
+  );
+}
+async function previewRoomInvite(token) {
+  try {
+    const [row] = await monitoringSql()`SELECT r.title,v.role,least(v.expires_at,r.expires_at) AS "expiresAt" FROM v2_room_invites v JOIN v2_shared_rooms r ON r.id=v.room_id
+      WHERE v.token_hash=${hash(token)} AND NOT v.revoked AND v.consumed_by IS NULL AND v.expires_at>clock_timestamp() AND NOT r.closed AND r.expires_at>clock_timestamp()`;
+    if (!row)
+      throw new RoomError("Einladung ung\xFCltig, verwendet oder abgelaufen.", 404);
+    return row;
+  } catch (e) {
+    if (missingNeonStorage(e))
+      throw new RoomError("Einladung nicht verf\xFCgbar.", 404);
+    throw e;
+  }
+}
+async function joinRoom(userId, token, name) {
+  const sql7 = monitoringSql();
+  const [found] = await sql7`SELECT room_id AS id FROM v2_room_invites WHERE token_hash=${hash(token)}`;
+  if (!found) denied();
+  const roomId = String(found.id);
+  const rows = await mutate(
+    roomId,
+    sql7`WITH used AS(UPDATE v2_room_invites v SET consumed_by=${userId} FROM v2_shared_rooms r
+    WHERE v.token_hash=${hash(token)} AND v.room_id=r.id AND r.owner_id<>${userId} AND NOT v.revoked AND v.consumed_by IS NULL
+    AND v.expires_at>clock_timestamp() AND NOT r.closed AND r.expires_at>clock_timestamp()
+    AND (SELECT count(*) FROM v2_room_members WHERE room_id=r.id AND NOT revoked)<50
+    RETURNING v.room_id,v.role), joined AS(
+    INSERT INTO v2_room_members(id,room_id,user_id,name,role)
+    SELECT ${randomUUID7()},room_id,${userId},${name},role FROM used
+    ON CONFLICT(room_id,user_id) DO UPDATE SET revoked=false,name=excluded.name,role=excluded.role,version=v2_room_members.version+1 RETURNING room_id AS id)
+    SELECT id FROM joined UNION ALL SELECT r.id FROM v2_room_invites v JOIN v2_shared_rooms r ON r.id=v.room_id JOIN v2_room_members m ON m.room_id=r.id AND m.user_id=${userId}
+    WHERE v.token_hash=${hash(token)} AND v.consumed_by=${userId} AND NOT v.revoked AND v.expires_at>clock_timestamp() AND NOT r.closed AND r.expires_at>clock_timestamp() AND NOT m.revoked AND NOT EXISTS(SELECT 1 FROM joined)`
+  );
+  return { id: String(rows[0].id) };
+}
+async function updateRoomMember(userId, roomId, id, role, revoked, version) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`UPDATE v2_room_members m SET role=${role},revoked=${revoked},version=m.version+1 FROM v2_shared_rooms r
+    WHERE m.id=${id} AND m.room_id=r.id AND r.id=${roomId} AND r.owner_id=${userId} AND m.version=${version} AND NOT m.revoked RETURNING m.id`
+  );
+}
+async function leaveRoom(userId, roomId) {
+  const sql7 = monitoringSql();
+  await mutate(
+    roomId,
+    sql7`UPDATE v2_room_members SET revoked=true,version=version+1 WHERE room_id=${roomId} AND user_id=${userId} AND NOT revoked RETURNING id`
+  );
+}
+async function roomSource(userId, projectId) {
+  const [row] = await monitoringSql()`SELECT p.name,p.description,coalesce((SELECT jsonb_agg(jsonb_build_object('id',t.id,'title',t.title) ORDER BY t.id) FROM (SELECT id,title FROM project_tasks WHERE project_id=p.id AND user_id=${userId} ORDER BY id LIMIT 101) t),'[]'::jsonb) AS tasks FROM projects p WHERE p.id=${projectId} AND p.user_id=${userId}`;
+  if (!row) throw new RoomError("Eigenes Projekt nicht gefunden.", 404);
+  const source2 = row;
+  return {
+    ...source2,
+    tasks: source2.tasks.slice(0, 100),
+    limited: source2.tasks.length > 100
+  };
+}
+
+// server/routes/shared-rooms.ts
+var roomDependencies = {
+  listRooms,
+  createRoom,
+  roomDetail,
+  createRoomItem,
+  updateRoomItem,
+  deleteRoomItem,
+  closeRoom,
+  deleteRoom,
+  inviteToRoom,
+  revokeRoomInvite,
+  previewRoomInvite,
+  joinRoom,
+  updateRoomMember,
+  leaveRoom,
+  roomSource
+};
+function createRoomsRoute(deps = roomDependencies) {
+  const route = new Hono29();
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.use(
+    "*",
+    bodyLimit2({
+      maxSize: 6e5,
+      onError: (c) => c.json({ error: "Die Anfrage ist zu gro\xDF." }, 413)
+    })
+  );
+  route.onError(
+    (e, c) => c.json(
+      {
+        error: e instanceof RoomError ? e.message : "Raum konnte nicht geladen oder ge\xE4ndert werden. Verbindung und Datenbank pr\xFCfen."
+      },
+      e instanceof RoomError ? e.status : 503
+    )
+  );
+  route.get("/", async (c) => c.json(await deps.listRooms(c.get("userId"))));
+  route.post("/", async (c) => {
+    const input = roomCreate.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json(
+        {
+          error: "Titel, Inhalte und Ablaufdatum (innerhalb eines Jahres) pr\xFCfen."
+        },
+        400
+      );
+    return c.json(await deps.createRoom(c.get("userId"), input.data), 201);
+  });
+  route.post("/invitation/preview", async (c) => {
+    const input = z39.object({ token: roomToken }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Ung\xFCltige Einladung." }, 400);
+    return c.json(await deps.previewRoomInvite(input.data.token));
+  });
+  route.post("/invitation/join", async (c) => {
+    const input = roomJoin.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Einladung und Anzeigenamen pr\xFCfen." }, 400);
+    return c.json(
+      await deps.joinRoom(c.get("userId"), input.data.token, input.data.name)
+    );
+  });
+  route.get("/source/:projectId", async (c) => {
+    const id = c.req.param("projectId");
+    if (!z39.uuid().safeParse(id).success)
+      return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    return c.json(await deps.roomSource(c.get("userId"), id));
+  });
+  route.use("/:roomId/*", async (c, next) => {
+    if (!z39.uuid().safeParse(c.req.param("roomId")).success)
+      return c.json({ error: "Ung\xFCltige Raumkennung." }, 400);
+    for (const key of ["itemId", "memberId", "inviteId"]) {
+      const id = c.req.param(key);
+      if (id && !z39.uuid().safeParse(id).success)
+        return c.json({ error: "Ung\xFCltige Kennung." }, 400);
+    }
+    await next();
+  });
+  route.get(
+    "/:roomId",
+    async (c) => c.json(await deps.roomDetail(c.get("userId"), c.req.param("roomId")))
+  );
+  route.post("/:roomId/items", async (c) => {
+    const input = roomItemCreate.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Ung\xFCltiger Listen- oder Pinnwandeintrag." }, 400);
+    return c.json(
+      await deps.createRoomItem(
+        c.get("userId"),
+        c.req.param("roomId"),
+        input.data
+      ),
+      201
+    );
+  });
+  route.put("/:roomId/items/:itemId", async (c) => {
+    const input = roomItemUpdate.safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Inhalt und Versionsstand pr\xFCfen." }, 400);
+    await deps.updateRoomItem(
+      c.get("userId"),
+      c.req.param("roomId"),
+      c.req.param("itemId"),
+      input.data
+    );
+    return c.json({ ok: true });
+  });
+  route.delete("/:roomId/items/:itemId", async (c) => {
+    const input = roomVersion.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
+    await deps.deleteRoomItem(
+      c.get("userId"),
+      c.req.param("roomId"),
+      c.req.param("itemId"),
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  route.post("/:roomId/invites", async (c) => {
+    const input = z39.object({ role: roomRole, expiresAt: roomExpiry }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Rolle und Ablaufdatum pr\xFCfen." }, 400);
+    return c.json(
+      await deps.inviteToRoom(
+        c.get("userId"),
+        c.req.param("roomId"),
+        input.data.role,
+        input.data.expiresAt
+      ),
+      201
+    );
+  });
+  route.delete("/:roomId/invites/:inviteId", async (c) => {
+    await deps.revokeRoomInvite(
+      c.get("userId"),
+      c.req.param("roomId"),
+      c.req.param("inviteId")
+    );
+    return c.json({ ok: true });
+  });
+  route.put("/:roomId/members/:memberId", async (c) => {
+    const input = z39.object({
+      role: roomRole,
+      revoked: z39.boolean(),
+      version: z39.number().int().positive()
+    }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!input.success)
+      return c.json({ error: "Rolle und Versionsstand pr\xFCfen." }, 400);
+    await deps.updateRoomMember(
+      c.get("userId"),
+      c.req.param("roomId"),
+      c.req.param("memberId"),
+      input.data.role,
+      input.data.revoked,
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  route.post("/:roomId/leave", async (c) => {
+    await deps.leaveRoom(c.get("userId"), c.req.param("roomId"));
+    return c.json({ ok: true });
+  });
+  route.post("/:roomId/close", async (c) => {
+    const input = roomVersion.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
+    await deps.closeRoom(
+      c.get("userId"),
+      c.req.param("roomId"),
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  route.delete("/:roomId", async (c) => {
+    const input = roomVersion.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
+    await deps.deleteRoom(
+      c.get("userId"),
+      c.req.param("roomId"),
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  return route;
+}
+var sharedRoomsRoute = createRoomsRoute();
+
 // server/app.ts
 function createApp() {
-  const app = new Hono29().basePath("/api");
+  const app = new Hono30().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -7870,7 +8373,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z38.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z40.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -7889,6 +8392,7 @@ function createApp() {
   app.route("/projects", projectsRoute);
   app.route("/mission-control", missionRoute);
   app.route("/browser", browserWebRoute);
+  app.route("/shared-rooms", sharedRoomsRoute);
   app.route("/vault", vaultRoute);
   app.route("/booking", bookingRoute);
   app.route("/integrations", integrationsRoute);

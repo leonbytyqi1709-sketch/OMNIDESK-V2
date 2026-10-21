@@ -13,7 +13,19 @@ export function SignInPage() {
         </p>
       </div>
       <div className="glow rounded-xl">
-        <SignIn routing="hash" />
+        <SignIn
+          routing="hash"
+          fallbackRedirectUrl={
+            window.location.origin +
+            window.location.pathname +
+            window.location.search
+          }
+          signUpFallbackRedirectUrl={
+            window.location.origin +
+            window.location.pathname +
+            window.location.search
+          }
+        />
       </div>
     </main>
   )

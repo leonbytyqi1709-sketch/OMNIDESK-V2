@@ -56,3 +56,8 @@ SQL-/API-Tests führen die tatsächlichen parameterisierten SQL-Anweisungen gege
 Die Cloud-Testumgebung blockiert das Laden entpackter Erweiterungen durch eine Administratorrichtlinie (`Loading of unpacked extensions is disabled by the administrator`). Ein nativer Erweiterungsstart und die echte Chrome-/Clerk-Verbindung konnten deshalb hier nicht abgenommen werden. Diese Grenze wird nicht durch einen erfolgreichen Build oder Simulationstest ersetzt.
 
 Für die Nutzerabnahme: Paket im eigenen Chrome laden, ausdrücklich verbinden, auf einer normalen Webseite einen Absatz markieren, mit Anmerkung einem eigenen Projekt zuordnen, in der App und Mission Control prüfen, dieselbe Quelle erneut übernehmen und die Anmerkung bearbeiten. Danach den Gerätezugang in der App widerrufen und prüfen, dass das Panel keine weiteren Daten laden kann. Damit werden Installation, tatsächliche Berechtigungsfreigabe, der Chrome-Nachrichtenkanal und die eigene produktive Sitzung geprüft.
+
+
+### Rückmeldung des Nutzers · 21.10.2026
+
+Der Nutzer bestätigt nach Installation und Verbindung in seinem eigenen Google Chrome: „Alles hat funktioniert machen wir weiter?“ Die produktive Nutzung ist damit vom Nutzer live bestätigt. Die oben dokumentierte Cloud-Richtlinie bleibt eine Grenze der hiesigen nativen Automatisierung; sie macht die Nutzerbestätigung nicht rückgängig. Die Rückmeldung belegt keine einzeln protokollierte Durchführung aller Sonderfälle der Prüfliste. Der vollständige App-Test folgt weiterhin nach Abschluss der weiteren vereinbarten Änderungen.

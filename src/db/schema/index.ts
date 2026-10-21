@@ -27,3 +27,4 @@ export * from './omni-memory-auto'
 export * from './mission-control'
 
 export * from './browser-desk'
+export * from './shared-rooms'

@@ -29,6 +29,7 @@ import { omniActionsRoute } from './routes/omni-actions'
 import { chatRoute } from './routes/chat'
 import { missionRoute } from './routes/mission-control'
 import { browserWebRoute, browserExtensionRoute } from './routes/browser-desk'
+import { sharedRoomsRoute } from './routes/shared-rooms'
 
 /**
  * Gemeinsame App-Factory für beide Laufzeiten:
@@ -109,6 +110,7 @@ export function createApp() {
   app.route('/projects', projectsRoute)
   app.route('/mission-control', missionRoute)
   app.route('/browser', browserWebRoute)
+  app.route('/shared-rooms', sharedRoomsRoute)
   app.route('/vault', vaultRoute)
   app.route('/booking', bookingRoute)
   app.route('/integrations', integrationsRoute)

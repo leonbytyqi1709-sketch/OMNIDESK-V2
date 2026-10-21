@@ -131,3 +131,7 @@ Eigenes Projektlagebild mit expliziten GitHub-/Vercel-/Neon-/Uptime-Verbindungen
 ## Kommandoebene in Google Chrome
 
 Die Browser-Kommandoebene bietet ein Seitenpanel zum bewussten Speichern von Textauswahl, Quelle und eigenen Anmerkungen mit Projektzuordnung. Das App-Modul enthält den ZIP-Download und die Installation; die Kontoverbindung wird in der bestehenden Anmeldung ausdrücklich freigegeben und ist widerrufbar. [Installation, Berechtigungen und Prüfstatus](docs/BROWSER-KOMMANDOEBENE.md).
+
+## Gemeinsame Räume in V2
+
+Das Modul `/shared-rooms` bietet zeitlich begrenzte Räume mit Liste und Pinnwand. Einladungen erfordern OMNIDESK-Anmeldung und gewähren Lesen oder Bearbeiten. Aus Mission Control werden nur ausdrücklich ausgewählte und in einer Vorschau bestätigte Projekttexte als Kopien geteilt. Bestehende Neon-/Clerk-Konfiguration reicht aus. Details und Mehrkonto-Abnahme: [Gemeinsame Räume](docs/GEMEINSAME-RAEUME.md).

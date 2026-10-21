@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { captureRoomInvitation } from '@/lib/room-invitation'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { ClerkLoaded, ClerkLoading, SignedIn, SignedOut } from '@clerk/clerk-react'
 import { ModuleLoader } from '@/components/layout/ModuleLoader'
@@ -40,6 +41,7 @@ function AuthenticatedApp() {
  * nur der Rest der App liegt hinter dem SignedIn-Gate.
  */
 export default function App() {
+  useState(() => captureRoomInvitation())
   return (
     <BrowserRouter>
       <Routes>

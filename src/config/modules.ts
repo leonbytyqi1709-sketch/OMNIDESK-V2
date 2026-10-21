@@ -7,6 +7,7 @@ import {
   Contact,
   Crosshair,
   PanelsTopLeft,
+  UsersRound,
   GitBranch,
   KeyRound,
   LayoutDashboard,
@@ -85,6 +86,11 @@ export const moduleRegistry: ModuleDefinition[] = [
     toggleable: true, category: 'it-tools',
   },
   // 📑 Kern-Produktivität
+  {
+    id: 'shared-rooms', title: 'Gemeinsame Räume', path: '/shared-rooms',
+    icon: UsersRound, component: lazy(() => import('@/modules/shared-rooms')),
+    toggleable: true, category: 'productivity',
+  },
   {
     id: 'notes',
     title: 'Notizen',
