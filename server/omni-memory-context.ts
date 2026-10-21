@@ -1,5 +1,6 @@
 import { monitoringSql } from './neon-storage'
 import { memoryIsReady } from './omni-memory-storage'
+import { isSimpleSmallTalk } from './omni-chat-style'
 import type { ChatMemoryOptions } from './omni-memory-policy'
 import type {
   ChatMemoryReceipt,
@@ -52,6 +53,7 @@ export function selectChatMemories(
   query: string,
   projectId: string | null,
 ): SelectedMemory[] {
+  if (isSimpleSmallTalk(query)) return []
   const terms = words(query)
   const recall = terms.some((term) =>
     ['gedachtnis', 'erinnerungen', 'gemerkt'].includes(term),
@@ -68,6 +70,13 @@ export function selectChatMemories(
       )
       return {
         item,
+        relevant:
+          overlap > 0 ||
+          recall ||
+          (item.category === 'preference' &&
+            /\b(?:antwort\w*|sprache|stil|ton|format|ansprache|kurz|knapp|ausfuhrlich|deutsch|duze\w*|sieze\w*|markdown)\b/.test(
+              words(item.title + ' ' + item.content).join(' '),
+            )),
         score:
           (item.pinned ? 100 : 0) +
           (item.projectId ? 20 : 0) +
@@ -76,7 +85,7 @@ export function selectChatMemories(
           overlap,
       }
     })
-    .filter((item) => item.score > 0)
+    .filter((item) => item.relevant)
     .sort(
       (a, b) =>
         b.score - a.score ||
@@ -109,6 +118,8 @@ export async function prepareChatMemory(
 ): Promise<PreparedChatMemory> {
   if (!options.enabled)
     return { status: 'disabled', projectId: options.projectId, items: [] }
+  if (isSimpleSmallTalk(query))
+    return { status: 'none', projectId: options.projectId, items: [] }
   try {
     if (!(await memoryIsReady()))
       return { status: 'none', projectId: options.projectId, items: [] }

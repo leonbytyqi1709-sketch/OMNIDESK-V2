@@ -11,6 +11,7 @@ Der Nutzer wünscht nach Umsetzung der vereinbarten Pakete eine Einführung in a
 | Kontosicherheit | Dokumentierter Kontenbestand, Anmelde- und Wiederherstellungsangaben | Prüfen, welche Informationen bewusst dokumentiert und welche unbekannt sind |
 | Kontenkarte | Gerichtete Beziehungen für Anmeldung/Wiederherstellung und Betrachtung von Abhängigkeiten | Den dokumentierten Anmeldeweg eines Kontos verfolgen |
 | Omni-Briefing | Datierter Überblick über Aufgaben, Termine und Projekte beim Öffnen | Eine Aussage über den Link zu ihrem Original prüfen |
+| Omni-Chat | Kurze natürliche Antworten, gezielter Kontext und knapper Smalltalk | Eine einfache Begrüßung senden und die echte Antwort prüfen |
 | Omni-Aktionen | Vorschläge für unterstützte interne Änderungen mit Vorschau und ausdrücklicher Bestätigung | Eine kleine Testaufgabe vorschlagen, Vorschau lesen und gezielt bestätigen |
 | Persönliches Omni-Gedächtnis | Eigene gespeicherte Erinnerungen, Herkunft, Versionen, Projektbezug sowie steuerbare automatische Aufnahme | Einen Eintrag ansehen und entscheiden, ob er für eine Antwort verwendet werden soll |
 | Browser-Kommandoebene | Chrome-/Edge-Seitenpanel, bewusste Textauswahl, Quellenanmerkungen, Projektzuordnung und widerrufbare Verbindung | Einen ausgewählten Absatz speichern und in App sowie Projekt wiederfinden |
@@ -29,3 +30,6 @@ Offene Prüfgrenzen ehrlich behandeln: die vollständige App-Abnahme steht noch 
 
 
 Stand des Rundgangs am 21.10.2026: Mission Control wurde vom Nutzer für verstanden erklärt und erneut anhand des OMNIDESK-V2-Cockpits bestätigt. Das danach vorgestellte Arbeitsgedächtnis einschließlich Verlauf, Arbeitsständen und Missionsarchiv wurde vom Nutzer als unnötig zurückgenommen und wird entfernt. Diesen Bereich künftig überspringen; persönliche Omni-Erinnerungen und Omni-Briefing bleiben separate Funktionen. Den Rundgang mit den übrigen Bereichen fortsetzen, jeweils ein Bedienungsschritt pro Antwort.
+
+
+Weitere Rückmeldung im Rundgang: Deployments und GitHub kennt der Nutzer bereits; die Kontenkarte ist verstanden, Kontosicherheit ist bekannt und positiv bewertet. Omni-Aktionen sind ebenfalls bekannt. Aktueller Prüfschritt ist die ausdrücklich gewünschte Kürzung und natürlichere Gesprächsführung im Omni-Chat (docs/OMNI-CHAT.md). Diese Bereiche nicht erneut ohne Anlass erklären.

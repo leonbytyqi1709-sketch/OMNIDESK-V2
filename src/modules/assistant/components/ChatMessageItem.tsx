@@ -120,63 +120,62 @@ export function ChatMessageItem({
         {!isUser && message.autoMemory && (
           <AutoMemoryNotice state={message.autoMemory} onEdit={onShowMemory} />
         )}
-        {!isUser && message.memory && (
-          <details className="mt-3 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
-            <summary className="cursor-pointer">
-              {message.memory.status === 'used'
-                ? `Gedächtniskontext mitgesendet · ${message.memory.references.length} Quellen`
-                : message.memory.status === 'disabled'
-                  ? 'Gedächtnis für diese Antwort ausgeschaltet'
-                  : message.memory.status === 'unavailable'
-                    ? 'Gedächtniskontext / KI-Anbieter nicht verfügbar'
-                    : 'Kein passender Gedächtniseintrag mitgesendet'}
-            </summary>
-            <p className="mt-2">
-              Dies zeigt den mitgesendeten Kontext, nicht den Nachweis, dass die
-              KI jeden Eintrag genutzt hat.
-            </p>
-            <ul className="mt-2 space-y-2">
-              {message.memory.references.map((reference) => (
-                <li key={reference.id}>
-                  {reference.available ? (
-                    <button
-                      onClick={() => onShowMemory?.(reference.id)}
-                      className="break-words text-left underline underline-offset-4"
-                    >
-                      {reference.title} · gesendete Version {reference.version}
-                    </button>
-                  ) : (
-                    <span>
-                      Erinnerung entfernt oder Projekt nicht mehr verfügbar ·
-                      Version {reference.version}
-                    </span>
-                  )}
-                  {reference.changed && (
-                    <span className="block text-amber-400">
-                      Inzwischen geändert · aktuell v{reference.currentVersion}
-                    </span>
-                  )}
-                  {reference.archived && (
-                    <span className="block">Inzwischen archiviert.</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
+        {!isUser &&
+          message.memory &&
+          (message.memory.status === 'used' ||
+            message.memory.status === 'unavailable') && (
+            <details className="mt-3 border-t border-zinc-800 pt-2 text-xs text-zinc-400">
+              <summary className="cursor-pointer">
+                {message.memory.status === 'used'
+                  ? `Erinnerungen · ${message.memory.references.length}`
+                  : 'Kontext nicht verfügbar'}
+              </summary>
+              <p className="mt-2">
+                Dies zeigt den mitgesendeten Kontext, nicht den Nachweis, dass
+                die KI jeden Eintrag genutzt hat.
+              </p>
+              <ul className="mt-2 space-y-2">
+                {message.memory.references.map((reference) => (
+                  <li key={reference.id}>
+                    {reference.available ? (
+                      <button
+                        onClick={() => onShowMemory?.(reference.id)}
+                        className="break-words text-left underline underline-offset-4"
+                      >
+                        {reference.title} · gesendete Version{' '}
+                        {reference.version}
+                      </button>
+                    ) : (
+                      <span>
+                        Erinnerung entfernt oder Projekt nicht mehr verfügbar ·
+                        Version {reference.version}
+                      </span>
+                    )}
+                    {reference.changed && (
+                      <span className="block text-amber-400">
+                        Inzwischen geändert · aktuell v
+                        {reference.currentVersion}
+                      </span>
+                    )}
+                    {reference.archived && (
+                      <span className="block">Inzwischen archiviert.</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
             className="h-6 px-1 text-[11px] text-zinc-400"
             onClick={() => onRemember?.(message)}
+            title="Erinnerung als Entwurf vorbereiten"
           >
             <Brain className="mr-1 size-3" />
             Merken
           </Button>
-          <span className="text-[10px] text-zinc-500">
-            Speichern öffnet einen prüfbaren Entwurf.
-          </span>
         </div>
         <div className="mt-1 flex items-center justify-end text-[10px] text-zinc-500">
           {new Date(message.createdAt).toLocaleTimeString('de-DE', {

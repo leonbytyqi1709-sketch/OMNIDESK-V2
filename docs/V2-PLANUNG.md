@@ -458,3 +458,12 @@ Einrichtung und Grenzen: docs/ARBEITSGEDAECHTNIS.md. SQL-/API- und Browserprüfu
 ### Arbeitsgedächtnis entfernt · 21.10.2026
 
 Während des gemeinsamen Rundgangs erklärt der Nutzer Mission Control für verstanden und bestätigt erneut seine Cockpitansicht. Anschließend lehnt er das Arbeitsgedächtnis als unnötig ab und beauftragt dessen Entfernung. Modul, Verlaufs-/Archiv-API und alle Produktverweise entfallen; der Router behandelt die alte URL wie andere unbekannte Module. Installierte Verlaufstrigger werden beim nächsten regulären Zugriff deaktiviert, ohne Originale oder Altdaten zu löschen. Die allgemeinen Bearbeitungssicherungen bleiben vom zurückgenommenen Modul unabhängig. Gemeinsamen Rundgang mit den verbleibenden Funktionen fortsetzen und anschließend den gesamten App-Test durchführen. Keine erneute Gedächtnis-/Archivplanung daraus ableiten.
+
+
+### Omni-Chat kürzer und natürlicher · 21.10.2026
+
+Im Rundgang erklärt der Nutzer Deployments und GitHub für bekannt, die Kontenkarte für verstanden sowie Kontosicherheit und Omni-Aktionen für bekannt. Beim Omni-Chat beauftragt er eine konkrete Verbesserung: Antworten sind ihm viel zu lang und kontextlastig; kurze natürliche Antworten sind die wichtigste Vorgabe.
+
+Serverseitiger Antwortstil mit standardmäßig 1–3 kurzen Sätzen, Smalltalk 1–2. Klar erkannter alleinstehender Smalltalk wird ohne alten Gesprächs-/Projektkontext beantwortet; gespeicherte Originale bleiben erhalten. Pinning und ausgewählter Projektbezug erzwingen keine unpassenden Erinnerungen mehr. Der aktuelle Wunsch nach ausführlichen Erklärungen oder vollständigen Skripten bleibt möglich, ohne normale Antworten mechanisch abzuschneiden. Fehlermeldungen und die Chatoberfläche werden von wiederholtem Zusatztext befreit. Bestehende Aktionen, persönliche Erinnerungen und Briefing bleiben eigenständig; kein erneutes Arbeitsgedächtnis.
+
+Details und Prüfgrenzen: docs/OMNI-CHAT.md. Isolierte Tests prüfen Anbieterauftrag und Speicherung; die tatsächliche Modellantwort muss anschließend in der angemeldeten Sitzung geprüft werden. Danach den Rundgang und den vollständigen App-Test fortsetzen.

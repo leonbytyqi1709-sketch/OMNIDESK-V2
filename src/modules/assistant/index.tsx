@@ -34,10 +34,10 @@ import { OmniActions } from './components/OmniActions'
 import { ChatSidebar } from './components/ChatSidebar'
 
 const STARTER_PROMPTS = [
-  'Wie berechne ich die Broadcast-Adresse eines /27 Subnetzes?',
-  'Schreibe ein PowerShell-Skript zur Prüfung freier Festplattenkapazitäten.',
-  'Erkläre den Unterschied zwischen einem Docker Image und Container.',
-  'Welche Linux-Befehle sind am wichtigsten bei der Netzwerk-Fehlersuche?',
+  'Hey Omni, wie geht es dir so?',
+  'Was ist DNS? Kurz erklärt.',
+  'Was ist der Unterschied zwischen Docker Image und Container?',
+  'Wie prüfe ich freien Speicher unter Linux?',
 ]
 
 export default function AssistantPage() {
@@ -385,8 +385,8 @@ function AssistantWorkspace({ userId }: { userId: string }) {
                   Hi, ich bin Omni 👋 Wie kann ich dich heute unterstützen?
                 </h3>
                 <p className="mt-1 text-xs text-zinc-500 max-w-sm">
-                  Frage nach Fachbegriffen, Skripten (PowerShell, Bash, SQL),
-                  Netzwerk-Konfigurationen oder Vorbereitungsthemen.
+                  Frag einfach los. Ich antworte kurz – wenn du mehr Details
+                  möchtest, sag Bescheid.
                 </p>
 
                 {/* Starter-Prompts */}

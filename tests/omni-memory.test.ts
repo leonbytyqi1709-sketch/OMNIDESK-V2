@@ -79,7 +79,7 @@ test('memory retrieval is bounded, deterministic, relevant and respects explicit
     ['preference', 'global'],
   )
   assert.ok(
-    selectChatMemories(candidates, 'Aktueller Arbeitsstand', projectId).some(
+    selectChatMemories(candidates, 'Docker Arbeitsstand', projectId).some(
       (item) => item.id === 'project',
     ),
   )
@@ -100,7 +100,7 @@ test('memory retrieval is bounded, deterministic, relevant and respects explicit
     Array.from({ length: 20 }, (_, index) =>
       candidate(String(index), { pinned: true, content: 'x'.repeat(4000) }),
     ),
-    '',
+    'Zeig meine Erinnerungen',
     null,
   )
   assert.equal(bounded.length, 2)
@@ -110,7 +110,7 @@ test('memory retrieval is bounded, deterministic, relevant and respects explicit
       Array.from({ length: 20 }, (_, index) =>
         candidate(String(index), { pinned: true }),
       ),
-      '',
+      'Zeig meine Erinnerungen',
       null,
     ).length,
     8,
