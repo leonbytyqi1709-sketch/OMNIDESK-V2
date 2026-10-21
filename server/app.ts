@@ -28,6 +28,7 @@ import { omniMemoryRoute } from './routes/omni-memory'
 import { omniActionsRoute } from './routes/omni-actions'
 import { chatRoute } from './routes/chat'
 import { missionRoute } from './routes/mission-control'
+import { browserWebRoute, browserExtensionRoute } from './routes/browser-desk'
 
 /**
  * Gemeinsame App-Factory für beide Laufzeiten:
@@ -95,6 +96,9 @@ export function createApp() {
     } catch { return c.json({ error: 'Neon-Hintergrundprüfung fehlgeschlagen. Speicher und Konfiguration prüfen.' }, 503) }
   })
 
+  // Narrow extension pairing/device scope is independent of Clerk sessions.
+  app.route('/browser-extension', browserExtensionRoute)
+
   app.use('*', requireAuth)
   app.route('/links', linksRoute)
   app.route('/notes', notesRoute)
@@ -104,6 +108,7 @@ export function createApp() {
   app.route('/commands', commandsRoute)
   app.route('/projects', projectsRoute)
   app.route('/mission-control', missionRoute)
+  app.route('/browser', browserWebRoute)
   app.route('/vault', vaultRoute)
   app.route('/booking', bookingRoute)
   app.route('/integrations', integrationsRoute)

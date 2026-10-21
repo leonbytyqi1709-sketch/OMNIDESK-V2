@@ -6,6 +6,7 @@ import {
   Cloud,
   Contact,
   Crosshair,
+  PanelsTopLeft,
   GitBranch,
   KeyRound,
   LayoutDashboard,
@@ -77,6 +78,11 @@ export const moduleRegistry: ModuleDefinition[] = [
     component: lazy(() => import('@/modules/mission-control')),
     toggleable: true,
     category: 'it-tools',
+  },
+  {
+    id: 'browser-desk', title: 'Browser-Kommandoebene', path: '/browser-desk',
+    icon: PanelsTopLeft, component: lazy(() => import('@/modules/browser-desk')),
+    toggleable: true, category: 'it-tools',
   },
   // 📑 Kern-Produktivität
   {

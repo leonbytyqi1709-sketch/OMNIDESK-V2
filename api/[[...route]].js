@@ -790,6 +790,60 @@ var init_mission_control = __esm({
   }
 });
 
+// src/db/schema/browser-desk.ts
+import {
+  index as index18,
+  integer as integer10,
+  pgTable as pgTable22,
+  text as text22,
+  timestamp as timestamp22,
+  uuid as uuid21
+} from "drizzle-orm/pg-core";
+var browserItems, browserPairings, browserDevices;
+var init_browser_desk = __esm({
+  "src/db/schema/browser-desk.ts"() {
+    init_projects();
+    browserItems = pgTable22(
+      "v2_browser_items",
+      {
+        id: uuid21("id").primaryKey(),
+        userId: text22("user_id").notNull(),
+        url: text22("url").notNull(),
+        title: text22("title").notNull(),
+        selection: text22("selection").notNull(),
+        annotation: text22("annotation").notNull(),
+        projectId: uuid21("project_id").references(() => projects.id, {
+          onDelete: "set null"
+        }),
+        version: integer10("version").notNull().default(1),
+        createdAt: timestamp22("created_at", { withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp22("updated_at", { withTimezone: true }).notNull().defaultNow()
+      },
+      (t) => [
+        index18("v2_browser_items_owner_url").on(t.userId, t.url, t.updatedAt.desc())
+      ]
+    );
+    browserPairings = pgTable22("v2_browser_pairings", {
+      codeHash: text22("code_hash").primaryKey(),
+      userId: text22("user_id").notNull(),
+      challenge: text22("challenge").notNull(),
+      expiresAt: timestamp22("expires_at", { withTimezone: true }).notNull(),
+      consumedAt: timestamp22("consumed_at", { withTimezone: true }),
+      createdAt: timestamp22("created_at", { withTimezone: true }).notNull().defaultNow()
+    });
+    browserDevices = pgTable22("v2_browser_devices", {
+      id: uuid21("id").primaryKey(),
+      userId: text22("user_id").notNull(),
+      name: text22("name").notNull(),
+      tokenHash: text22("token_hash").notNull().unique("v2_browser_devices_token_hash_key"),
+      createdAt: timestamp22("created_at", { withTimezone: true }).notNull().defaultNow(),
+      expiresAt: timestamp22("expires_at", { withTimezone: true }).notNull(),
+      lastUsedAt: timestamp22("last_used_at", { withTimezone: true }),
+      revokedAt: timestamp22("revoked_at", { withTimezone: true })
+    });
+  }
+});
+
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -808,6 +862,9 @@ __export(schema_exports, {
   bookingSettings: () => bookingSettings,
   briefingState: () => briefingState,
   briefingVisits: () => briefingVisits,
+  browserDevices: () => browserDevices,
+  browserItems: () => browserItems,
+  browserPairings: () => browserPairings,
   chatMessages: () => chatMessages,
   chatSessions: () => chatSessions,
   commands: () => commands,
@@ -861,6 +918,7 @@ var init_schema = __esm({
     init_omni_memory();
     init_omni_memory_auto();
     init_mission_control();
+    init_browser_desk();
   }
 });
 
@@ -1155,7 +1213,7 @@ async function fetchNeonSnapshot(link) {
       periodStart: project2.consumption_period_start ?? null,
       periodEnd: project2.consumption_period_end ?? null
     } : null,
-    unavailable: results.flatMap((result, index18) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index18]] : [])
+    unavailable: results.flatMap((result, index19) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index19]] : [])
   };
 }
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
@@ -1585,8 +1643,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono28 } from "hono";
-import { z as z36 } from "zod";
+import { Hono as Hono29 } from "hono";
+import { z as z38 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -4397,9 +4455,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text22 = z25.string();
+var text23 = z25.string();
 var nullableDate = z25.string().nullable().optional();
-var repoSchema = z25.object({ id: z25.number(), full_name: text22, name: text22, private: z25.boolean(), default_branch: text22, updated_at: nullableDate, html_url: text22 });
+var repoSchema = z25.object({ id: z25.number(), full_name: text23, name: text23, private: z25.boolean(), default_branch: text23, updated_at: nullableDate, html_url: text23 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -4473,14 +4531,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text22, html_url: text22, state: text22, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
+  const issueSchema = z25.object({ id: z25.number(), number: z25.number(), title: text23, html_url: text23, state: text23, updated_at: nullableDate, draft: z25.boolean().optional(), pull_request: z25.unknown().optional() });
   const loaders2 = {
-    branches: async () => z25.array(z25.object({ name: text22, protected: z25.boolean(), commit: z25.object({ sha: text22 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z25.array(z25.object({ sha: text22, html_url: text22, commit: z25.object({ message: text22, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    branches: async () => z25.array(z25.object({ name: text23, protected: z25.boolean(), commit: z25.object({ sha: text23 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z25.array(z25.object({ sha: text23, html_url: text23, commit: z25.object({ message: text23, committer: z25.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
     issues: async () => z25.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
     pulls: async () => z25.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text22.nullable(), html_url: text22, status: text22, conclusion: text22.nullable(), updated_at: nullableDate, head_sha: text22, head_branch: text22.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z25.array(z25.object({ id: z25.number(), name: text22.nullable(), tag_name: text22, html_url: text22, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    runs: async () => z25.object({ workflow_runs: z25.array(z25.object({ id: z25.number(), name: text23.nullable(), html_url: text23, status: text23, conclusion: text23.nullable(), updated_at: nullableDate, head_sha: text23, head_branch: text23.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z25.array(z25.object({ id: z25.number(), name: text23.nullable(), tag_name: text23, html_url: text23, published_at: nullableDate, draft: z25.boolean(), prerelease: z25.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -4684,7 +4742,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text23 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text24 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -4692,9 +4750,9 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text23("githubCommitSha") || text23("gitlabCommitSha") || text23("bitbucketCommitSha"),
-      message: text23("githubCommitMessage") || text23("gitlabCommitMessage") || text23("bitbucketCommitMessage"),
-      branch: text23("githubCommitRef") || text23("gitlabCommitRef") || text23("bitbucketCommitRef")
+      sha: text24("githubCommitSha") || text24("gitlabCommitSha") || text24("bitbucketCommitSha"),
+      message: text24("githubCommitMessage") || text24("gitlabCommitMessage") || text24("bitbucketCommitMessage"),
+      branch: text24("githubCommitRef") || text24("gitlabCommitRef") || text24("bitbucketCommitRef")
     }
   };
 }
@@ -4729,9 +4787,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item2) => Boolean(item2))
   };
 }
-function redactBuildLog(text23) {
+function redactBuildLog(text24) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text23.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text24.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -5922,9 +5980,9 @@ var autoExtractionSchema = z33.object({
     }).strict()
   ).max(3)
 }).strict();
-function sensitiveMemoryText(text23) {
+function sensitiveMemoryText(text24) {
   return /(?:sk[-_](?:proj[-_])?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{15,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|\bBearer\s+[a-z0-9._~+/-]{10,}|(?:password|passwort|api[ -_]?key|secret|token|wiederherstellungscode|recovery[ -]?code)\s*(?:ist|lautet|[:=])\s*\S{4,})/i.test(
-    text23
+    text24
   );
 }
 function needsMemoryQuestion(evidence, certainty, update, correction) {
@@ -6003,11 +6061,11 @@ async function extractAutoMemory(content, memories) {
   } finally {
     reader.releaseLock();
   }
-  const text23 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
-  if (typeof text23 !== "string") throw new Error("Invalid response");
+  const text24 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
+  if (typeof text24 !== "string") throw new Error("Invalid response");
   return autoExtractionSchema.parse(
     JSON.parse(
-      text23.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+      text24.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
     )
   );
 }
@@ -7377,9 +7435,407 @@ function createMissionRoute(deps = missionRouteDependencies) {
 }
 var missionRoute = createMissionRoute();
 
+// server/routes/browser-desk.ts
+import { Hono as Hono28 } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { z as z37 } from "zod";
+
+// server/browser-policy.ts
+import { z as z36 } from "zod";
+
+// src/lib/browser-url.ts
+function browserSourceUrl(value) {
+  if (value.length > 4096) throw new Error("Die Seitenadresse ist zu lang.");
+  const url2 = new URL(value);
+  if (!["https:", "http:"].includes(url2.protocol) || url2.username || url2.password || !url2.hostname)
+    throw new Error(
+      "Nur HTTP-/HTTPS-Seiten ohne Zugangsdaten werden unterst\xFCtzt."
+    );
+  url2.hash = "";
+  for (const key of [...url2.searchParams.keys()])
+    if (/^(utm_|fbclid$|gclid$|access_token$|refresh_token$|token$|api[_-]?key$|secret$|password$|code$|authorization$|session(?:id)?$)/i.test(
+      key
+    ))
+      url2.searchParams.delete(key);
+  url2.searchParams.sort();
+  const result = url2.href;
+  if (result.length > 2048) throw new Error("Die Seitenadresse ist zu lang.");
+  return result;
+}
+
+// server/browser-policy.ts
+var BrowserDeskError = class extends Error {
+  status;
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+};
+var browserItemInput = z36.object({
+  id: z36.uuid(),
+  title: z36.string().trim().min(1).max(300),
+  url: z36.string().max(4096).transform((value, ctx) => {
+    try {
+      return browserSourceUrl(value);
+    } catch {
+      ctx.addIssue({
+        code: "custom",
+        message: "Ung\xFCltige oder nicht unterst\xFCtzte Seitenadresse."
+      });
+      return z36.NEVER;
+    }
+  }),
+  selection: z36.string().max(1e4),
+  annotation: z36.string().max(2e4),
+  projectId: z36.uuid().nullable()
+}).strict().refine(
+  (v) => Boolean(v.selection.trim() || v.annotation.trim()),
+  "Eine Textauswahl oder Anmerkung fehlt."
+);
+var browserUpdateInput = z36.object({
+  title: z36.string().trim().min(1).max(300),
+  selection: z36.string().max(1e4),
+  annotation: z36.string().max(2e4),
+  projectId: z36.uuid().nullable(),
+  version: z36.number().int().positive()
+}).strict().refine((v) => Boolean(v.selection.trim() || v.annotation.trim()));
+var browserPairInput = z36.object({ challenge: z36.string().regex(/^[a-f0-9]{64}$/) }).strict();
+var browserExchangeInput = z36.object({
+  code: z36.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  verifier: z36.string().regex(/^[A-Za-z0-9_-]{43}$/)
+}).strict();
+
+// server/browser-storage.ts
+init_neon_storage();
+import { createHash as createHash4, randomBytes as randomBytes2, randomUUID as randomUUID6 } from "node:crypto";
+var browserHash = (value) => createHash4("sha256").update(value).digest("hex");
+var browserDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_browser_items(id uuid PRIMARY KEY,user_id text NOT NULL,url text NOT NULL,title text NOT NULL,selection text NOT NULL,annotation text NOT NULL,project_id uuid REFERENCES projects(id) ON DELETE SET NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS v2_browser_items_owner_url ON v2_browser_items(user_id,url,updated_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS v2_browser_pairings(code_hash text PRIMARY KEY,user_id text NOT NULL,challenge text NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS v2_browser_devices(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,token_hash text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,last_used_at timestamptz,revoked_at timestamptz)`
+];
+async function initializeBrowserStorage() {
+  const sql7 = monitoringSql();
+  const [state2] = await sql7`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`;
+  if (state2?.ready) return;
+  await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(184730022)`,
+    ...browserDdl.map((s) => sql7.query(s))
+  ]);
+}
+async function browserProjects(userId) {
+  return await monitoringSql()`SELECT id,name FROM projects WHERE user_id=${userId} ORDER BY name,id`;
+}
+async function ownsBrowserProject(userId, projectId) {
+  const [row] = await monitoringSql()`SELECT id FROM projects WHERE id=${projectId} AND user_id=${userId}`;
+  return Boolean(row);
+}
+function boundBrowserItems(rows) {
+  const items = [];
+  let bytes2 = 0;
+  for (const row of rows.slice(0, 100)) {
+    const size = Buffer.byteLength(JSON.stringify(row), "utf8");
+    if (bytes2 + size > 2e6) break;
+    bytes2 += size;
+    items.push(row);
+  }
+  return { items, limited: rows.length > items.length };
+}
+async function listBrowserItems(userId, filters = {}) {
+  const sql7 = monitoringSql();
+  try {
+    const rows = await sql7`SELECT i.id,i.title,i.url,i.selection,i.annotation,p.id AS "projectId",p.name AS "projectName",i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt"
+      FROM v2_browser_items i LEFT JOIN projects p ON p.id=i.project_id AND p.user_id=i.user_id
+      WHERE i.user_id=${userId} AND (${filters.url ?? null}::text IS NULL OR i.url=${filters.url ?? null})
+      AND (${filters.projectId ?? null}::uuid IS NULL OR p.id=${filters.projectId ?? null}::uuid) ORDER BY i.updated_at DESC,i.id LIMIT 101`;
+    return boundBrowserItems(rows);
+  } catch (e) {
+    if (missingNeonStorage(e)) return { items: [], limited: false };
+    throw e;
+  }
+}
+async function saveBrowserItem(userId, input) {
+  await initializeBrowserStorage();
+  const sql7 = monitoringSql();
+  const [item2] = await sql7`INSERT INTO v2_browser_items(id,user_id,url,title,selection,annotation,project_id)
+    SELECT ${input.id}::uuid,${userId},${input.url},${input.title},${input.selection},${input.annotation},${input.projectId}::uuid
+    WHERE ${input.projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
+    ON CONFLICT(id) DO UPDATE SET id=v2_browser_items.id WHERE v2_browser_items.user_id=excluded.user_id AND v2_browser_items.url=excluded.url AND v2_browser_items.title=excluded.title AND v2_browser_items.selection=excluded.selection AND v2_browser_items.annotation=excluded.annotation AND v2_browser_items.project_id IS NOT DISTINCT FROM excluded.project_id
+    RETURNING id,title,url,selection,annotation,project_id AS "projectId",version,created_at AS "createdAt",updated_at AS "updatedAt"`;
+  if (!item2)
+    throw new BrowserDeskError(
+      "Projekt geh\xF6rt nicht zu deinem Konto oder diese Speicherung wurde mit anderem Inhalt bereits verwendet. Liste aktualisieren.",
+      409
+    );
+  return { ...item2, projectName: null };
+}
+async function updateBrowserItem(userId, id, input) {
+  const sql7 = monitoringSql();
+  const [row] = await sql7`UPDATE v2_browser_items SET title=${input.title},selection=${input.selection},annotation=${input.annotation},project_id=${input.projectId}::uuid,version=version+1,updated_at=now()
+    WHERE id=${id} AND user_id=${userId} AND version=${input.version}
+    AND (${input.projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId}))
+    RETURNING id,title,url,selection,annotation,project_id AS "projectId",version,created_at AS "createdAt",updated_at AS "updatedAt"`;
+  if (!row)
+    throw new BrowserDeskError(
+      "Eintrag wurde ver\xE4ndert, entfernt oder das Projekt ist nicht zug\xE4nglich. Liste neu laden.",
+      409
+    );
+  return { ...row, projectName: null };
+}
+async function deleteBrowserItem(userId, id, version) {
+  const rows = await monitoringSql()`DELETE FROM v2_browser_items WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows.length)
+    throw new BrowserDeskError(
+      "Eintrag wurde ver\xE4ndert oder ist nicht mehr zug\xE4nglich. Liste neu laden.",
+      409
+    );
+}
+async function createBrowserPairing(userId, challenge) {
+  await initializeBrowserStorage();
+  const sql7 = monitoringSql(), code = randomBytes2(32).toString("base64url");
+  const [, rows] = await sql7.transaction([
+    sql7`SELECT pg_advisory_xact_lock(hashtextextended(${`browser-pair:${userId}`},0))`,
+    sql7`INSERT INTO v2_browser_pairings(code_hash,user_id,challenge,expires_at)
+      SELECT ${browserHash(code)},${userId},${challenge},now()+interval '5 minutes'
+      WHERE (SELECT count(*) FROM v2_browser_pairings WHERE user_id=${userId} AND created_at>now()-interval '1 hour')<20
+      AND (SELECT count(*) FROM v2_browser_devices WHERE user_id=${userId} AND revoked_at IS NULL AND expires_at>now())<20 RETURNING code_hash`,
+    sql7`DELETE FROM v2_browser_pairings WHERE user_id=${userId} AND created_at<now()-interval '1 day'`
+  ]);
+  if (!rows.length)
+    throw new BrowserDeskError(
+      "Zu viele Verbindungsversuche oder aktive Erweiterungen. Alte Verbindungen trennen oder sp\xE4ter erneut versuchen.",
+      429
+    );
+  return { code };
+}
+async function exchangeBrowserPairing(code, verifier) {
+  const sql7 = monitoringSql(), token = "omni_ext_" + randomBytes2(32).toString("base64url"), deviceId = randomUUID6();
+  try {
+    const [row] = await sql7`WITH consumed AS(UPDATE v2_browser_pairings SET consumed_at=now() WHERE code_hash=${browserHash(code)} AND challenge=${browserHash(verifier)} AND expires_at>now() AND consumed_at IS NULL RETURNING user_id)
+      INSERT INTO v2_browser_devices(id,user_id,name,token_hash,expires_at) SELECT ${deviceId},user_id,'Browser-Kommandoebene',${browserHash(token)},now()+interval '30 days' FROM consumed RETURNING id,expires_at AS "expiresAt"`;
+    if (!row)
+      throw new BrowserDeskError(
+        "Verbindung ist ung\xFCltig, abgelaufen oder bereits verwendet. Erneut verbinden.",
+        401
+      );
+    return { token, deviceId, expiresAt: String(row.expiresAt) };
+  } catch (e) {
+    if (missingNeonStorage(e))
+      throw new BrowserDeskError(
+        "Erweiterung zuerst in OMNIDESK verbinden.",
+        401
+      );
+    throw e;
+  }
+}
+async function authenticateBrowserDevice(token) {
+  if (!/^omni_ext_[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  try {
+    const [row] = await monitoringSql()`UPDATE v2_browser_devices SET last_used_at=now() WHERE token_hash=${browserHash(token)} AND revoked_at IS NULL AND expires_at>now() RETURNING id,user_id AS "userId"`;
+    return row ? { id: String(row.id), userId: String(row.userId) } : null;
+  } catch (e) {
+    if (missingNeonStorage(e)) return null;
+    throw e;
+  }
+}
+async function listBrowserDevices(userId) {
+  try {
+    return await monitoringSql()`SELECT id,name,created_at AS "createdAt",expires_at AS "expiresAt",last_used_at AS "lastUsedAt" FROM v2_browser_devices WHERE user_id=${userId} AND revoked_at IS NULL AND expires_at>now() ORDER BY created_at DESC`;
+  } catch (e) {
+    if (missingNeonStorage(e)) return [];
+    throw e;
+  }
+}
+async function revokeBrowserDevice(userId, deviceId) {
+  await monitoringSql()`UPDATE v2_browser_devices SET revoked_at=coalesce(revoked_at,now()) WHERE id=${deviceId} AND user_id=${userId}`;
+}
+
+// server/routes/browser-desk.ts
+var versionInput = z37.object({ version: z37.number().int().positive() }).strict();
+var browserDataDependencies = {
+  browserProjects,
+  ownsBrowserProject,
+  listBrowserItems,
+  saveBrowserItem,
+  updateBrowserItem,
+  deleteBrowserItem
+};
+function baseRoute() {
+  const route = new Hono28();
+  route.use(
+    "*",
+    bodyLimit({
+      maxSize: 128e3,
+      onError: (c) => c.json({ error: "Die Anfrage ist zu gro\xDF." }, 413)
+    })
+  );
+  route.use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  route.onError(
+    (e, c) => c.json(
+      {
+        error: e instanceof BrowserDeskError ? e.message : "Browser-Notizen konnten nicht verarbeitet werden. Verbindung und Datenbankeinrichtung pr\xFCfen."
+      },
+      e instanceof BrowserDeskError ? e.status : 503
+    )
+  );
+  return route;
+}
+function createBrowserDataRoute(deps = browserDataDependencies) {
+  const route = baseRoute();
+  route.get(
+    "/projects",
+    async (c) => c.json(await deps.browserProjects(c.get("userId")))
+  );
+  route.get("/items", async (c) => {
+    const projectId = c.req.query("projectId"), rawUrl = c.req.query("url");
+    if (projectId && !z37.uuid().safeParse(projectId).success)
+      return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    let url2;
+    if (rawUrl) {
+      try {
+        url2 = browserSourceUrl(rawUrl);
+      } catch {
+        return c.json({ error: "Nicht unterst\xFCtzte Seitenadresse." }, 400);
+      }
+    }
+    if (projectId && !await deps.ownsBrowserProject(c.get("userId"), projectId))
+      return c.json({ error: "Eigenes Projekt nicht gefunden." }, 404);
+    return c.json(
+      await deps.listBrowserItems(c.get("userId"), { url: url2, projectId })
+    );
+  });
+  route.post("/items", async (c) => {
+    const input = browserItemInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json(
+        {
+          error: "Titel, Seitenadresse, Textauswahl, Anmerkung und Projektzuordnung pr\xFCfen."
+        },
+        400
+      );
+    return c.json(await deps.saveBrowserItem(c.get("userId"), input.data), 201);
+  });
+  route.use("/items/:id", async (c, next) => {
+    if (!z37.uuid().safeParse(c.req.param("id")).success)
+      return c.json({ error: "Ung\xFCltige Eintragskennung." }, 400);
+    await next();
+  });
+  route.put("/items/:id", async (c) => {
+    const input = browserUpdateInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json({ error: "Ung\xFCltiger Inhalt oder Versionsstand." }, 400);
+    return c.json(
+      await deps.updateBrowserItem(
+        c.get("userId"),
+        c.req.param("id"),
+        input.data
+      )
+    );
+  });
+  route.delete("/items/:id", async (c) => {
+    const input = versionInput.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
+    await deps.deleteBrowserItem(
+      c.get("userId"),
+      c.req.param("id"),
+      input.data.version
+    );
+    return c.json({ ok: true });
+  });
+  return route;
+}
+var browserWebDependencies = {
+  ...browserDataDependencies,
+  createBrowserPairing,
+  listBrowserDevices,
+  revokeBrowserDevice
+};
+function createBrowserWebRoute(deps = browserWebDependencies) {
+  const route = baseRoute();
+  route.post("/pair", async (c) => {
+    const input = browserPairInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json(
+        {
+          error: "Ung\xFCltige Verbindungsanfrage. Verbindung aus der Erweiterung erneut starten."
+        },
+        400
+      );
+    return c.json(
+      await deps.createBrowserPairing(c.get("userId"), input.data.challenge)
+    );
+  });
+  route.get(
+    "/devices",
+    async (c) => c.json(await deps.listBrowserDevices(c.get("userId")))
+  );
+  route.delete("/devices/:id", async (c) => {
+    if (!z37.uuid().safeParse(c.req.param("id")).success)
+      return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    await deps.revokeBrowserDevice(c.get("userId"), c.req.param("id"));
+    return c.json({ ok: true });
+  });
+  route.route("/", createBrowserDataRoute(deps));
+  return route;
+}
+var browserExtensionDependencies = {
+  ...browserDataDependencies,
+  exchangeBrowserPairing,
+  authenticateBrowserDevice,
+  revokeBrowserDevice
+};
+function createBrowserExtensionRoute(deps = browserExtensionDependencies) {
+  const route = baseRoute();
+  route.post("/pair/exchange", async (c) => {
+    const input = browserExchangeInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json({ error: "Ung\xFCltige Verbindungsanfrage." }, 400);
+    return c.json(
+      await deps.exchangeBrowserPairing(input.data.code, input.data.verifier)
+    );
+  });
+  const data = baseRoute();
+  data.use("*", async (c, next) => {
+    const header = c.req.header("Authorization");
+    const token = header?.startsWith("Bearer ") ? header.slice(7) : "";
+    const device = await deps.authenticateBrowserDevice(token);
+    if (!device)
+      return c.json(
+        {
+          error: "Erweiterung nicht verbunden, abgelaufen oder widerrufen. In OMNIDESK erneut verbinden."
+        },
+        401
+      );
+    c.set("userId", device.userId);
+    c.set("browserDeviceId", device.id);
+    await next();
+  });
+  data.post("/disconnect", async (c) => {
+    await deps.revokeBrowserDevice(c.get("userId"), c.get("browserDeviceId"));
+    return c.json({ ok: true });
+  });
+  data.route("/", createBrowserDataRoute(deps));
+  route.route("/data", data);
+  return route;
+}
+var browserWebRoute = createBrowserWebRoute();
+var browserExtensionRoute = createBrowserExtensionRoute();
+
 // server/app.ts
 function createApp() {
-  const app = new Hono28().basePath("/api");
+  const app = new Hono29().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -7414,7 +7870,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z36.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z38.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -7422,6 +7878,7 @@ function createApp() {
       return c.json({ error: "Neon-Hintergrundpr\xFCfung fehlgeschlagen. Speicher und Konfiguration pr\xFCfen." }, 503);
     }
   });
+  app.route("/browser-extension", browserExtensionRoute);
   app.use("*", requireAuth);
   app.route("/links", linksRoute);
   app.route("/notes", notesRoute);
@@ -7431,6 +7888,7 @@ function createApp() {
   app.route("/commands", commandsRoute);
   app.route("/projects", projectsRoute);
   app.route("/mission-control", missionRoute);
+  app.route("/browser", browserWebRoute);
   app.route("/vault", vaultRoute);
   app.route("/booking", bookingRoute);
   app.route("/integrations", integrationsRoute);

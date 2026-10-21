@@ -25,3 +25,5 @@ export * from './omni-memory'
 export * from './omni-memory-auto'
 
 export * from './mission-control'
+
+export * from './browser-desk'

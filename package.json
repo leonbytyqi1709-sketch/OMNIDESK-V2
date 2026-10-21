@@ -6,14 +6,15 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx watch server/index.ts",
-    "build": "tsc -b && vite build && npm run bundle:api",
+    "build": "tsc -b && npm run build:extension && vite build && npm run bundle:api",
     "lint": "oxlint",
     "preview": "vite preview",
     "bundle:api": "esbuild server/vercel-entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/[[...route]].js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "build:extension": "node scripts/build-browser-extension.mjs"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.9",

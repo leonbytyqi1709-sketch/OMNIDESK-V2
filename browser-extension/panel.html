@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OMNIDESK – Kommandoebene</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header>
+      <span class="eyebrow">DEIN ARBEITSKONTEXT IM BROWSER</span>
+      <h1>OMNIDESK</h1>
+      <p>Text auswählen. Quelle behalten. Im Projekt weiterarbeiten.</p>
+    </header>
+    <main>
+      <section class="card">
+        <h2>Verbindung</h2>
+        <p id="connection" role="status">Verbindung wird geprüft…</p>
+        <div class="actions">
+          <button id="connect">Mit OMNIDESK verbinden</button
+          ><button id="disconnect" class="secondary" hidden>
+            Verbindung trennen</button
+          ><a
+            href="https://omnidesk-v2-beta.vercel.app/browser-desk"
+            target="_blank"
+            rel="noreferrer"
+            >In der App öffnen ↗</a
+          >
+        </div>
+      </section>
+      <p id="message" role="status" aria-live="polite"></p>
+      <section class="card">
+        <h2>Bewusst freigegebene Seite</h2>
+        <p class="hint">
+          Markiere bei Bedarf Text auf der Webseite. Öffne das Panel über das
+          OMNIDESK-Symbol oder Alt+Umschalt+O und übernimm den Kontext. Es wird
+          kein Browserverlauf aufgezeichnet.
+        </p>
+        <button id="capture" class="secondary">Seitenkontext übernehmen</button>
+        <form id="editor">
+          <label>Titel<input id="title" maxlength="300" required /></label
+          ><label
+            >Übernommene Quelle<input
+              id="url"
+              readonly
+              aria-describedby="source-hint"
+          /></label>
+          <p id="source-hint" class="hint">
+            Fragmente sowie erkannte Zugangs- und Trackingparameter werden
+            entfernt. Prüfe den Quellenlink vor dem Speichern.
+          </p>
+          <label
+            >Ausgewählter Text<textarea
+              id="selection"
+              maxlength="10000"
+              rows="4"
+            ></textarea></label
+          ><label
+            >Deine Anmerkung<textarea
+              id="annotation"
+              maxlength="20000"
+              rows="4"
+              placeholder="Was ist hier wichtig?"
+            ></textarea></label
+          ><label
+            >Projekt<select id="project" aria-label="Projekt">
+              <option value="">Persönlich · ohne Projekt</option>
+            </select></label
+          >
+          <div class="actions">
+            <button id="save" type="submit">In OMNIDESK speichern</button
+            ><button id="new" type="button" class="secondary">
+              Neuer Eintrag
+            </button>
+          </div>
+          <p class="hint">
+            Nur diese Inhalte werden auf deinen Klick gespeichert. Ein nicht
+            gespeicherter Entwurf bleibt ausschließlich für diese Browsersitzung
+            erhalten.
+          </p>
+        </form>
+      </section>
+      <section class="card">
+        <div class="section-head">
+          <h2>Anmerkungen zu dieser Quelle</h2>
+          <button id="refresh" class="secondary">Aktualisieren</button>
+        </div>
+        <p id="list-state" class="hint">
+          Zuerst einen Seitenkontext übernehmen.
+        </p>
+        <div id="items"></div>
+      </section>
+    </main>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

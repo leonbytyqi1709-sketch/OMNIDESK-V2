@@ -38,6 +38,7 @@ import type {
 import { useMission, useMissionOverview, MissionVisitContext } from './api'
 import { MissionConnections } from './Connections'
 import { MissionMetrics } from './Metrics'
+import { ProjectBrowserNotes } from '@/modules/browser-desk/ProjectBrowserNotes'
 
 const color: Record<MissionStatus, string> = {
   ok: 'text-emerald-400 border-emerald-500/30',
@@ -677,6 +678,7 @@ function Cockpit({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
       <MissionMetrics snapshot={snapshot} />
+      <ProjectBrowserNotes projectId={projectId} />
       <CockpitActions key={projectId} snapshot={snapshot} />
       <Card>
         <CardHeader>

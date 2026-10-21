@@ -15,7 +15,7 @@ export default defineConfig({
       // (Free-Tier-Strategie: offline reicht die Shell).
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/downloads\//],
       },
       manifest: {
         name: 'OmniDesk',

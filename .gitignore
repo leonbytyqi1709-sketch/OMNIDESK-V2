@@ -30,3 +30,7 @@ lint_check.txt
 .vercel
 .env*
 api/index.js
+
+# Reproducible browser-extension package
+dist-browser-extension/
+public/downloads/omnidesk-browser.zip
