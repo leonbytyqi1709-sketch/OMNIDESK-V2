@@ -4,7 +4,7 @@ Stand: 17. Oktober 2026. Analyse des bereitgestellten Checkouts, keine Änderung
 
 ## Verbindlicher Abschluss und verbleibende Arbeiten · 20.10.2026
 
-Aktueller Stand vom 21.10.2026: Die Browser-Kommandoebene ist implementiert und vom Nutzer mit „Alles hat funktioniert“ für seinen eigenen Chrome live bestätigt. Temporäre gemeinsame Räume sind als erste Version mit Anmeldung, Rollen, Liste/Pinnwand, Einladungen, Ablauf und bewusst ausgewählten Projektkopien implementiert; ihre produktive Nutzung mit Testkonto wurde vom Nutzer nach weiteren Tests am 21.10.2026 bestätigt. Das übergreifende Arbeitsgedächtnis/Missionsarchiv ist jetzt als erste Version mit Notiz-/Aufgabenverlauf, gezielter Wiederherstellung und bewusst dokumentierten Arbeitsständen/Archiven implementiert. Die produktive Nutzerabnahme dieses neuen Pakets steht noch aus. Die vereinbarten Funktionspakete liegen in ihren dokumentierten ersten Ausbaustufen vor; nun folgen die gewünschte gemeinsame Funktionsvorstellung (docs/V2-RUNDGANG.md) und der vollständige App-Test. Das persönliche Omni-Gedächtnis bleibt ein eigener Bereich. OneDrive ist auf Nutzerwunsch vollständig aus der weiteren Planung gestrichen. Das Internet-Radar ist entfernt. Nach Abschluss der vereinbarten Änderungen bleibt der vollständige gemeinsame App-Test verbindlich.
+Aktueller Stand vom 21.10.2026: Die Browser-Kommandoebene ist implementiert und vom Nutzer mit „Alles hat funktioniert“ für seinen eigenen Chrome live bestätigt. Temporäre gemeinsame Räume sind als erste Version mit Anmeldung, Rollen, Liste/Pinnwand, Einladungen, Ablauf und bewusst ausgewählten Projektkopien implementiert; ihre produktive Nutzung mit Testkonto wurde vom Nutzer nach weiteren Tests am 21.10.2026 bestätigt. Arbeitsgedächtnis, Änderungsverlauf, Arbeitsstände und Missionsarchiv wurden nach der Vorstellung am 21.10.2026 auf ausdrücklichen Nutzerwunsch entfernt und aus der weiteren Planung gestrichen. Der Nutzer nutzt dafür eigene Notizen und das Omni-Briefing und möchte kein Ersatzmodul. Das persönliche Omni-Gedächtnis und das Omni-Briefing bleiben erhalten. Der gemeinsame Rundgang und der vollständige App-Test werden mit den verbleibenden Funktionen fortgesetzt. OneDrive ist auf Nutzerwunsch vollständig aus der weiteren Planung gestrichen. Das Internet-Radar ist entfernt. Nach Abschluss der vereinbarten Änderungen bleibt der vollständige gemeinsame App-Test verbindlich.
 
 Der Nutzer hat Mission Control nach Anmeldung live geprüft und bestätigt, dass Projekte und Verbindungen vollständig erscheinen. Die anschließende Layoutkorrektur wurde bereitgestellt und vom Nutzer mit „Perfekt gemacht“ bestätigt. Dies ersetzt keine separate, bisher unbestätigte Neon-Scheduler-Abnahme oder sonstige ausstehende Provider-Prüfungen. Der optionale Neon-SQL-Test bleibt auf Nutzerwunsch aus.
 
@@ -76,15 +76,11 @@ Fiktive Störungen mit glaubwürdigen Logs, Netzplänen und simulierten Terminal
 
 Auslöser, Bedingung, Aktion: „Buchung eingegangen → Kontakt zuordnen → Vorbereitungsaufgabe erstellen“ oder „Zertifikat läuft bald ab → Aufgabe und Hinweis anlegen“. Start mit kleinen getesteten Vorlagen, danach grafischer Editor. Dauerhafte Ausführung benötigt gespeicherte Jobs, Wiederholungsregeln, Idempotenz, Begrenzungen und einen Verlauf. Externe Schreibaktionen erhalten eine explizite Freigaberegel; eine KI-Antwort allein löst sie nicht aus.
 
-### 8. Arbeitsgedächtnis: Zeitleiste, Wiederaufnahme und gezieltes Undo
+### 8. Arbeitsgedächtnis – zurückgenommen
 
-Vom Nutzer ausdrücklich als fester V2-Schwerpunkt ausgewählt: „Thema Gedächtnis will ich auf jeden Fall“. Die Zusage betrifft das übergreifende Produktkonzept; einzelne Ausbaustufen sind noch zu priorisieren.
+Der Nutzer nimmt diese Funktion am 21.10.2026 nach der Vorstellung ausdrücklich zurück: Er sieht keinen Nutzen, würde sie nicht verwenden und hält Arbeitsstände selbst fest; zudem nutzt er das Omni-Briefing. Änderungsverlauf, manuelle Arbeitsstände und Missionsarchiv werden einschließlich Modul, API, Querverweisen, Schemaexporten und eigenen Tests entfernt. Keine erneute Umsetzung oder Ersatzplanung ohne neuen ausdrücklichen Auftrag.
 
-Jede relevante Änderung wird mit Herkunft und Zeitpunkt sichtbar. Eine unterbrochene Mission kann den letzten Arbeitsstand und offene Fragen wiederherstellen. Ein ausgewählter geänderter Titel oder verschobener Task lässt sich später anhand einer Version rückgängig machen. Start mit Notizversionen und Aufgabenhistorie. Das Wiederherstellen externer Mails oder Infrastrukturzustände wird nicht als universelles Undo versprochen.
-
-Das Gedächtnis umfasst auch ein durchsuchbares Archiv abgeschlossener Missionen mit Ausgangslage, Entscheidungen, zugehörigen Quellen, Ergebnissen und offenen Nacharbeiten. Beim Wiederaufnehmen eines Vorhabens lässt sich der letzte dokumentierte Stand nachvollziehen. Zeitliche Ansichten und Vergleiche können auf künftig gespeicherten Versionen aufbauen; frühere, nicht erfasste Zustände lassen sich nicht nachträglich vollständig rekonstruieren.
-
-Erinnerungen müssen auf gespeicherte Originalquellen verweisen; Zusammenfassungen bleiben als abgeleitete Inhalte erkennbar. Nutzer bestimmen, was aufgenommen, aufbewahrt und gelöscht wird. Berechtigungen gelten auch für Historien und Suchergebnisse; das Gedächtnis darf keine entzogenen Raumfreigaben umgehen. Vault-Klartexte und heimliche Browseraufzeichnungen gehören nicht dazu. Status 21.10.2026: Erste Version mit Notiz-/Aufgabenhistorien, feldweiser Wiederherstellung sowie manuell dokumentierten Arbeitsständen und Missionsarchiv implementiert. Keine universelle Änderungshistorie aller Module, kein Infrastruktur-Undo, keine Rekonstruktion nie gespeicherter Zustände. Details und produktive Abnahme: docs/ARBEITSGEDAECHTNIS.md.
+Bereits eingerichtete automatische Verlaufstrigger werden beim nächsten Zugriff auf Notizen, Aufgaben, Projekte oder bei bestätigten Omni-Aktionen deaktiviert. Bestehende Originale und Alttabellen/-daten werden nicht automatisch gelöscht. Der eigenständige Schutz vor veralteten Bearbeitungen und die serialisierten Notiz-Autosaves bleiben erhalten. Persönliches Omni-Gedächtnis und Omni-Briefing sind keine entfernten Bestandteile. Details: docs/ARBEITSGEDAECHTNIS.md.
 
 ### 9. Universal Capture: aus Rohmaterial entsteht strukturierte Arbeit
 
@@ -236,7 +232,7 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 2. Projektbezogene Neon-Überwachung im Uptime-Modul.
 3. Kommandoebene im Browser.
 4. Temporäre gemeinsame Räume.
-5. Arbeitsgedächtnis und Missionsarchiv.
+5. ~~Arbeitsgedächtnis und Missionsarchiv~~ – am 21.10.2026 vom Nutzer zurückgenommen.
 6. Omni-Briefing beim Öffnen der App.
 7. Internet-Radar: zurückgenommen und entfernt (20.10.2026).
 8. OneDrive-Integration: aus der weiteren Planung gestrichen (20.10.2026).
@@ -269,7 +265,7 @@ Diese Liste ist der verbindliche Auswahlstand der Planung; weitere nummerierte I
 | Universal Capture, zunächst Text | Hoch | Mittel | Früher, gut abgrenzbarer Einstieg |
 | Incident Room | Hoch für Betrieb/Support | Groß | Auf Missions- und Ereignismodell aufbauen |
 | Infrastructure Atlas | Hoch bei echtem Inventar | Groß | Gemeinsam mit Incident Room erweitern |
-| Arbeitsgedächtnis und Missionsarchiv | Hoch | Mittel bis groß | Vom Nutzer fest für V2 ausgewählt; Ereignisse früh speichern, Oberfläche schrittweise |
+| ~~Arbeitsgedächtnis und Missionsarchiv~~ | Entfällt | – | Am 21.10.2026 nach Vorstellung vom Nutzer ausdrücklich zurückgenommen |
 | Flow Builder | Hoch bei wiederholter Arbeit | Groß | Erst robuste Aktions-/Job-Infrastruktur |
 | Scenario Lab | Stark für FiSi/Lernen | Groß | Eigenständige spätere V2-Ausbaustufe |
 | Change Preview | Hoch bei guter Datenlage | Sehr groß | Langfristig auf Atlas und Runbooks |
@@ -457,3 +453,8 @@ Der Nutzer autorisiert den Start nach gemeinsamer Festlegung von Verlauf, Wieder
 Zweiter Bereich: private manuelle Arbeitsstände mit Ausgangslage, Entscheidungen, offenen Fragen, nächsten Schritten, Ergebnis und geprüften Originalverweisen. Zustände In Arbeit/Unterbrochen/Archiv, Suche, Wiederaufnahme und bewusste Löschung. Einstieg aus Mission Control mit Projektzuordnung, ohne automatische Textkopien oder Freigaben. Vier zusätzliche Tabellen, eigene SQL-Funktionen und drei Trigger auf Originaltabellen; keine vorhandenen Spalten umgebaut. Bestehende Clerk-/Neon-Konfiguration reicht aus, kein neuer KI-Anbieter oder Scheduler. Verlauf mit steuerbarer Pause/Aufbewahrung; manuelle Dokumentation bis zur ausdrücklichen Löschung.
 
 Einrichtung und Grenzen: docs/ARBEITSGEDAECHTNIS.md. SQL-/API- und Browserprüfungen verwenden isolierte bzw. simulierte Daten; produktive Abnahme bleibt offen. Die vereinbarten ersten Funktionspakete sind implementiert. Nächster gemeinsamer Schritt: alle neuen Module und Verbesserungen anhand docs/V2-RUNDGANG.md vorstellen, anschließend den ausdrücklich gewünschten vollständigen App-Test durchführen und Auffälligkeiten dokumentieren/priorisieren. Diesen Abschluss nicht aus erfolgreichen automatisierten Tests ableiten.
+
+
+### Arbeitsgedächtnis entfernt · 21.10.2026
+
+Während des gemeinsamen Rundgangs erklärt der Nutzer Mission Control für verstanden und bestätigt erneut seine Cockpitansicht. Anschließend lehnt er das Arbeitsgedächtnis als unnötig ab und beauftragt dessen Entfernung. Modul, Verlaufs-/Archiv-API und alle Produktverweise entfallen; der Router behandelt die alte URL wie andere unbekannte Module. Installierte Verlaufstrigger werden beim nächsten regulären Zugriff deaktiviert, ohne Originale oder Altdaten zu löschen. Die allgemeinen Bearbeitungssicherungen bleiben vom zurückgenommenen Modul unabhängig. Gemeinsamen Rundgang mit den verbleibenden Funktionen fortsetzen und anschließend den gesamten App-Test durchführen. Keine erneute Gedächtnis-/Archivplanung daraus ableiten.

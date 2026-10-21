@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { monitoringSql } from './neon-storage'
-import { initializeWorkingHistory } from './history-storage'
+import { retireWorkingHistory } from './retire-working-history'
 import { OmniActionError } from './omni-actions-policy'
 import type { prepareOmniOperations } from './omni-actions-prepare'
 import type { OmniActionPlan } from '../src/types/omni-actions'
@@ -120,10 +120,10 @@ export async function saveOmniPlan(
   return serialize(row)
 }
 export async function executeOmniPlan(userId: string, id: string) {
-  await initializeWorkingHistory()
+  await retireWorkingHistory()
   const sql = monitoringSql()
   try {
-    await sql.transaction([sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`working-history:${userId}`},0)),set_config('omnidesk.history_source','omni',true)`,sql`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`])
+    await sql`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`
   } catch (error) {
     const message = (error as Error).message
     if (message.includes('OMNI_NOT_FOUND'))

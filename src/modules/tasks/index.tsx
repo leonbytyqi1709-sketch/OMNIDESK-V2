@@ -81,7 +81,7 @@ export default function TasksPage() {
   }
 
   const handleDelete = async (task: TaskDto) => {
-    if (!window.confirm(`„${task.title}“ mit dem gespeicherten Verlauf endgültig löschen?`)) return
+    if (!window.confirm(`„${task.title}“ endgültig löschen?`)) return
     try {
       await deleteTask.mutateAsync(task.id)
       toast.success(`„${task.title}“ gelöscht`)

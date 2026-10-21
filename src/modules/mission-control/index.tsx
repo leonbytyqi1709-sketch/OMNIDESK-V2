@@ -359,7 +359,6 @@ function Cockpit({ projectId }: { projectId: string }) {
           </p>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <Button variant="outline" size="sm" asChild><Link to={'/shared-rooms?fromProject='+projectId}>Ausschnitt im Raum teilen</Link></Button>
-            <Button variant="outline" size="sm" asChild><Link to={'/working-history?view=missions&new=1&project='+projectId}>Arbeitsstand festhalten</Link></Button>
             <span>Abruf: {date(snapshot.fetchedAt)} (Berlin)</span>
             <Button
               size="sm"

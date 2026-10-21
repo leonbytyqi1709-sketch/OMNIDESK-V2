@@ -28,4 +28,3 @@ export * from './mission-control'
 
 export * from './browser-desk'
 export * from './shared-rooms'
-export * from './working-history'

@@ -146,7 +146,7 @@ function Notes() {
       !selectedId ||
       switching ||
       !window.confirm(
-        'Notiz und ihren gespeicherten Verlauf endgültig löschen?',
+        'Notiz endgültig löschen?',
       )
     )
       return

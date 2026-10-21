@@ -8,7 +8,6 @@ import {
   Crosshair,
   PanelsTopLeft,
   UsersRound,
-  History,
   GitBranch,
   KeyRound,
   LayoutDashboard,
@@ -87,11 +86,6 @@ export const moduleRegistry: ModuleDefinition[] = [
     toggleable: true, category: 'it-tools',
   },
   // 📑 Kern-Produktivität
-  {
-    id: 'working-history', title: 'Arbeitsgedächtnis', path: '/working-history',
-    icon: History, component: lazy(() => import('@/modules/working-history')),
-    toggleable: true, category: 'productivity',
-  },
   {
     id: 'shared-rooms', title: 'Gemeinsame Räume', path: '/shared-rooms',
     icon: UsersRound, component: lazy(() => import('@/modules/shared-rooms')),

@@ -8,8 +8,8 @@ import {
   tasks,
 } from '../../src/db/schema/index'
 
-import { initializeWorkingHistory } from '../history-storage'
-import { historyFingerprint } from '../history-policy'
+import { retireWorkingHistory } from '../retire-working-history'
+import { editFingerprint } from '../edit-version'
 
 const rowFields = {
   ...getTableColumns(tasks),
@@ -38,7 +38,7 @@ const taskInput = z.object({
 export const tasksRoute = new Hono()
 tasksRoute.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  await initializeWorkingHistory()
+  await retireWorkingHistory()
   await next()
 })
 
@@ -72,7 +72,7 @@ tasksRoute.post('/', async (c) => {
 tasksRoute.put('/:id', async (c) => {
   const parsed = taskInput
     .partial()
-    .extend({ expectedFingerprint: historyFingerprint })
+    .extend({ expectedFingerprint: editFingerprint })
     .strict()
     .safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {

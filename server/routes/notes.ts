@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { db } from '../../src/db/client'
 import { notes } from '../../src/db/schema/index'
 
-import { initializeWorkingHistory } from '../history-storage'
-import { historyFingerprint } from '../history-policy'
+import { retireWorkingHistory } from '../retire-working-history'
+import { editFingerprint } from '../edit-version'
 
 const rowFields = {
   ...getTableColumns(notes),
@@ -20,7 +20,7 @@ const noteInput = z.object({
 export const notesRoute = new Hono()
 notesRoute.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  await initializeWorkingHistory()
+  await retireWorkingHistory()
   await next()
 })
 
@@ -44,7 +44,7 @@ notesRoute.post('/', async (c) => {
 
 notesRoute.put('/:id', async (c) => {
   const parsed = noteInput
-    .extend({ expectedFingerprint: historyFingerprint })
+    .extend({ expectedFingerprint: editFingerprint })
     .strict()
     .safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {

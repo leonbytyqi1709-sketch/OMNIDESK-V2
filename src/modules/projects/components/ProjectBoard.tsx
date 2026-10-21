@@ -12,7 +12,6 @@ import {
   type ProjectTaskDto,
   type ProjectTaskStatus,
 } from '../api'
-import { HistoryLink } from '@/modules/working-history/HistoryLink'
 import { BOARD_COLUMNS, PRIORITY_META } from '../constants'
 
 function BoardCard({
@@ -58,12 +57,11 @@ function BoardCard({
         </p>
       </div>
       <div className="flex items-center justify-between">
-        <HistoryLink kind="project_task" id={task.id} compact />
         <Button
           variant="ghost"
           size="icon"
           className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={() => { if(window.confirm(`„${task.title}“ mit Verlauf endgültig löschen?`)) deleteTask.mutate(task.id) }}
+          onClick={() => { if(window.confirm(`„${task.title}“ endgültig löschen?`)) deleteTask.mutate(task.id) }}
           aria-label="Aufgabe löschen"
         >
           <Trash2 className="size-3.5" />

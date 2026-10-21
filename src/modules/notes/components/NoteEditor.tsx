@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openNoteAttachment, useNoteAttachments } from '../attachments'
 import type { NoteInput } from '../api'
-import { HistoryLink } from '@/modules/working-history/HistoryLink'
 
 export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error'
 
@@ -122,13 +121,6 @@ export function NoteEditor({
           </TabsList>
         </Tabs>
         <div className="flex items-center gap-3">
-          {noteId && (
-            <HistoryLink
-              kind="note"
-              id={noteId}
-              disabled={status !== 'saved'}
-            />
-          )}
           <StatusIndicator status={status} />
           <Button
             variant="ghost"

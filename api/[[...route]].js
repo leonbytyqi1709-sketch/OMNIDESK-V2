@@ -915,96 +915,6 @@ var init_shared_rooms = __esm({
   }
 });
 
-// src/db/schema/working-history.ts
-import {
-  boolean as boolean7,
-  index as index20,
-  integer as integer12,
-  jsonb as jsonb12,
-  pgTable as pgTable24,
-  primaryKey as primaryKey4,
-  text as text24,
-  timestamp as timestamp24,
-  unique as unique4,
-  uuid as uuid23
-} from "drizzle-orm/pg-core";
-var missionRecords, historySettings, historyHeads, workingHistory;
-var init_working_history = __esm({
-  "src/db/schema/working-history.ts"() {
-    init_projects();
-    missionRecords = pgTable24(
-      "v2_mission_records",
-      {
-        id: uuid23("id").primaryKey(),
-        userId: text24("user_id").notNull(),
-        creationHash: text24("creation_hash").notNull(),
-        title: text24("title").notNull(),
-        projectId: uuid23("project_id").references(() => projects.id, {
-          onDelete: "set null"
-        }),
-        state: text24("state").notNull(),
-        context: text24("context").notNull(),
-        decisions: text24("decisions").notNull(),
-        outcome: text24("outcome").notNull(),
-        questions: text24("questions").notNull(),
-        nextSteps: text24("next_steps").notNull(),
-        sources: jsonb12("sources").notNull(),
-        version: integer12("version").notNull().default(1),
-        createdAt: timestamp24("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp24("updated_at", { withTimezone: true }).notNull().defaultNow(),
-        archivedAt: timestamp24("archived_at", { withTimezone: true })
-      },
-      (t) => [
-        index20("v2_mission_records_owner").on(t.userId, t.state, t.updatedAt.desc())
-      ]
-    );
-    historySettings = pgTable24("v2_history_settings", {
-      userId: text24("user_id").primaryKey(),
-      enabled: boolean7("enabled").notNull().default(true),
-      retentionDays: integer12("retention_days").notNull().default(90),
-      maxVersions: integer12("max_versions").notNull().default(50)
-    });
-    historyHeads = pgTable24(
-      "v2_history_heads",
-      {
-        userId: text24("user_id").notNull(),
-        kind: text24("kind").notNull(),
-        objectId: uuid23("object_id").notNull(),
-        revision: integer12("revision").notNull()
-      },
-      (t) => [primaryKey4({ columns: [t.userId, t.kind, t.objectId] })]
-    );
-    workingHistory = pgTable24(
-      "v2_working_history",
-      {
-        id: uuid23("id").primaryKey().defaultRandom(),
-        userId: text24("user_id").notNull(),
-        kind: text24("kind").notNull(),
-        objectId: uuid23("object_id").notNull(),
-        revision: integer12("revision").notNull(),
-        snapshot: jsonb12("snapshot").notNull(),
-        operation: text24("operation").notNull(),
-        source: text24("source").notNull(),
-        capturedAt: timestamp24("captured_at", { withTimezone: true }).notNull().defaultNow()
-      },
-      (t) => [
-        unique4("v2_working_history_user_id_kind_object_id_revision_key").on(
-          t.userId,
-          t.kind,
-          t.objectId,
-          t.revision
-        ),
-        index20("v2_working_history_lookup").on(
-          t.userId,
-          t.kind,
-          t.objectId,
-          t.capturedAt.desc()
-        )
-      ]
-    );
-  }
-});
-
 // src/db/schema/index.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -1032,12 +942,9 @@ __export(schema_exports, {
   connectedAccounts: () => connectedAccounts,
   contacts: () => contacts,
   githubProjectLinks: () => githubProjectLinks,
-  historyHeads: () => historyHeads,
-  historySettings: () => historySettings,
   links: () => links,
   milestones: () => milestones,
   missionAiLimits: () => missionAiLimits,
-  missionRecords: () => missionRecords,
   missionSettings: () => missionSettings,
   missionVisits: () => missionVisits,
   neonMonitoringAlerts: () => neonMonitoringAlerts,
@@ -1061,8 +968,7 @@ __export(schema_exports, {
   uptimeChecks: () => uptimeChecks,
   uptimeMonitors: () => uptimeMonitors,
   vaultEntries: () => vaultEntries,
-  vaults: () => vaults,
-  workingHistory: () => workingHistory
+  vaults: () => vaults
 });
 var init_schema = __esm({
   "src/db/schema/index.ts"() {
@@ -1089,7 +995,6 @@ var init_schema = __esm({
     init_mission_control();
     init_browser_desk();
     init_shared_rooms();
-    init_working_history();
   }
 });
 
@@ -1657,7 +1562,7 @@ async function fetchNeonSnapshot(link) {
       periodStart: project2.consumption_period_start ?? null,
       periodEnd: project2.consumption_period_end ?? null
     } : null,
-    unavailable: results.flatMap((result, index21) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index21]] : [])
+    unavailable: results.flatMap((result, index20) => result.status === "rejected" ? [["Projektwerte", "Branchwerte", "Compute-Status"][index20]] : [])
   };
 }
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
@@ -1814,8 +1719,8 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono32 } from "hono";
-import { z as z44 } from "zod";
+import { Hono as Hono30 } from "hono";
+import { z as z41 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -1903,273 +1808,32 @@ import { and as and2, desc as desc2, eq as eq2, getTableColumns, sql as sql7 } f
 import { Hono as Hono2 } from "hono";
 import { z as z5 } from "zod";
 
-// server/history-storage.ts
+// server/retire-working-history.ts
 init_neon_storage();
-
-// server/history-policy.ts
-import { z as z4 } from "zod";
-var historyKind = z4.enum(["note", "task", "project_task"]);
-var historyFingerprint = z4.string().regex(/^[a-f0-9]{32}$/);
-var historyFields = {
-  note: ["title", "content"],
-  task: [
-    "title",
-    "description",
-    "priority",
-    "status",
-    "dueDate",
-    "tags",
-    "subtasks"
-  ],
-  project_task: ["title", "status", "priority"]
-};
-var historyPreferences = z4.object({
-  enabled: z4.boolean(),
-  retentionDays: z4.union([
-    z4.literal(7),
-    z4.literal(30),
-    z4.literal(90),
-    z4.literal(365)
-  ]),
-  maxVersions: z4.union([z4.literal(10), z4.literal(25), z4.literal(50)])
-}).strict();
-var historyRestore = z4.object({
-  versionId: z4.uuid(),
-  expectedFingerprint: historyFingerprint,
-  fields: z4.array(
-    z4.enum([
-      "title",
-      "content",
-      "description",
-      "status",
-      "priority",
-      "dueDate",
-      "tags",
-      "subtasks"
-    ])
-  ).min(1).max(8)
-}).strict();
-var HistoryError = class extends Error {
-  status;
-  constructor(message, status = 409) {
-    super(message);
-    this.status = status;
-  }
-};
-
-// server/history-storage.ts
-var historyDdl = [
-  `CREATE TABLE IF NOT EXISTS v2_history_settings(user_id text PRIMARY KEY,enabled boolean NOT NULL DEFAULT true,retention_days integer NOT NULL DEFAULT 90 CHECK(retention_days IN (7,30,90,365)),max_versions integer NOT NULL DEFAULT 50 CHECK(max_versions IN (10,25,50)))`,
-  `CREATE TABLE IF NOT EXISTS v2_history_heads(user_id text NOT NULL,kind text NOT NULL,object_id uuid NOT NULL,revision integer NOT NULL,PRIMARY KEY(user_id,kind,object_id))`,
-  `CREATE TABLE IF NOT EXISTS v2_working_history(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id text NOT NULL,kind text NOT NULL CHECK(kind IN ('note','task','project_task')),object_id uuid NOT NULL,revision integer NOT NULL,snapshot jsonb NOT NULL,operation text NOT NULL,source text NOT NULL,captured_at timestamptz NOT NULL DEFAULT clock_timestamp(),UNIQUE(user_id,kind,object_id,revision))`,
-  `CREATE INDEX IF NOT EXISTS v2_working_history_lookup ON v2_working_history(user_id,kind,object_id,captured_at DESC)`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_history_snapshot_v2(k text,r jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $history$
-    SELECT CASE k WHEN 'note' THEN jsonb_build_object('title',r->'title','content',r->'content')
-      WHEN 'task' THEN jsonb_build_object('title',r->'title','description',r->'description','priority',r->'priority','status',r->'status','dueDate',r->'due_date','tags',r->'tags','subtasks',r->'subtasks')
-      WHEN 'project_task' THEN jsonb_build_object('title',r->'title','status',r->'status','priority',r->'priority') END
-    $history$`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_history_prune_v2(u text) RETURNS void LANGUAGE sql SET search_path=pg_catalog,public AS $history$
-    DELETE FROM public.v2_working_history WHERE id IN (
-      SELECT id FROM (SELECT h.id,h.captured_at,row_number() OVER(PARTITION BY h.kind,h.object_id ORDER BY h.revision DESC) AS n,
-        coalesce(s.retention_days,90) AS days,coalesce(s.max_versions,50) AS cap
-        FROM public.v2_working_history h LEFT JOIN public.v2_history_settings s ON s.user_id=h.user_id WHERE h.user_id=u) q
-      WHERE captured_at<clock_timestamp()-days*interval '1 day' OR n>cap)
-    $history$`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_history_record_v2(u text,k text,o uuid,s jsonb,op text,src text) RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog,public AS $history$
-    DECLARE n integer;
-    BEGIN
-      INSERT INTO public.v2_history_heads(user_id,kind,object_id,revision) VALUES(u,k,o,1)
-      ON CONFLICT(user_id,kind,object_id) DO UPDATE SET revision=v2_history_heads.revision+1 RETURNING revision INTO n;
-      INSERT INTO public.v2_working_history(user_id,kind,object_id,revision,snapshot,operation,source) VALUES(u,k,o,n,s,op,src);
-    END $history$`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_history_capture_v2() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $history$
-    DECLARE k text:=TG_ARGV[0];u text;o uuid;before_state jsonb;after_state jsonb;src text;active boolean;days integer;cap integer;
-    BEGIN
-      IF TG_OP='DELETE' THEN
-        PERFORM pg_advisory_xact_lock_shared(hashtextextended('working-history:'||OLD.user_id,0));
-        DELETE FROM public.v2_working_history WHERE user_id=OLD.user_id AND kind=k AND object_id=OLD.id;
-        DELETE FROM public.v2_history_heads WHERE user_id=OLD.user_id AND kind=k AND object_id=OLD.id;
-        RETURN OLD;
-      END IF;
-      u:=NEW.user_id;o:=NEW.id;
-      PERFORM pg_advisory_xact_lock_shared(hashtextextended('working-history:'||u,0));
-      IF TG_OP='UPDATE' AND OLD.user_id IS DISTINCT FROM u THEN
-        DELETE FROM public.v2_working_history WHERE user_id=OLD.user_id AND kind=k AND object_id=o;
-        DELETE FROM public.v2_history_heads WHERE user_id=OLD.user_id AND kind=k AND object_id=o;
-      END IF;
-      SELECT coalesce(s.enabled,true),coalesce(s.retention_days,90),coalesce(s.max_versions,50) INTO active,days,cap FROM (SELECT 1) q LEFT JOIN public.v2_history_settings s ON s.user_id=u;
-      IF NOT active THEN RETURN NEW; END IF;
-      IF k='project_task' THEN
-        IF NOT EXISTS(SELECT 1 FROM public.projects p WHERE p.id=NEW.project_id AND p.user_id=u) THEN RETURN NEW; END IF;
-      END IF;
-      after_state:=public.omnidesk_history_snapshot_v2(k,to_jsonb(NEW));
-      src:=coalesce(nullif(current_setting('omnidesk.history_source',true),''),'module');
-      IF src NOT IN ('module','omni','restore') THEN src:='module'; END IF;
-      IF TG_OP='UPDATE' AND OLD.user_id=u THEN
-        before_state:=public.omnidesk_history_snapshot_v2(k,to_jsonb(OLD));
-        IF before_state=after_state THEN RETURN NEW; END IF;
-        IF NOT EXISTS(SELECT 1 FROM public.v2_history_heads WHERE user_id=u AND kind=k AND object_id=o) THEN
-          PERFORM public.omnidesk_history_record_v2(u,k,o,before_state,'baseline','module');
-        END IF;
-      END IF;
-      PERFORM public.omnidesk_history_record_v2(u,k,o,after_state,CASE WHEN src='restore' THEN 'restored' WHEN TG_OP='INSERT' THEN 'created' ELSE 'updated' END,src);
-      DELETE FROM public.v2_working_history WHERE user_id=u AND kind=k AND object_id=o AND
-        (captured_at<clock_timestamp()-days*interval '1 day' OR id IN(SELECT id FROM public.v2_working_history WHERE user_id=u AND kind=k AND object_id=o ORDER BY revision DESC OFFSET cap));
-      RETURN NEW;
-    END $history$`,
-  ...[
-    ["notes", "note"],
-    ["tasks", "task"],
-    ["project_tasks", "project_task"]
-  ].map(
-    ([table, kind]) => `DO $history$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='v2_history_${table}' AND tgrelid='public.${table}'::regclass) THEN CREATE TRIGGER v2_history_${table} AFTER INSERT OR UPDATE OR DELETE ON public.${table} FOR EACH ROW EXECUTE FUNCTION public.omnidesk_history_capture_v2('${kind}'); END IF; END $history$`
-  )
+var retiredHistoryTriggers = [
+  ["notes", "v2_history_notes"],
+  ["tasks", "v2_history_tasks"],
+  ["project_tasks", "v2_history_project_tasks"]
 ];
-async function initializeWorkingHistory() {
+var retireHistoryDdl = retiredHistoryTriggers.map(
+  ([table, trigger]) => `DO $retire$ BEGIN IF to_regclass('public.${table}') IS NOT NULL THEN DROP TRIGGER IF EXISTS ${trigger} ON public.${table}; END IF; END $retire$`
+);
+async function retireWorkingHistory() {
   const sql10 = monitoringSql();
-  const [state2] = await sql10`SELECT to_regclass('public.v2_working_history_lookup') IS NOT NULL AND to_regclass('public.v2_history_settings') IS NOT NULL AND to_regclass('public.v2_history_heads') IS NOT NULL AND (SELECT count(*) FROM pg_trigger WHERE tgname IN ('v2_history_notes','v2_history_tasks','v2_history_project_tasks') AND NOT tgisinternal)=3 AS ready`;
-  if (!state2?.ready)
-    await sql10.transaction([
-      sql10`SELECT pg_advisory_xact_lock(184730024)`,
-      ...historyDdl.map((s) => sql10.query(s))
-    ]);
-}
-async function readHistorySettings(userId) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql();
-  const [, , rows] = await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
-    sql10`SELECT public.omnidesk_history_prune_v2(${userId})`,
-    sql10`SELECT enabled,retention_days AS "retentionDays",max_versions AS "maxVersions" FROM v2_history_settings WHERE user_id=${userId}`
-  ]);
-  const [row] = rows;
-  return row ?? {
-    enabled: true,
-    retentionDays: 90,
-    maxVersions: 50
-  };
-}
-async function saveHistorySettings(userId, input) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql();
+  const rows = await sql10`SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND (
+    (t.tgname='v2_history_notes' AND t.tgrelid=to_regclass('public.notes')) OR
+    (t.tgname='v2_history_tasks' AND t.tgrelid=to_regclass('public.tasks')) OR
+    (t.tgname='v2_history_project_tasks' AND t.tgrelid=to_regclass('public.project_tasks'))) LIMIT 1`;
+  if (!rows.length) return;
   await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
-    sql10`INSERT INTO v2_history_settings(user_id,enabled,retention_days,max_versions) VALUES(${userId},${input.enabled},${input.retentionDays},${input.maxVersions}) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,retention_days=excluded.retention_days,max_versions=excluded.max_versions`,
-    sql10`SELECT public.omnidesk_history_prune_v2(${userId})`
-  ]);
-  return input;
-}
-async function clearWorkingHistory(userId) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql();
-  await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`working-history:${userId}`},0))`,
-    sql10`DELETE FROM v2_working_history WHERE user_id=${userId}`,
-    sql10`DELETE FROM v2_history_heads WHERE user_id=${userId}`
+    sql10`SELECT pg_advisory_xact_lock(184730024)`,
+    ...retireHistoryDdl.map((statement) => sql10.query(statement))
   ]);
 }
-var currentObjects = `SELECT 'note'::text AS kind,n.id,n.user_id,n.title,NULL::uuid AS project_id FROM notes n
-  UNION ALL SELECT 'task',t.id,t.user_id,t.title,NULL::uuid FROM tasks t
-  UNION ALL SELECT 'project_task',t.id,t.user_id,t.title,t.project_id FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id`;
-async function historyTimeline(userId, kind, search) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql();
-  const rows = await sql10.query(
-    `WITH objects AS (${currentObjects}) SELECT h.id,h.kind,h.object_id AS "objectId",h.snapshot->>'title' AS title,h.revision,h.operation,h.source,h.captured_at AS "capturedAt",o.project_id AS "projectId"
-    FROM v2_working_history h JOIN objects o ON o.id=h.object_id AND o.kind=h.kind AND o.user_id=h.user_id LEFT JOIN v2_history_settings s ON s.user_id=h.user_id
-    WHERE h.user_id=$1 AND ($2::text IS NULL OR h.kind=$2) AND (strpos(lower(h.snapshot->>'title'),lower($3))>0 OR strpos(lower(o.title),lower($3))>0)
-    AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day' ORDER BY h.captured_at DESC,h.id LIMIT 101`,
-    [userId, kind, search]
-  );
-  return {
-    entries: rows.slice(0, 100),
-    limited: rows.length > 100
-  };
-}
-var tables = {
-  note: "notes",
-  task: "tasks",
-  project_task: "project_tasks"
-};
-async function currentObject(userId, kind, id) {
-  const sql10 = monitoringSql(), table = tables[kind];
-  const [row] = await sql10.query(
-    `SELECT md5(to_jsonb(o)::text) AS fingerprint,public.omnidesk_history_snapshot_v2($1,to_jsonb(o)) AS snapshot,${kind === "project_task" ? "o.project_id" : "NULL::uuid"} AS "projectId"
-    FROM ${table} o WHERE o.id=$2 AND o.user_id=$3 ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
-    [kind, id, userId]
-  );
-  if (!row) throw new HistoryError("Eintrag nicht mehr zug\xE4nglich.", 404);
-  return row;
-}
-async function historyDetail(userId, kind, id) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql(), table = tables[kind];
-  const [row] = await sql10.query(
-    `SELECT jsonb_build_object('fingerprint',md5(to_jsonb(o)::text),'snapshot',public.omnidesk_history_snapshot_v2($1,to_jsonb(o)),'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS current,
-    coalesce((SELECT jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'objectId',h.object_id,'title',h.snapshot->>'title','revision',h.revision,'operation',h.operation,'source',h.source,'capturedAt',h.captured_at,'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) ORDER BY h.revision DESC)
-      FROM v2_working_history h LEFT JOIN v2_history_settings s ON s.user_id=h.user_id WHERE h.user_id=$3 AND h.kind=$1 AND h.object_id=$2 AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day'),'[]'::jsonb) AS versions
-    FROM ${table} o WHERE o.id=$2 AND o.user_id=$3 ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
-    [kind, id, userId]
-  );
-  if (!row) throw new HistoryError("Eintrag nicht mehr zug\xE4nglich.", 404);
-  return row;
-}
-async function compareHistory(userId, kind, id, versionId) {
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql(), table = tables[kind];
-  const [row] = await sql10.query(
-    `SELECT jsonb_build_object('fingerprint',md5(to_jsonb(o)::text),'snapshot',public.omnidesk_history_snapshot_v2($1,to_jsonb(o)),'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS current,
-    jsonb_build_object('id',h.id,'kind',h.kind,'objectId',h.object_id,'title',h.snapshot->>'title','revision',h.revision,'operation',h.operation,'source',h.source,'capturedAt',h.captured_at,'projectId',${kind === "project_task" ? "o.project_id" : "NULL::uuid"}) AS version,h.snapshot
-    FROM ${table} o JOIN v2_working_history h ON h.object_id=o.id AND h.kind=$1 AND h.user_id=o.user_id LEFT JOIN v2_history_settings s ON s.user_id=h.user_id
-    WHERE o.id=$2 AND o.user_id=$3 AND h.id=$4 AND h.captured_at>=clock_timestamp()-coalesce(s.retention_days,90)*interval '1 day'
-    ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""}`,
-    [kind, id, userId, versionId]
-  );
-  if (!row)
-    throw new HistoryError(
-      "Version nicht mehr zug\xE4nglich oder bereits entfernt.",
-      404
-    );
-  return row;
-}
-async function restoreHistory(userId, kind, id, versionId, expectedFingerprint, fields) {
-  if (!fields.length || fields.some((f) => !historyFields[kind].includes(f)))
-    throw new HistoryError(
-      "Diese Felder lassen sich hier nicht wiederherstellen.",
-      400
-    );
-  await initializeWorkingHistory();
-  const sql10 = monitoringSql(), table = tables[kind];
-  const columns = {
-    title: "title",
-    content: "content",
-    description: "description",
-    status: "status",
-    priority: "priority",
-    dueDate: "due_date",
-    tags: "tags",
-    subtasks: "subtasks"
-  };
-  const setters = [...new Set(fields)].map(
-    (f) => `${columns[f]}=${f === "tags" || f === "subtasks" ? `NULLIF(h.snapshot->'${f}','null'::jsonb)` : f === "dueDate" ? `(h.snapshot->>'dueDate')::timestamptz` : `h.snapshot->>'${f}'`}`
-  );
-  const [, rows] = await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`working-history:${userId}`},0)),set_config('omnidesk.history_source','restore',true)`,
-    sql10.query(
-      `UPDATE ${table} o SET ${setters.join(",")},updated_at=clock_timestamp() FROM v2_working_history h
-      WHERE o.id=$1 AND o.user_id=$2 AND md5(to_jsonb(o)::text)=$3 AND h.id=$4 AND h.user_id=o.user_id AND h.kind=$5 AND h.object_id=o.id
-      AND h.captured_at>=clock_timestamp()-coalesce((SELECT retention_days FROM v2_history_settings WHERE user_id=$2),90)*interval '1 day'
-      AND coalesce((SELECT enabled FROM v2_history_settings WHERE user_id=$2),true)
-      ${kind === "project_task" ? "AND EXISTS(SELECT 1 FROM projects p WHERE p.id=o.project_id AND p.user_id=o.user_id)" : ""} RETURNING o.id`,
-      [id, userId, expectedFingerprint, versionId, kind]
-    )
-  ]);
-  if (!rows.length)
-    throw new HistoryError(
-      "Eintrag wurde inzwischen ver\xE4ndert, Verlauf pausiert oder Version entfernt. Bitte neu laden; nichts wurde \xFCberschrieben."
-    );
-  return currentObject(userId, kind, id);
-}
+
+// server/edit-version.ts
+import { z as z4 } from "zod";
+var editFingerprint = z4.string().regex(/^[a-f0-9]{32}$/);
 
 // server/routes/notes.ts
 var rowFields = {
@@ -2183,7 +1847,7 @@ var noteInput = z5.object({
 var notesRoute = new Hono2();
 notesRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  await initializeWorkingHistory();
+  await retireWorkingHistory();
   await next();
 });
 notesRoute.get("/", async (c) => {
@@ -2195,7 +1859,7 @@ notesRoute.post("/", async (c) => {
   return c.json(row, 201);
 });
 notesRoute.put("/:id", async (c) => {
-  const parsed = noteInput.extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
+  const parsed = noteInput.extend({ expectedFingerprint: editFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: z5.prettifyError(parsed.error) }, 400);
   }
@@ -2255,7 +1919,7 @@ var taskInput = z6.object({
 var tasksRoute = new Hono3();
 tasksRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  await initializeWorkingHistory();
+  await retireWorkingHistory();
   await next();
 });
 tasksRoute.get("/", async (c) => {
@@ -2276,7 +1940,7 @@ tasksRoute.post("/", async (c) => {
   return c.json(row, 201);
 });
 tasksRoute.put("/:id", async (c) => {
-  const parsed = taskInput.partial().extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
+  const parsed = taskInput.partial().extend({ expectedFingerprint: editFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: z6.prettifyError(parsed.error) }, 400);
   }
@@ -2504,7 +2168,7 @@ var milestoneInput = z10.object({
 var projectsRoute = new Hono7();
 projectsRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  await initializeWorkingHistory();
+  await retireWorkingHistory();
   await next();
 });
 projectsRoute.get("/", async (c) => {
@@ -2569,7 +2233,7 @@ projectsRoute.post("/:id/tasks", async (c) => {
   return c.json(row, 201);
 });
 projectsRoute.put("/tasks/:taskId", async (c) => {
-  const parsed = projectTaskInput.partial().extend({ expectedFingerprint: historyFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
+  const parsed = projectTaskInput.partial().extend({ expectedFingerprint: editFingerprint }).strict().safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ error: z10.prettifyError(parsed.error) }, 400);
   }
@@ -4976,9 +4640,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text25 = z26.string();
+var text24 = z26.string();
 var nullableDate = z26.string().nullable().optional();
-var repoSchema = z26.object({ id: z26.number(), full_name: text25, name: text25, private: z26.boolean(), default_branch: text25, updated_at: nullableDate, html_url: text25 });
+var repoSchema = z26.object({ id: z26.number(), full_name: text24, name: text24, private: z26.boolean(), default_branch: text24, updated_at: nullableDate, html_url: text24 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -5052,14 +4716,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z26.object({ id: z26.number(), number: z26.number(), title: text25, html_url: text25, state: text25, updated_at: nullableDate, draft: z26.boolean().optional(), pull_request: z26.unknown().optional() });
+  const issueSchema = z26.object({ id: z26.number(), number: z26.number(), title: text24, html_url: text24, state: text24, updated_at: nullableDate, draft: z26.boolean().optional(), pull_request: z26.unknown().optional() });
   const loaders2 = {
-    branches: async () => z26.array(z26.object({ name: text25, protected: z26.boolean(), commit: z26.object({ sha: text25 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z26.array(z26.object({ sha: text25, html_url: text25, commit: z26.object({ message: text25, committer: z26.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    branches: async () => z26.array(z26.object({ name: text24, protected: z26.boolean(), commit: z26.object({ sha: text24 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z26.array(z26.object({ sha: text24, html_url: text24, commit: z26.object({ message: text24, committer: z26.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
     issues: async () => z26.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
     pulls: async () => z26.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z26.object({ workflow_runs: z26.array(z26.object({ id: z26.number(), name: text25.nullable(), html_url: text25, status: text25, conclusion: text25.nullable(), updated_at: nullableDate, head_sha: text25, head_branch: text25.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z26.array(z26.object({ id: z26.number(), name: text25.nullable(), tag_name: text25, html_url: text25, published_at: nullableDate, draft: z26.boolean(), prerelease: z26.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    runs: async () => z26.object({ workflow_runs: z26.array(z26.object({ id: z26.number(), name: text24.nullable(), html_url: text24, status: text24, conclusion: text24.nullable(), updated_at: nullableDate, head_sha: text24, head_branch: text24.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z26.array(z26.object({ id: z26.number(), name: text24.nullable(), tag_name: text24, html_url: text24, published_at: nullableDate, draft: z26.boolean(), prerelease: z26.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -5263,7 +4927,7 @@ function safeDeploymentUrl(value) {
 }
 function publicDeployment(value) {
   const meta = value.meta ?? {};
-  const text26 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
+  const text25 = (key) => typeof meta[key] === "string" ? String(meta[key]).slice(0, 1e3) : null;
   return {
     id: value.id || value.uid,
     url: safeDeploymentUrl(value.url),
@@ -5271,9 +4935,9 @@ function publicDeployment(value) {
     target: value.target === "production" ? "production" : value.target == null ? "preview" : "other",
     createdAt: value.createdAt ?? value.created ?? null,
     commit: {
-      sha: text26("githubCommitSha") || text26("gitlabCommitSha") || text26("bitbucketCommitSha"),
-      message: text26("githubCommitMessage") || text26("gitlabCommitMessage") || text26("bitbucketCommitMessage"),
-      branch: text26("githubCommitRef") || text26("gitlabCommitRef") || text26("bitbucketCommitRef")
+      sha: text25("githubCommitSha") || text25("gitlabCommitSha") || text25("bitbucketCommitSha"),
+      message: text25("githubCommitMessage") || text25("gitlabCommitMessage") || text25("bitbucketCommitMessage"),
+      branch: text25("githubCommitRef") || text25("gitlabCommitRef") || text25("bitbucketCommitRef")
     }
   };
 }
@@ -5308,9 +4972,9 @@ async function fetchVercelSnapshot(link) {
     ].filter((item2) => Boolean(item2))
   };
 }
-function redactBuildLog(text26) {
+function redactBuildLog(text25) {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-  let result = text26.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
+  let result = text25.replace(ansi, "").replace(/\p{Cc}/gu, (character) => ["\n", "\r", "	"].includes(character) ? character : "");
   for (const [name, value] of Object.entries(process.env)) {
     if (value && value.length >= 6 && /TOKEN|SECRET|PASSWORD|API_KEY|DATABASE_URL/i.test(name)) result = result.split(value).join("[ENTFERNT]");
   }
@@ -6369,10 +6033,10 @@ async function saveOmniPlan(userId, requestId, prompt, timeZone, prepared) {
   return serialize2(row);
 }
 async function executeOmniPlan(userId, id) {
-  await initializeWorkingHistory();
+  await retireWorkingHistory();
   const sql10 = monitoringSql();
   try {
-    await sql10.transaction([sql10`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`working-history:${userId}`},0)),set_config('omnidesk.history_source','omni',true)`, sql10`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`]);
+    await sql10`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`;
   } catch (error) {
     const message = error.message;
     if (message.includes("OMNI_NOT_FOUND"))
@@ -6502,9 +6166,9 @@ var autoExtractionSchema = z34.object({
     }).strict()
   ).max(3)
 }).strict();
-function sensitiveMemoryText(text26) {
+function sensitiveMemoryText(text25) {
   return /(?:sk[-_](?:proj[-_])?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{15,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|\bBearer\s+[a-z0-9._~+/-]{10,}|(?:password|passwort|api[ -_]?key|secret|token|wiederherstellungscode|recovery[ -]?code)\s*(?:ist|lautet|[:=])\s*\S{4,})/i.test(
-    text26
+    text25
   );
 }
 function needsMemoryQuestion(evidence, certainty, update, correction) {
@@ -6583,11 +6247,11 @@ async function extractAutoMemory(content, memories) {
   } finally {
     reader.releaseLock();
   }
-  const text26 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
-  if (typeof text26 !== "string") throw new Error("Invalid response");
+  const text25 = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.choices?.[0]?.message?.content;
+  if (typeof text25 !== "string") throw new Error("Invalid response");
   return autoExtractionSchema.parse(
     JSON.parse(
-      text26.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+      text25.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
     )
   );
 }
@@ -8782,341 +8446,9 @@ function createRoomsRoute(deps = roomDependencies) {
 }
 var sharedRoomsRoute = createRoomsRoute();
 
-// server/routes/working-history.ts
-import { Hono as Hono30 } from "hono";
-import { bodyLimit as bodyLimit3 } from "hono/body-limit";
-import { z as z41 } from "zod";
-var historyDependencies = {
-  readHistorySettings,
-  saveHistorySettings,
-  clearWorkingHistory,
-  historyTimeline,
-  historyDetail,
-  compareHistory,
-  restoreHistory
-};
-function createHistoryRoute(deps = historyDependencies) {
-  const route = new Hono30();
-  route.use("*", async (c, next) => {
-    c.header("Cache-Control", "no-store");
-    await next();
-  });
-  route.use(
-    "*",
-    bodyLimit3({
-      maxSize: 8e3,
-      onError: (c) => c.json({ error: "Anfrage ist zu gro\xDF." }, 413)
-    })
-  );
-  route.onError(
-    (e, c) => c.json(
-      {
-        error: e instanceof HistoryError ? e.message : "Arbeitsverlauf gerade nicht verf\xFCgbar. Verbindung und Speichereinrichtung pr\xFCfen."
-      },
-      e instanceof HistoryError ? e.status : 503
-    )
-  );
-  route.get(
-    "/settings",
-    async (c) => c.json(await deps.readHistorySettings(c.get("userId")))
-  );
-  route.put("/settings", async (c) => {
-    const input = historyPreferences.safeParse(
-      await c.req.json().catch(() => null)
-    );
-    if (!input.success)
-      return c.json({ error: "Ung\xFCltige Verlaufseinstellungen." }, 400);
-    return c.json(await deps.saveHistorySettings(c.get("userId"), input.data));
-  });
-  route.delete("/", async (c) => {
-    const input = z41.object({ confirm: z41.literal("Verlauf l\xF6schen") }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!input.success)
-      return c.json({ error: "L\xF6schen bitte ausdr\xFCcklich best\xE4tigen." }, 400);
-    await deps.clearWorkingHistory(c.get("userId"));
-    return c.json({ ok: true });
-  });
-  route.get("/", async (c) => {
-    const kind = c.req.query("kind"), search = c.req.query("search") ?? "";
-    if (kind && !historyKind.safeParse(kind).success || search.length > 200)
-      return c.json({ error: "Ung\xFCltiger Filter." }, 400);
-    return c.json(
-      await deps.historyTimeline(
-        c.get("userId"),
-        kind ? historyKind.parse(kind) : null,
-        search
-      )
-    );
-  });
-  route.use("/:kind/:id/*", async (c, next) => {
-    if (!historyKind.safeParse(c.req.param("kind")).success || !z41.uuid().safeParse(c.req.param("id")).success)
-      return c.json({ error: "Ung\xFCltige Quelle." }, 400);
-    await next();
-  });
-  route.get(
-    "/:kind/:id",
-    async (c) => c.json(
-      await deps.historyDetail(
-        c.get("userId"),
-        historyKind.parse(c.req.param("kind")),
-        c.req.param("id")
-      )
-    )
-  );
-  route.get("/:kind/:id/versions/:versionId", async (c) => {
-    if (!z41.uuid().safeParse(c.req.param("versionId")).success)
-      return c.json({ error: "Ung\xFCltige Version." }, 400);
-    return c.json(
-      await deps.compareHistory(
-        c.get("userId"),
-        historyKind.parse(c.req.param("kind")),
-        c.req.param("id"),
-        c.req.param("versionId")
-      )
-    );
-  });
-  route.post("/:kind/:id/restore", async (c) => {
-    const input = historyRestore.safeParse(await c.req.json().catch(() => null));
-    if (!input.success)
-      return c.json(
-        { error: "Version, Vergleichsstand und Feldauswahl pr\xFCfen." },
-        400
-      );
-    return c.json(
-      await deps.restoreHistory(
-        c.get("userId"),
-        historyKind.parse(c.req.param("kind")),
-        c.req.param("id"),
-        input.data.versionId,
-        input.data.expectedFingerprint,
-        input.data.fields
-      )
-    );
-  });
-  return route;
-}
-var workingHistoryRoute = createHistoryRoute();
-
-// server/routes/mission-records.ts
-import { Hono as Hono31 } from "hono";
-import { bodyLimit as bodyLimit4 } from "hono/body-limit";
-import { z as z43 } from "zod";
-
-// server/mission-records-storage.ts
-init_neon_storage();
-import { createHash as createHash6 } from "node:crypto";
-import { z as z42 } from "zod";
-var missionRecordInput = z42.object({
-  title: z42.string().trim().min(1).max(300),
-  projectId: z42.uuid().nullable(),
-  state: z42.enum(["active", "paused", "archived"]),
-  context: z42.string().trim().max(5e3),
-  decisions: z42.string().trim().max(5e3),
-  outcome: z42.string().trim().max(5e3),
-  questions: z42.string().trim().max(5e3),
-  nextSteps: z42.string().trim().max(5e3),
-  sources: z42.array(z42.object({ kind: historyKind, id: z42.uuid() }).strict()).max(30)
-}).strict().refine((v) => v.state !== "archived" || v.outcome.length > 0, {
-  message: "F\xFCr den Archivabschluss ein Ergebnis festhalten."
-});
-var missionRecordsDdl = [
-  `CREATE TABLE IF NOT EXISTS v2_mission_records(id uuid PRIMARY KEY,user_id text NOT NULL,creation_hash text NOT NULL,title text NOT NULL,project_id uuid REFERENCES projects(id) ON DELETE SET NULL,state text NOT NULL CHECK(state IN ('active','paused','archived')),context text NOT NULL,decisions text NOT NULL,outcome text NOT NULL,questions text NOT NULL,next_steps text NOT NULL,sources jsonb NOT NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),archived_at timestamptz)`,
-  `CREATE INDEX IF NOT EXISTS v2_mission_records_owner ON v2_mission_records(user_id,state,updated_at DESC)`
-];
-async function initializeMissionRecords() {
-  const sql10 = monitoringSql();
-  const [row] = await sql10`SELECT to_regclass('v2_mission_records_owner') IS NOT NULL AS ready`;
-  if (!row?.ready)
-    await sql10.transaction([
-      sql10`SELECT pg_advisory_xact_lock(184730031)`,
-      ...missionRecordsDdl.map((d) => sql10.query(d))
-    ]);
-}
-var sourceObjects = `SELECT 'note'::text AS kind,n.id,n.user_id,n.title,NULL::uuid AS project_id FROM notes n UNION ALL SELECT 'task',t.id,t.user_id,t.title,NULL::uuid FROM tasks t UNION ALL SELECT 'project_task',t.id,t.user_id,t.title,t.project_id FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id`;
-async function missionReferenceChoices(userId, kind, search) {
-  const rows = await monitoringSql().query(
-    `WITH objects AS(${sourceObjects}) SELECT kind,id,title,project_id AS "projectId",true AS available FROM objects WHERE user_id=$1 AND kind=$2 AND strpos(lower(title),lower($3))>0 ORDER BY title,id LIMIT 51`,
-    [userId, kind, search]
-  );
-  return {
-    sources: rows.slice(0, 50),
-    limited: rows.length > 50
-  };
-}
-async function missionRecordProjects(userId) {
-  return await monitoringSql()`SELECT id,name FROM projects WHERE user_id=${userId} ORDER BY name,id`;
-}
-async function listMissionRecords(userId, state2, search) {
-  await initializeMissionRecords();
-  const rows = await monitoringSql()`SELECT r.id,r.title,r.state,p.name AS "projectName",r.updated_at AS "updatedAt",r.archived_at AS "archivedAt" FROM v2_mission_records r LEFT JOIN projects p ON p.id=r.project_id AND p.user_id=r.user_id
-  WHERE r.user_id=${userId} AND (${state2}::text IS NULL OR r.state=${state2}) AND (strpos(lower(r.title||' '||r.context||' '||r.decisions||' '||r.outcome||' '||r.questions||' '||r.next_steps),lower(${search}))>0) ORDER BY r.updated_at DESC,r.id LIMIT 101`;
-  return {
-    records: rows.slice(0, 100),
-    limited: rows.length > 100
-  };
-}
-async function readMissionRecord(userId, id) {
-  await initializeMissionRecords();
-  const [row] = await monitoringSql().query(
-    `WITH objects AS(${sourceObjects}) SELECT r.id,r.title,p.id AS "projectId",p.name AS "projectName",r.state,r.context,r.decisions,r.outcome,r.questions,r.next_steps AS "nextSteps",r.version,r.updated_at AS "updatedAt",r.archived_at AS "archivedAt",
-    coalesce((SELECT jsonb_agg(jsonb_build_object('kind',x.kind,'id',x.id,'title',o.title,'projectId',o.project_id,'available',o.id IS NOT NULL)) FROM jsonb_to_recordset(r.sources) x(kind text,id uuid) LEFT JOIN objects o ON o.kind=x.kind AND o.id=x.id AND o.user_id=r.user_id),'[]'::jsonb) AS sources
-    FROM v2_mission_records r LEFT JOIN projects p ON p.id=r.project_id AND p.user_id=r.user_id WHERE r.id=$1 AND r.user_id=$2`,
-    [id, userId]
-  );
-  if (!row) throw new HistoryError("Arbeitsstand nicht mehr verf\xFCgbar.", 404);
-  return row;
-}
-async function writeMissionRecord(userId, id, input, version) {
-  await initializeMissionRecords();
-  const sql10 = monitoringSql(), hash2 = createHash6("sha256").update(JSON.stringify(input)).digest("hex"), sources = JSON.stringify(input.sources);
-  const guard = `($12::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=$12 AND user_id=$2)) AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($13::jsonb) x(kind text,id uuid) WHERE NOT EXISTS(SELECT 1 FROM objects o WHERE o.user_id=$2 AND o.kind=x.kind AND o.id=x.id))`;
-  const params = [
-    id,
-    userId,
-    input.title,
-    input.state,
-    input.context,
-    input.decisions,
-    input.outcome,
-    input.questions,
-    input.nextSteps,
-    hash2,
-    version,
-    input.projectId,
-    sources
-  ];
-  const statement = version === null ? `WITH objects AS(${sourceObjects}) INSERT INTO v2_mission_records(id,user_id,title,state,context,decisions,outcome,questions,next_steps,creation_hash,project_id,sources,archived_at)
-    SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12::uuid,$13::jsonb,CASE WHEN $4='archived' THEN clock_timestamp() ELSE NULL END WHERE ${guard} AND (SELECT count(*) FROM v2_mission_records WHERE user_id=$2)<200
-    ON CONFLICT(id) DO UPDATE SET id=v2_mission_records.id WHERE v2_mission_records.user_id=excluded.user_id AND v2_mission_records.creation_hash=excluded.creation_hash RETURNING id` : `WITH objects AS(${sourceObjects}) UPDATE v2_mission_records SET title=$3,state=$4,context=$5,decisions=$6,outcome=$7,questions=$8,next_steps=$9,project_id=$12::uuid,sources=$13::jsonb,version=version+1,updated_at=clock_timestamp(),archived_at=CASE WHEN $4='archived' THEN coalesce(archived_at,clock_timestamp()) ELSE NULL END WHERE id=$1 AND user_id=$2 AND version=$11 AND ${guard} RETURNING id`;
-  const casted = statement.replace(
-    `WITH objects AS(${sourceObjects})`,
-    `WITH unused AS(SELECT $10::text AS hash,$11::integer AS version),objects AS(${sourceObjects})`
-  );
-  const [, rows] = await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`mission-records:${userId}`},0))`,
-    sql10.query(casted, params)
-  ]);
-  if (!rows.length)
-    throw new HistoryError(
-      "Arbeitsstand ver\xE4ndert, Quelle nicht zug\xE4nglich oder Grenze von 200 Eintr\xE4gen erreicht. Bitte neu laden."
-    );
-  return { id };
-}
-async function deleteMissionRecord(userId, id, version) {
-  const rows = await monitoringSql()`DELETE FROM v2_mission_records WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
-  if (!rows.length)
-    throw new HistoryError(
-      "Arbeitsstand ver\xE4ndert oder nicht mehr verf\xFCgbar. Bitte neu laden."
-    );
-}
-
-// server/routes/mission-records.ts
-function createMissionRecordsRoute() {
-  const route = new Hono31();
-  route.use("*", async (c, next) => {
-    c.header("Cache-Control", "no-store");
-    await next();
-  });
-  route.use(
-    "*",
-    bodyLimit4({
-      maxSize: 2e5,
-      onError: (c) => c.json({ error: "Anfrage zu gro\xDF." }, 413)
-    })
-  );
-  route.onError(
-    (e, c) => c.json(
-      {
-        error: e instanceof HistoryError ? e.message : "Arbeitsstand konnte nicht verarbeitet werden. Verbindung und Speichereinrichtung pr\xFCfen."
-      },
-      e instanceof HistoryError ? e.status : 503
-    )
-  );
-  route.get(
-    "/projects",
-    async (c) => c.json(await missionRecordProjects(c.get("userId")))
-  );
-  route.get("/sources", async (c) => {
-    const kind = historyKind.safeParse(c.req.query("kind")), search = c.req.query("search") ?? "";
-    if (!kind.success || search.length > 200)
-      return c.json({ error: "Quellenfilter pr\xFCfen." }, 400);
-    return c.json(
-      await missionReferenceChoices(c.get("userId"), kind.data, search)
-    );
-  });
-  route.get("/", async (c) => {
-    const state2 = c.req.query("state") ?? null, search = c.req.query("search") ?? "";
-    if (state2 && !["active", "paused", "archived"].includes(state2) || search.length > 200)
-      return c.json({ error: "Filter pr\xFCfen." }, 400);
-    return c.json(
-      await listMissionRecords(c.get("userId"), state2, search)
-    );
-  });
-  route.post("/", async (c) => {
-    const input = z43.object({ id: z43.uuid(), data: missionRecordInput }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!input.success)
-      return c.json(
-        {
-          error: "Titel, Quellen und Texte pr\xFCfen. F\xFCr das Archiv ist ein Ergebnis erforderlich."
-        },
-        400
-      );
-    return c.json(
-      await writeMissionRecord(
-        c.get("userId"),
-        input.data.id,
-        input.data.data,
-        null
-      ),
-      201
-    );
-  });
-  route.use("/:id/*", async (c, next) => {
-    if (!z43.uuid().safeParse(c.req.param("id")).success)
-      return c.json({ error: "Ung\xFCltige Kennung." }, 400);
-    await next();
-  });
-  route.get(
-    "/:id",
-    async (c) => c.json(await readMissionRecord(c.get("userId"), c.req.param("id")))
-  );
-  route.put("/:id", async (c) => {
-    const input = z43.object({
-      version: z43.number().int().positive(),
-      data: missionRecordInput
-    }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!input.success)
-      return c.json(
-        {
-          error: "Versionsstand, Texte und Quellen pr\xFCfen. F\xFCr das Archiv ist ein Ergebnis erforderlich."
-        },
-        400
-      );
-    return c.json(
-      await writeMissionRecord(
-        c.get("userId"),
-        c.req.param("id"),
-        input.data.data,
-        input.data.version
-      )
-    );
-  });
-  route.delete("/:id", async (c) => {
-    const input = z43.object({ version: z43.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!input.success) return c.json({ error: "Versionsstand fehlt." }, 400);
-    await deleteMissionRecord(
-      c.get("userId"),
-      c.req.param("id"),
-      input.data.version
-    );
-    return c.json({ ok: true });
-  });
-  return route;
-}
-var missionRecordsRoute = createMissionRecordsRoute();
-
 // server/app.ts
 function createApp() {
-  const app = new Hono32().basePath("/api");
+  const app = new Hono30().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -9151,7 +8483,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z44.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z41.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });
@@ -9171,8 +8503,6 @@ function createApp() {
   app.route("/mission-control", missionRoute);
   app.route("/browser", browserWebRoute);
   app.route("/shared-rooms", sharedRoomsRoute);
-  app.route("/working-history", workingHistoryRoute);
-  app.route("/mission-records", missionRecordsRoute);
   app.route("/vault", vaultRoute);
   app.route("/booking", bookingRoute);
   app.route("/integrations", integrationsRoute);

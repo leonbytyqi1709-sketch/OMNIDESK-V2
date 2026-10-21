@@ -15,9 +15,7 @@ Der Nutzer wünscht nach Umsetzung der vereinbarten Pakete eine Einführung in a
 | Persönliches Omni-Gedächtnis | Eigene gespeicherte Erinnerungen, Herkunft, Versionen, Projektbezug sowie steuerbare automatische Aufnahme | Einen Eintrag ansehen und entscheiden, ob er für eine Antwort verwendet werden soll |
 | Browser-Kommandoebene | Chrome-/Edge-Seitenpanel, bewusste Textauswahl, Quellenanmerkungen, Projektzuordnung und widerrufbare Verbindung | Einen ausgewählten Absatz speichern und in App sowie Projekt wiederfinden |
 | Gemeinsame Räume | Eingeladene angemeldete Konten, Rollen, Checkliste/Pinnwand, ausgewählte Projektkopien, Ablauf und Widerruf | Einen Testinhalt teilen und den Unterschied zum privaten Original erklären |
-| Arbeitsgedächtnis | Notiz-/Aufgabenverlauf, Vergleich, feldweise Wiederherstellung sowie Pause/Aufbewahrung | Nur den Titel einer Testnotiz aus einem früheren Stand übernehmen |
-| Arbeitsstände und Missionsarchiv | Dokumentierte Ausgangslage, Entscheidungen, offene Fragen, nächste Schritte, Ergebnisse und eigene Quellenverweise | Ein Vorhaben unterbrechen, als abgeschlossen dokumentieren und später wieder aufnehmen |
-| Notizen und Aufgaben | Versionsprüfung beim Bearbeiten, nacheinander gesendete Notiz-Autosaves, sichtbare Konflikte und Verlaufszugänge | Zwei Tabs verwenden und einen veralteten Entwurf erkennen, ohne ihn zu verlieren |
+| Notizen und Aufgaben | Versionsprüfung beim Bearbeiten, nacheinander gesendete Notiz-Autosaves, sichtbare Konflikte | Zwei Tabs verwenden und einen veralteten Entwurf erkennen, ohne ihn zu verlieren |
 
 Mail und Internet-Radar wurden auf Nutzerwunsch entfernt. OneDrive bleibt aus der weiteren V2-Planung gestrichen; vorhandener Integrationscode ist dadurch kein neuer Einrichtungsauftrag. Optionaler Neon-SQL-Test bleibt aus. Der Nutzer hat bestätigt, dass kein Radar-Cronjob existiert. Keine erneute Nachfrage dazu.
 
@@ -27,4 +25,7 @@ Nach der Vorstellung gemeinsam alle vorhandenen Module prüfen, auch Dashboard, 
 
 Beobachtungen mit Bereich, konkretem Ablauf, erwartetem/tatsächlichem Verhalten und Auswirkung dokumentieren. Erst priorisieren, dann gezielt verbessern. Bereits bestätigte Räume, Chrome und Mission Control müssen nicht ohne Anlass wieder vollständig isoliert abgenommen werden; ihre Verbindungen gehören zum Gesamttest.
 
-Offene Prüfgrenzen ehrlich behandeln: produktiver Test des neuen Arbeitsgedächtnisses sowie vollständige App-Abnahme stehen noch aus. Ein erfolgreicher Build ersetzt diese Prüfungen nicht. Die früher separat unbestätigte Neon-Scheduler-Abnahme wird durch eine allgemeine Funktionsrückmeldung nicht nachträglich als nachgewiesen erklärt.
+Offene Prüfgrenzen ehrlich behandeln: die vollständige App-Abnahme steht noch aus. Ein erfolgreicher Build ersetzt diese Prüfungen nicht. Die früher separat unbestätigte Neon-Scheduler-Abnahme wird durch eine allgemeine Funktionsrückmeldung nicht nachträglich als nachgewiesen erklärt.
+
+
+Stand des Rundgangs am 21.10.2026: Mission Control wurde vom Nutzer für verstanden erklärt und erneut anhand des OMNIDESK-V2-Cockpits bestätigt. Das danach vorgestellte Arbeitsgedächtnis einschließlich Verlauf, Arbeitsständen und Missionsarchiv wurde vom Nutzer als unnötig zurückgenommen und wird entfernt. Diesen Bereich künftig überspringen; persönliche Omni-Erinnerungen und Omni-Briefing bleiben separate Funktionen. Den Rundgang mit den übrigen Bereichen fortsetzen, jeweils ein Bedienungsschritt pro Antwort.

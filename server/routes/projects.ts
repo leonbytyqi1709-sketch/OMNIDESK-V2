@@ -11,8 +11,8 @@ import {
   projects,
 } from '../../src/db/schema/index'
 
-import { initializeWorkingHistory } from '../history-storage'
-import { historyFingerprint } from '../history-policy'
+import { retireWorkingHistory } from '../retire-working-history'
+import { editFingerprint } from '../edit-version'
 const taskFields = {
   ...getTableColumns(projectTasks),
   fingerprint: sql<string>`md5(to_jsonb(${projectTasks})::text)`,
@@ -41,7 +41,7 @@ const milestoneInput = z.object({
 export const projectsRoute = new Hono()
 projectsRoute.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  await initializeWorkingHistory()
+  await retireWorkingHistory()
   await next()
 })
 
@@ -151,7 +151,7 @@ projectsRoute.post('/:id/tasks', async (c) => {
 projectsRoute.put('/tasks/:taskId', async (c) => {
   const parsed = projectTaskInput
     .partial()
-    .extend({ expectedFingerprint: historyFingerprint })
+    .extend({ expectedFingerprint: editFingerprint })
     .strict()
     .safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
