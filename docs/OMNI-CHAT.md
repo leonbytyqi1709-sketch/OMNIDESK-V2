@@ -21,4 +21,10 @@ Keine neue KI-Konfiguration, keine Datenmigration und kein neues Modul. Aktionen
 
 Tests führen die tatsächliche Chat-Route gegen isoliertes PostgreSQL/WASM und einen kontrollierten Anbieter aus. Sie prüfen Smalltalk ohne Projekt-/Verlaufskontext, erhaltene Originalnachrichten, passende Erinnerungen, unveränderte vollständige Skripte, kurze Fehlerhinweise sowie vorhandene Aktions-/Gedächtnisgrenzen. Sie prüfen den tatsächlichen Anbieterauftrag und die Speicherung, nicht die Qualität eines live generierten Textes. Die produktive Antwortqualität wird nach Bereitstellung mit dem Nutzer und seinem konfigurierten Modell geprüft.
 
-Nächster einzelner Prüfschritt im Gespräch: Omni eine neue Nachricht **„Hey Omni, wie geht es dir so?“** senden. Danach anhand der echten Antwort weiter abstimmen. Den begonnenen Rundgang und den vollständigen App-Test anschließend fortsetzen.
+## Nutzerabnahme der kurzen Antworten
+
+Der Nutzer hat die bereitgestellte Version am Abend des 21.10.2026 in seiner angemeldeten Sitzung mit seinem konfigurierten Modell ausprobiert und das Ergebnis ausdrücklich bestätigt: „Oke klappt er hat kurz geantwortet wie es mein Wunsch war“. Am 22.10.2026 hat er diese Bestätigung im Rahmen der Übergabe an die neue Entwicklungsumgebung erneut bekräftigt.
+
+Der Smalltalk-Prüfschritt („Hey Omni, wie geht es dir so?“) ist damit erledigt und wird nicht erneut als offener nächster Schritt geführt. Die Bestätigung betrifft diesen Fall und die gewünschte Kürze, nicht die Qualität jeder möglichen Modellantwort. Die Kürze bleibt bei künftigen Änderungen erhalten; kein langer Persona-Prompt und keine ungefragten Statusberichte.
+
+Offen bleiben der begonnene Rundgang (docs/V2-RUNDGANG.md) und danach der verbindliche vollständige App-Test.

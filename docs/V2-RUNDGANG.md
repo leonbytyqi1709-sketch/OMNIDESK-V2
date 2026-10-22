@@ -33,3 +33,6 @@ Stand des Rundgangs am 21.10.2026: Mission Control wurde vom Nutzer für verstan
 
 
 Weitere Rückmeldung im Rundgang: Deployments und GitHub kennt der Nutzer bereits; die Kontenkarte ist verstanden, Kontosicherheit ist bekannt und positiv bewertet. Omni-Aktionen sind ebenfalls bekannt. Aktueller Prüfschritt ist die ausdrücklich gewünschte Kürzung und natürlichere Gesprächsführung im Omni-Chat (docs/OMNI-CHAT.md). Diese Bereiche nicht erneut ohne Anlass erklären.
+
+
+Stand des Rundgangs am 22.10.2026: Der Omni-Chat mit kurzen Antworten ist vom Nutzer live bestätigt (docs/OMNI-CHAT.md); dieser Schritt ist abgeschlossen. Bereits bekannt oder bestätigt sind außerdem Mission Control, Deployments, GitHub-Zentrale, Kontosicherheit, Kontenkarte, Omni-Aktionen, Omni-Briefing, die Browser-Kommandoebene und die gemeinsamen Räume. Noch vorzustellen oder einzuordnen sind das persönliche Omni-Gedächtnis mit der automatischen Gedächtnispflege, Uptime/Neon mit Schwerpunkt Datenfrische und Messwerte sowie die erhaltenen Bearbeitungssicherungen bei Notizen und Aufgaben. Der nächste einzelne Bedienungsschritt ist der Blick in den Gedächtnisbereich des Omni-Moduls. Die Weiterarbeit erfolgt seit dem 22.10.2026 in einer anderen Entwicklungsumgebung; am Projektstand und an den Nutzerentscheidungen ändert das nichts.
