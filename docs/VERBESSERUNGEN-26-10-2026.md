@@ -78,13 +78,28 @@ werden.
 
 ## Zur gemeinsamen Entscheidung
 
-### 3 · Dashboard-Widgets für die neuen Module
+### 3 · Dashboard-Widgets — umgesetzt am 26.10.2026
 
-Der Nutzer möchte darüber sprechen, statt sie gesetzt zu bekommen. Sinnvolle Kandidaten wären ein
-Widget für Mission Control mit den Projekten samt Ampelzustand, eines für die gemeinsamen Räume
-mit laufenden Räumen und Ablaufdatum, eines für die Browser-Quellen der letzten Tage und eines für
-die offenen Omni-Aktionen. Nicht jedes davon verdient einen Platz; das Dashboard lebt von wenigen
-aussagekräftigen Kacheln. Offen.
+Nach Absprache wurden genau zwei Widgets ergänzt, nicht für jedes neue Modul eines.
+
+**Gemeinsame Räume** zeigt die laufenden Räume mit eigener Rolle und Restlaufzeit, die früheste
+Ablaufzeit zuerst. Weniger als sechs Stunden Restlaufzeit werden hervorgehoben. Geschlossene und
+abgelaufene Räume erscheinen nicht; ein fehlgeschlagener Abruf wird als solcher benannt und nicht
+als „keine Räume“ dargestellt.
+
+**Mission Control** zeigt das Lagebild **eines** Projekts: des zuletzt geänderten aktiven. Das ist
+eine bewusste Begrenzung — jeder Abruf fragt GitHub, Vercel, Neon und die Uptime-Monitore an, und
+für alle Projekte gleichzeitig hätte das Dashboard die eben behobene Langsamkeit zurückgebracht.
+Angezeigt werden Gesamtbewertung, bis zu drei auffällige Punkte mit Sprung zur Quelle und die
+Anzahl unvollständiger Quellen. Der Abruf zählt nicht als Besuch, der Vergleich „seit deinem
+letzten Besuch“ im Modul bleibt also unberührt. Fehlende Daten gelten nicht als gesund.
+
+Beide Widgets sind nach dem Update sichtbar und lassen sich wie alle anderen über „Widgets
+anpassen“ ausblenden oder verschieben. Wird das zugehörige Modul im Modul-Manager abgeschaltet,
+verschwindet auch das Widget.
+
+Bewusst **nicht** gebaut: GitHub und Deployments (stehen bereits in Mission Control, wären eine
+Doppelung), Kontenkarte und Browser-Quellen (ändern sich zu selten für eine Dauerkachel).
 
 ### 5 · Browser-Kommandoebene mit echtem Nutzen
 

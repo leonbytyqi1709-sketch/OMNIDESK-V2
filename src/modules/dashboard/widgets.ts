@@ -3,6 +3,7 @@ import {
   Activity,
   CalendarDays,
   Cloud,
+  Crosshair,
   Globe,
   Link2,
   ListTodo,
@@ -11,6 +12,7 @@ import {
   SquareKanban,
   ShieldCheck,
   Timer,
+  UsersRound,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -19,9 +21,11 @@ import { AppointmentsWidget } from './components/AppointmentsWidget'
 import { CloudStorageWidget } from './components/CloudStorageWidget'
 import { GreetingWidget } from './components/GreetingWidget'
 import { LinksWidget } from './components/LinksWidget'
+import { MissionControlWidget } from './components/MissionControlWidget'
 import { NotesWidget } from './components/NotesWidget'
 import { PomodoroWidget } from './components/PomodoroWidget'
 import { ProjectsWidget } from './components/ProjectsWidget'
+import { SharedRoomsWidget } from './components/SharedRoomsWidget'
 import { QuickStatsWidget } from './components/QuickStatsWidget'
 import { TasksWidget } from './components/TasksWidget'
 import { TimezonesWidget } from './components/TimezonesWidget'
@@ -133,5 +137,23 @@ export const DASHBOARD_WIDGETS: DashboardWidgetMeta[] = [
     icon: Activity,
     component: UptimeWidget,
     moduleId: 'uptime',
+  },
+  {
+    id: 'shared-rooms',
+    title: 'Gemeinsame Räume',
+    description:
+      'Laufende Räume mit Rolle und Restlaufzeit, damit kein Raum unbemerkt abläuft',
+    icon: UsersRound,
+    component: SharedRoomsWidget,
+    moduleId: 'shared-rooms',
+  },
+  {
+    id: 'mission-control',
+    title: 'Mission Control',
+    description:
+      'Lagebild des zuletzt geänderten aktiven Projekts mit auffälligen Punkten',
+    icon: Crosshair,
+    component: MissionControlWidget,
+    moduleId: 'mission-control',
   },
 ]

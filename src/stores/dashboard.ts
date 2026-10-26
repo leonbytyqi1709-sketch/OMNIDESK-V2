@@ -30,6 +30,8 @@ export const DEFAULT_WIDGET_ORDER: string[] = [
   'notes',
   'links',
   'projects',
+  'shared-rooms',
+  'mission-control',
 ]
 
 export const useDashboardStore = create<DashboardState>()(
