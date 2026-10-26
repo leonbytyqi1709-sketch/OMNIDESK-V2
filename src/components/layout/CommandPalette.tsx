@@ -86,8 +86,11 @@ export function CommandPalette() {
   const { compactMode, setCompactMode, disabledModules } = useSettingsStore()
   const { start: startPomodoro, pause: pausePomodoro, reset: resetPomodoro, skip: skipPomodoro, running: pomodoroRunning } = usePomodoroStore()
 
-  const { data: userCommands } = useCommands()
-  const { data: notes } = useNotes()
+  // Befehle und Notizen werden erst beim Öffnen der Palette geladen. Zuvor
+  // lief auf jeder Seite der Anwendung ein zusätzlicher Abruf mit, obwohl die
+  // Daten nur hier gebraucht werden.
+  const { data: userCommands } = useCommands(isOpen)
+  const { data: notes } = useNotes(isOpen)
   const [search, setSearch] = useState('')
   const [paramCmd, setParamCmd] = useState<CommandDto | null>(null)
   const [paramOpen, setParamOpen] = useState(false)
@@ -551,7 +554,7 @@ export function CommandPalette() {
           <span>Auswählen: <kbd className="rounded border bg-background px-1">↵</kbd></span>
           <span>Schließen: <kbd className="rounded border bg-background px-1">Esc</kbd></span>
         </div>
-        <span className="font-semibold text-gradient-accent">OmniDesk</span>
+        <span className="font-semibold text-gradient-accent">OMNIDESK</span>
       </div>
       </CommandDialog>
       <CommandParamDialog

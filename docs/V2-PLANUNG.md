@@ -467,3 +467,13 @@ Im Rundgang erklärt der Nutzer Deployments und GitHub für bekannt, die Kontenk
 Serverseitiger Antwortstil mit standardmäßig 1–3 kurzen Sätzen, Smalltalk 1–2. Klar erkannter alleinstehender Smalltalk wird ohne alten Gesprächs-/Projektkontext beantwortet; gespeicherte Originale bleiben erhalten. Pinning und ausgewählter Projektbezug erzwingen keine unpassenden Erinnerungen mehr. Der aktuelle Wunsch nach ausführlichen Erklärungen oder vollständigen Skripten bleibt möglich, ohne normale Antworten mechanisch abzuschneiden. Fehlermeldungen und die Chatoberfläche werden von wiederholtem Zusatztext befreit. Bestehende Aktionen, persönliche Erinnerungen und Briefing bleiben eigenständig; kein erneutes Arbeitsgedächtnis.
 
 Details und Prüfgrenzen: docs/OMNI-CHAT.md. Isolierte Tests prüfen Anbieterauftrag und Speicherung; die tatsächliche Modellantwort muss anschließend in der angemeldeten Sitzung geprüft werden. Danach den Rundgang und den vollständigen App-Test fortsetzen.
+
+
+### Verbesserungen aus dem Gesamttest · 26.10.2026
+
+Der Nutzer hat die produktive V2-Umgebung vollständig durchgesehen und sieben Punkte übergeben. Umgesetzt sind die Schreibweise OMNIDESK in der gesamten Oberfläche, die Beschränkung des Omni-Briefing-Auslösers auf das Dashboard, eine Liste der anstehenden Termine mit aufklappbaren Details unter dem Kalender sowie vier Ursachen der langsamen Modulwechsel.
+
+Zur Langsamkeit: Die Faktenabfrage des Briefings wurde nach jeder erfolgreichen Mutation der Anwendung ungültig gemacht und sammelte dabei Aufgaben, Projekte, Kalender, Uptime, Neon und Kontosicherheit ein; schon ein Notiz-Autosave löste das aus. Die Command-Palette lud Befehle und Notizen auf jeder Seite, die Überfälligkeits-Erinnerung die Aufgabenliste auch nach erledigter Tagesmeldung. Deterministische Fehlerantworten wurden dreimal wiederholt und verzögerten die Anzeige in Neon, GitHub und Deployments. Zusätzlich halten zwischengespeicherte Daten länger, und Modulcode wird beim Überfahren des Sidebar-Eintrags vorgeladen. Keine Funktion und keine Anzeige wurde dabei entfernt.
+
+Offen zur gemeinsamen Entscheidung bleiben Dashboard-Widgets für die neuen Module, der Ausbau der Browser-Kommandoebene zu einer aus OMNIDESK konfigurierbaren Oberfläche und ein Werkzeug für Proxmox VE. Diese drei sind ausdrücklich Gesprächspunkte, keine beauftragten Pakete. Einzelheiten und Prüfgrenzen: docs/VERBESSERUNGEN-26-10-2026.md. Der gemessene Zeitgewinn in der angemeldeten Produktivumgebung steht noch aus.
+

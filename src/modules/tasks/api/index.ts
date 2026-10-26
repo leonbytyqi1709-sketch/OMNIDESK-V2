@@ -34,12 +34,18 @@ export interface TaskInput {
 
 const QUERY_KEY = ['tasks'] as const
 
-export function useTasks() {
+/**
+ * Persönliche Aufgaben.
+ *
+ * `enabled` erlaubt Aufrufern, die die Liste nur unter einer Bedingung
+ * brauchen, den Abruf zurückzuhalten.
+ */
+export function useTasks(enabled = true) {
   const apiFetch = useApiFetch()
   const { userId } = useAuth()
   return useQuery({
     queryKey: [...QUERY_KEY, userId],
-    enabled: Boolean(userId),
+    enabled: Boolean(userId) && enabled,
     queryFn: () => apiFetch<TaskDto[]>('/api/tasks'),
   })
 }
@@ -88,6 +94,23 @@ export function useDeleteTask() {
 
 const OVERDUE_NOTIFY_KEY = 'omnidesk:overdue-notified'
 
+/** Tagesschlüssel des localStorage-Markers für die Überfälligkeits-Erinnerung. */
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** true, wenn für den heutigen Tag bereits erinnert wurde. */
+function alreadyNotifiedToday() {
+  try {
+    const notified = JSON.parse(
+      localStorage.getItem(OVERDUE_NOTIFY_KEY) ?? '{}',
+    ) as Record<string, boolean>
+    return Boolean(notified[todayKey()])
+  } catch {
+    return false
+  }
+}
+
 /**
  * Browser-Notification bei überfälligen Aufgaben – max. 1x pro Tag.
  * Benachrichtigt nur, wenn die Browser-Berechtigung bereits erteilt wurde
@@ -98,10 +121,14 @@ const OVERDUE_NOTIFY_KEY = 'omnidesk:overdue-notified'
  * Dashboard-Widgets, die ebenfalls Modul-APIs nutzen dürfen.
  */
 export function useOverdueTaskNotifications() {
-  const { data: tasks } = useTasks()
+  // Die Erinnerung gibt es höchstens einmal pro Tag. Steht der Marker bereits,
+  // wird die Aufgabenliste für diesen Zweck gar nicht erst geladen – sonst lief
+  // der Abruf in jedem Modul mit, ohne etwas bewirken zu können.
+  const pending = !alreadyNotifiedToday()
+  const { data: tasks } = useTasks(pending)
 
   useEffect(() => {
-    if (!tasks) return
+    if (!tasks || !pending) return
 
     const endOfToday = new Date()
     endOfToday.setHours(23, 59, 59, 999)
@@ -114,24 +141,18 @@ export function useOverdueTaskNotifications() {
     if (overdue.length === 0) return
 
     // Max. eine Erinnerung pro Tag (localStorage-Marker)
-    const todayKey = new Date().toISOString().slice(0, 10)
-    let notified: Record<string, boolean> = {}
-    try {
-      notified = JSON.parse(localStorage.getItem(OVERDUE_NOTIFY_KEY) ?? '{}')
-    } catch {
-      notified = {}
-    }
-    if (notified[todayKey]) return
+    if (alreadyNotifiedToday()) return
+    localStorage.setItem(
+      OVERDUE_NOTIFY_KEY,
+      JSON.stringify({ [todayKey()]: true }),
+    )
 
-    notified = { [todayKey]: true }
-    localStorage.setItem(OVERDUE_NOTIFY_KEY, JSON.stringify(notified))
-
-    void sendBrowserNotification('OmniDesk – Überfällige Aufgaben', {
+    void sendBrowserNotification('OMNIDESK – Überfällige Aufgaben', {
       body:
         overdue.length === 1
           ? `„${overdue[0].title}“ ist überfällig – Zeit, sie abzuschließen!`
           : `${overdue.length} Aufgaben sind überfällig – Zeit, sie abzuschließen!`,
       tag: 'overdue-tasks',
     })
-  }, [tasks])
+  }, [tasks, pending])
 }

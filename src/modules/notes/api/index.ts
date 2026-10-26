@@ -19,12 +19,18 @@ export interface NoteInput {
 
 const QUERY_KEY = ['notes'] as const
 
-export function useNotes() {
+/**
+ * Notizen des angemeldeten Benutzers.
+ *
+ * `enabled` erlaubt Aufrufern, die die Liste nur gelegentlich brauchen (etwa
+ * die Command-Palette), den Abruf bis zum tatsächlichen Bedarf zurückzuhalten.
+ */
+export function useNotes(enabled = true) {
   const apiFetch = useApiFetch()
   const { userId } = useAuth()
   return useQuery({
     queryKey: [...QUERY_KEY, userId],
-    enabled: Boolean(userId),
+    enabled: Boolean(userId) && enabled,
     queryFn: () => apiFetch<NoteDto[]>('/api/notes'),
   })
 }

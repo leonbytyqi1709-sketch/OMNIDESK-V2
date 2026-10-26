@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AppointmentFormDialog } from './components/AppointmentFormDialog'
 import { BookingSettingsDialog } from './components/BookingSettingsDialog'
 import { MonthGrid } from './components/MonthGrid'
+import { UpcomingList } from './components/UpcomingList'
 import { useAppointments, type AppointmentDto } from './api'
 
 export default function CalendarPage() {
@@ -108,6 +109,10 @@ export default function CalendarPage() {
           />
         )}
       </div>
+
+      {!isLoading && !error && (
+        <UpcomingList appointments={appointments ?? []} onEdit={openEdit} />
+      )}
 
       <AppointmentFormDialog
         open={dialogOpen}

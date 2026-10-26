@@ -2,6 +2,21 @@ import { useCallback } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 
 /**
+ * Fehler einer beantworteten API-Anfrage. Die Meldung bleibt unverändert die
+ * des Servers; zusätzlich steht der HTTP-Status zur Verfügung, damit
+ * React Query deterministische Fehler nicht sinnlos wiederholt.
+ */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+/**
  * Authentifizierter Fetch für alle Modul-APIs: hängt automatisch das
  * Clerk-Session-Token an und wirft bei Fehlern eine Error mit der
  * Server-Fehlermeldung.
@@ -24,7 +39,10 @@ export function useApiFetch() {
         const body = (await res.json().catch(() => null)) as {
           error?: string
         } | null
-        throw new Error(body?.error ?? `Anfrage fehlgeschlagen (${res.status})`)
+        throw new ApiError(
+          body?.error ?? `Anfrage fehlgeschlagen (${res.status})`,
+          res.status,
+        )
       }
       return res.json() as Promise<T>
     },

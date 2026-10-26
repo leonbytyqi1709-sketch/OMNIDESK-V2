@@ -19,10 +19,17 @@ export interface CommandInput {
 
 const QUERY_KEY = ['commands'] as const
 
-export function useCommands() {
+/**
+ * Gespeicherte Befehle.
+ *
+ * `enabled` erlaubt Aufrufern wie der Command-Palette, den Abruf erst beim
+ * Öffnen auszulösen statt auf jeder Seite der Anwendung.
+ */
+export function useCommands(enabled = true) {
   const apiFetch = useApiFetch()
   return useQuery({
     queryKey: QUERY_KEY,
+    enabled,
     queryFn: () => apiFetch<CommandDto[]>('/api/commands'),
   })
 }

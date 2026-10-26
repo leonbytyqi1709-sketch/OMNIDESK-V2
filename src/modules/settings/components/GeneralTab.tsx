@@ -74,7 +74,7 @@ export function GeneralTab() {
     try {
       const parsed = JSON.parse(await file.text()) as Partial<BackupFile>
       if (parsed.app !== 'omnidesk') {
-        throw new Error('Keine gültige OmniDesk-Sicherungsdatei.')
+        throw new Error('Keine gültige OMNIDESK-Sicherungsdatei.')
       }
 
       let imported = 0

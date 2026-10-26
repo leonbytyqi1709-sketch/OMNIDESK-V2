@@ -67,7 +67,7 @@ export function AppearanceTab() {
         <CardHeader>
           <CardTitle>Theme</CardTitle>
           <CardDescription>
-            OmniDesk ist für den Dark Mode gebaut – Light und System stehen
+            OMNIDESK ist für den Dark Mode gebaut – Light und System stehen
             trotzdem zur Verfügung.
           </CardDescription>
         </CardHeader>

@@ -45,6 +45,10 @@ function SidebarLink({
   const link = (
     <NavLink
       to={module.path}
+      // Beim Überfahren oder Fokussieren wird der Modul-Code schon geladen,
+      // sodass der Wechsel beim Klick ohne Wartezeit erfolgt.
+      onMouseEnter={() => module.component.preload()}
+      onFocus={() => module.component.preload()}
       className={cn(
         'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200',
         isActive
@@ -97,7 +101,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         >
           {!collapsed && (
             <span className="text-gradient-accent px-1 text-lg font-bold tracking-tight">
-              OmniDesk
+              OMNIDESK
             </span>
           )}
           <Button

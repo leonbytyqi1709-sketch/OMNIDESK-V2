@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { Bot, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +37,12 @@ export function OmniBriefing() {
   useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),60_000);return()=>clearInterval(timer)},[])
   const snapshot=facts.data,open=manualOpen||(!dismissed&&Boolean(snapshot?.preferences.showOnOpen)),message=useBriefingMessage(snapshot,open)
   const close=()=>{setDismissed(true);setManualOpen(false)}
+  // Der Auslöser erscheint ausschließlich auf dem Dashboard. In allen anderen
+  // Modulen entfiel sonst eine zusätzliche Leiste über dem Modulinhalt und
+  // verschob dessen Layout. Automatisches Öffnen beim App-Start bleibt hiervon
+  // unberührt, weil der Dialog weiterhin überall eingehängt ist.
+  const onDashboard=useLocation().pathname==='/'
+  const openBriefing=()=>{setManualOpen(true);if(!snapshot||Date.now()-Date.parse(snapshot.checkedAt)>60_000)void facts.refetch()}
   const stale=Boolean(snapshot&&now-Date.parse(snapshot.checkedAt)>120_000)
   const usableMessage=context.aiModuleEnabled&&snapshot?.preferences.aiEnabled&&message.data?.digest===snapshot.digest?message.data:undefined
   const aiReady=usableMessage&&(usableMessage.status==='ready'||usableMessage.status==='cached')
@@ -46,7 +52,7 @@ export function OmniBriefing() {
   const greeting=hour<5?'Gute Nacht':hour<11?'Guten Morgen':hour<18?'Guten Tag':'Guten Abend'
   const name=user?.firstName??user?.username??''
   const tasks=snapshot?.sections.find((s)=>s.source==='tasks'),projects=snapshot?.sections.find((s)=>s.source==='projects'),calendar=snapshot?.sections.find((s)=>s.source==='calendar')
-  return <div className="flex justify-end px-4 pt-3 md:px-6"><Button size="sm" variant="outline" onClick={()=>{setManualOpen(true);if(!snapshot||Date.now()-Date.parse(snapshot.checkedAt)>60_000)void facts.refetch()}}><Bot className="mr-2 size-4"/>Omni-Briefing</Button>
+  return <>{onDashboard&&<div className="flex justify-end px-4 pt-3 md:px-6"><Button size="sm" variant="outline" onClick={openBriefing}><Bot className="mr-2 size-4"/>Omni-Briefing</Button></div>}
     <Dialog open={open} onOpenChange={(value)=>{if(!value)close()}}><DialogContent className="w-[calc(100vw-2rem)] max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles className="size-5 text-primary"/>Dein Omni-Briefing</DialogTitle><DialogDescription>Dein Arbeitsstand mit nachvollziehbaren Quellen und getrennten Empfehlungen.</DialogDescription></DialogHeader>
       {facts.isLoading&&<p className="text-sm text-muted-foreground">Omni sammelt deinen aktuellen Arbeitsstand…</p>}
       {facts.error&&<p role="alert" className="text-sm text-destructive">{facts.error.message}{snapshot?' Die sichtbaren Angaben stammen vom letzten erfolgreichen Abruf.':''}</p>}
@@ -70,5 +76,5 @@ export function OmniBriefing() {
         <details><summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><Settings2 className="size-4"/>Briefing-Einstellungen</summary><div className="mt-3"><PreferenceForm key={snapshot.preferenceVersion} snapshot={snapshot}/></div></details>
       </div>}
     </DialogContent></Dialog>
-  </div>
+  </>
 }

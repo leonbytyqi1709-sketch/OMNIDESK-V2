@@ -58,7 +58,7 @@ export function MobileHeader() {
             {/* Sheet-Header mit Branding */}
             <SheetHeader className="flex h-14 flex-row items-center border-b px-4">
               <SheetTitle className="text-gradient-accent text-lg font-bold tracking-tight">
-                OmniDesk
+                OMNIDESK
               </SheetTitle>
               <SheetDescription className="sr-only">
                 Hauptnavigation
@@ -142,7 +142,7 @@ export function MobileHeader() {
         </Sheet>
 
         <span className="text-gradient-accent font-bold tracking-tight text-base">
-          OmniDesk
+          OMNIDESK
         </span>
       </div>
 

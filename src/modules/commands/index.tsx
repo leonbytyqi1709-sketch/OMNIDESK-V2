@@ -308,7 +308,7 @@ export default function CommandsPage() {
       toast.error('Keine Befehle zum Exportieren vorhanden.')
       return
     }
-    let md = `# OmniDesk IT-Befehls-Cheatsheet\nExportiert am: ${new Date().toLocaleDateString('de-DE')}\n\n`
+    let md = `# OMNIDESK IT-Befehls-Cheatsheet\nExportiert am: ${new Date().toLocaleDateString('de-DE')}\n\n`
     for (const [cat, items] of grouped) {
       md += `## ${cat}\n\n`
       for (const item of items) {

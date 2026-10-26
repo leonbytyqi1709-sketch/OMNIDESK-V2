@@ -34,6 +34,35 @@ import {
  * Sidebar, Router und der Modul-Manager in den Einstellungen speisen sich
  * ausschließlich aus dieser Liste – ein neues Modul wird nur hier registriert.
  */
+/** Lazy geladenes Modul, dessen Code sich vorab anfordern lässt. */
+export type PreloadableModule = LazyExoticComponent<ComponentType> & {
+  /** Lädt den Modul-Code im Hintergrund, ohne ihn darzustellen. */
+  preload: () => void
+}
+
+/**
+ * Wie `React.lazy`, merkt sich aber den Ladevorgang, damit die Sidebar den
+ * Code eines Moduls bereits beim Überfahren anfordern kann. Der Wechsel wirkt
+ * dadurch sofort, statt erst beim Klick mit dem Nachladen zu beginnen.
+ * Mehrfache Aufrufe lösen nur einen Ladevorgang aus; Fehler bleiben dem
+ * regulären Suspense-Pfad überlassen.
+ */
+function lazyModule(
+  loader: () => Promise<{ default: ComponentType }>,
+): PreloadableModule {
+  let started: Promise<{ default: ComponentType }> | null = null
+  const load = () => (started ??= loader())
+  const component = lazy(load) as PreloadableModule
+  component.preload = () => {
+    void load().catch(() => {
+      // Ein fehlgeschlagener Vorabruf darf nichts auslösen; der echte Aufruf
+      // der Route meldet den Fehler weiterhin über Suspense.
+      started = null
+    })
+  }
+  return component
+}
+
 export interface ModuleDefinition {
   /** Eindeutige ID, entspricht dem Ordnernamen unter src/modules/ */
   id: string
@@ -43,8 +72,8 @@ export interface ModuleDefinition {
   path: string
   /** Icon für Sidebar und Modul-Manager */
   icon: LucideIcon
-  /** Lazy geladener Einstiegspunkt des Moduls */
-  component: LazyExoticComponent<ComponentType>
+  /** Lazy geladener Einstiegspunkt des Moduls, mit Vorladefunktion */
+  component: PreloadableModule
   /** false für Core-Module (Dashboard, Settings), die der Modul-Manager nicht abschalten darf */
   toggleable: boolean
   /** Gruppierung in der Sidebar */
@@ -58,7 +87,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Dashboard',
     path: '/',
     icon: LayoutDashboard,
-    component: lazy(() => import('@/modules/dashboard')),
+    component: lazyModule(() => import('@/modules/dashboard')),
     toggleable: false,
     category: 'core',
   },
@@ -67,7 +96,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Einstellungen',
     path: '/settings',
     icon: Settings,
-    component: lazy(() => import('@/modules/settings')),
+    component: lazyModule(() => import('@/modules/settings')),
     toggleable: false,
     category: 'core',
   },
@@ -76,19 +105,19 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Mission Control',
     path: '/mission-control',
     icon: Crosshair,
-    component: lazy(() => import('@/modules/mission-control')),
+    component: lazyModule(() => import('@/modules/mission-control')),
     toggleable: true,
     category: 'it-tools',
   },
   {
     id: 'browser-desk', title: 'Browser-Kommandoebene', path: '/browser-desk',
-    icon: PanelsTopLeft, component: lazy(() => import('@/modules/browser-desk')),
+    icon: PanelsTopLeft, component: lazyModule(() => import('@/modules/browser-desk')),
     toggleable: true, category: 'it-tools',
   },
   // 📑 Kern-Produktivität
   {
     id: 'shared-rooms', title: 'Gemeinsame Räume', path: '/shared-rooms',
-    icon: UsersRound, component: lazy(() => import('@/modules/shared-rooms')),
+    icon: UsersRound, component: lazyModule(() => import('@/modules/shared-rooms')),
     toggleable: true, category: 'productivity',
   },
   {
@@ -96,7 +125,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Notizen',
     path: '/notes',
     icon: NotebookPen,
-    component: lazy(() => import('@/modules/notes')),
+    component: lazyModule(() => import('@/modules/notes')),
     toggleable: true,
     category: 'productivity',
   },
@@ -105,7 +134,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Aufgaben',
     path: '/tasks',
     icon: ListTodo,
-    component: lazy(() => import('@/modules/tasks')),
+    component: lazyModule(() => import('@/modules/tasks')),
     toggleable: true,
     category: 'productivity',
   },
@@ -114,7 +143,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Kalender & Booking',
     path: '/calendar',
     icon: CalendarDays,
-    component: lazy(() => import('@/modules/calendar')),
+    component: lazyModule(() => import('@/modules/calendar')),
     toggleable: true,
     category: 'productivity',
   },
@@ -123,7 +152,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Pomodoro-Timer',
     path: '/pomodoro',
     icon: Timer,
-    component: lazy(() => import('@/modules/pomodoro')),
+    component: lazyModule(() => import('@/modules/pomodoro')),
     toggleable: true,
     category: 'productivity',
   },
@@ -132,7 +161,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Omni',
     path: '/assistant',
     icon: Bot,
-    component: lazy(() => import('@/modules/assistant')),
+    component: lazyModule(() => import('@/modules/assistant')),
     toggleable: true,
     category: 'productivity',
   },
@@ -142,7 +171,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Projektmanagement',
     path: '/projects',
     icon: SquareKanban,
-    component: lazy(() => import('@/modules/projects')),
+    component: lazyModule(() => import('@/modules/projects')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -151,7 +180,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Befehlsbibliothek',
     path: '/commands',
     icon: Terminal,
-    component: lazy(() => import('@/modules/commands')),
+    component: lazyModule(() => import('@/modules/commands')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -160,7 +189,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Link-Manager',
     path: '/links',
     icon: Link2,
-    component: lazy(() => import('@/modules/links')),
+    component: lazyModule(() => import('@/modules/links')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -169,7 +198,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Uptime-Monitor',
     path: '/uptime',
     icon: Activity,
-    component: lazy(() => import('@/modules/uptime')),
+    component: lazyModule(() => import('@/modules/uptime')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -178,7 +207,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Deployments',
     path: '/deployments',
     icon: Rocket,
-    component: lazy(() => import('@/modules/deployments')),
+    component: lazyModule(() => import('@/modules/deployments')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -187,7 +216,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'GitHub',
     path: '/github',
     icon: GitBranch,
-    component: lazy(() => import('@/modules/github')),
+    component: lazyModule(() => import('@/modules/github')),
     toggleable: true,
     category: 'it-tools',
   },
@@ -197,7 +226,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Kontenkarte',
     path: '/account-map',
     icon: Network,
-    component: lazy(() => import('@/modules/account-map')),
+    component: lazyModule(() => import('@/modules/account-map')),
     toggleable: true,
     category: 'security',
   },
@@ -206,7 +235,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Kontosicherheit',
     path: '/account-security',
     icon: ShieldCheck,
-    component: lazy(() => import('@/modules/account-security')),
+    component: lazyModule(() => import('@/modules/account-security')),
     toggleable: true,
     category: 'security',
   },
@@ -215,7 +244,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Passwort-Manager',
     path: '/passwords',
     icon: KeyRound,
-    component: lazy(() => import('@/modules/passwords')),
+    component: lazyModule(() => import('@/modules/passwords')),
     toggleable: true,
     category: 'security',
   },
@@ -224,7 +253,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Kontakte',
     path: '/contacts',
     icon: Contact,
-    component: lazy(() => import('@/modules/contacts')),
+    component: lazyModule(() => import('@/modules/contacts')),
     toggleable: true,
     category: 'security',
   },
@@ -234,7 +263,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     title: 'Cloud-Monitoring',
     path: '/cloud-monitor',
     icon: Cloud,
-    component: lazy(() => import('@/modules/cloud-monitor')),
+    component: lazyModule(() => import('@/modules/cloud-monitor')),
     toggleable: true,
     category: 'cloud',
   },

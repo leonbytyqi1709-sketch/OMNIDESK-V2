@@ -99,7 +99,7 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
           : 'Pause vorbei – zurück in den Fokus.'
       toast(message)
       // Browser-Notification zusätzlich zum In-App-Toast (auch sichtbar, wenn der Tab im Hintergrund liegt)
-      void sendBrowserNotification('OmniDesk – Pomodoro', {
+      void sendBrowserNotification('OMNIDESK – Pomodoro', {
         body: message,
         tag: 'pomodoro-phase-end',
       })

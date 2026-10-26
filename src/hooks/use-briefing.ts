@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
@@ -19,10 +19,12 @@ export function useBriefingContext() {
 }
 export function useBriefingFacts() {
   const api = useApiFetch(), { userId } = useAuth(), cache = useQueryClient(), context = useBriefingContext()
-  useEffect(() => cache.getMutationCache().subscribe((event) => {
-    if (event.type === 'updated' && event.action.type === 'success') void cache.invalidateQueries({ queryKey: ['briefing', userId, 'facts'] })
-  }), [cache, userId])
-  return useQuery({ queryKey: ['briefing', userId, 'facts', context.exclude.join(',')], enabled: Boolean(userId), retry: false, staleTime: 60_000,
+  // Früher wurde die Faktenabfrage nach JEDER erfolgreichen Mutation der App
+  // ungültig gemacht. Da sie Aufgaben, Projekte, Kalender, Uptime, Neon und
+  // Kontosicherheit zusammenträgt, löste schon ein Notiz-Autosave einen
+  // teuren Sammelabruf aus. Die Fakten werden stattdessen beim Öffnen des
+  // Briefings aktualisiert; der Knopf lädt sie ab 60 Sekunden Alter neu.
+  return useQuery({ queryKey: ['briefing', userId, 'facts', context.exclude.join(',')], enabled: Boolean(userId), retry: false, staleTime: 60_000, refetchOnWindowFocus: false,
     queryFn: async () => {
       let visitRecorded = true
       try { await cache.fetchQuery({ queryKey: ['briefing', userId, 'visit', context.visitId], staleTime: Infinity, retry: false, queryFn: () => api('/api/briefing/visit', { method: 'POST', body: JSON.stringify({ visitId: context.visitId }) }) }) } catch { visitRecorded = false }

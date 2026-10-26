@@ -5,16 +5,29 @@ import { dark } from '@clerk/themes'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
+import { ApiError } from '@/hooks/use-api'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Robust gegen kurze API-Aussetzer: 3 Versuche mit steigender Wartezeit
-      // statt sofortigem Fehler (sonst erscheint bei einem einzelnen
-      // fehlgeschlagenen Request sofort eine Fehlerseite).
-      retry: 3,
+      // Robust gegen kurze API-Aussetzer, aber ohne Wiederholungen für
+      // Antworten, die der Server bewusst gegeben hat: Ein 401, 404 oder ein
+      // „noch nicht eingerichtet" (503) fällt beim zweiten Versuch genauso
+      // aus und hat die Anzeige der eigentlichen Meldung nur verzögert.
+      retry: (failureCount, error) => {
+        if (
+          error instanceof ApiError &&
+          (error.status < 500 || error.status === 501 || error.status === 503)
+        )
+          return false
+        return failureCount < 2
+      },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
-      staleTime: 30_000,
+      // Beim Wechsel zwischen Modulen werden zwischengespeicherte Daten
+      // sofort angezeigt, statt bei jedem Aufruf neu zu laden. Änderungen
+      // machen ihre eigenen Abfragen weiterhin gezielt ungültig.
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
     },
   },
 })
