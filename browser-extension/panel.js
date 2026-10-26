@@ -15,6 +15,8 @@ let state = {
   busy = false,
   dirty = false,
   items = [],
+  panel = null,
+  commandFilter = '',
   draftKey = 'draft'
 async function send(message) {
   const reply = await chrome.runtime.sendMessage(message)
@@ -104,6 +106,7 @@ async function status() {
     }
     items = []
     render()
+    await loadPanel()
     return
   }
   const projects = await send({ type: 'PROJECTS' }),
@@ -118,6 +121,7 @@ async function status() {
     )
   }
   fields()
+  await loadPanel()
   await load()
 }
 async function load() {
@@ -205,6 +209,134 @@ function render() {
     host.append(section)
   }
 }
+async function openTarget(url) {
+  await chrome.tabs.create({ url })
+}
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    return true
+  } catch {
+    // Manche Chrome-Versionen verweigern die Zwischenablage im Seitenpanel.
+    // Dann bleibt der Befehl sichtbar und kann von Hand kopiert werden.
+    return false
+  }
+}
+function renderQuickAccess() {
+  const host = el('quick')
+  host.replaceChildren()
+  const entries = panel?.quickAccess ?? []
+  if (!entries.length) {
+    el('quick-state').textContent =
+      'Noch keine Schnellzugriffe. In OMNIDESK unter Browser-Kommandoebene einrichten.'
+    return
+  }
+  el('quick-state').textContent =
+    entries.length + ' Schnellzugriffe aus deiner OMNIDESK-Einrichtung.'
+  for (const entry of entries) {
+    const button = document.createElement('button')
+    button.className = entry.available ? 'secondary' : 'secondary unavailable'
+    button.textContent = entry.label
+    if (!entry.available) {
+      // Nicht deaktivieren: Jede abgeschlossene Aktion gibt alle Schaltflächen
+      // wieder frei. Stattdessen bleibt das Ziel sichtbar und erklärt sich.
+      button.title = 'Ziel nicht mehr verfügbar. In OMNIDESK prüfen.'
+      button.addEventListener('click', () =>
+        message(
+          'Dieses Ziel ist nicht mehr verfügbar. In OMNIDESK unter Browser-Kommandoebene prüfen.',
+          true,
+        ),
+      )
+    } else {
+      button.title = entry.url
+      button.addEventListener('click', () =>
+        task(async () => {
+          await openTarget(entry.url)
+        }),
+      )
+    }
+    host.append(button)
+  }
+}
+function renderCommands() {
+  const host = el('commands')
+  host.replaceChildren()
+  if (!panel?.showCommands) {
+    el('commands-card').hidden = true
+    return
+  }
+  el('commands-card').hidden = false
+  const all = panel.commands ?? []
+  const needle = commandFilter.trim().toLowerCase()
+  const visible = needle
+    ? all.filter((command) =>
+        [command.title, command.command, command.category].some((value) =>
+          String(value).toLowerCase().includes(needle),
+        ),
+      )
+    : all
+  el('commands-state').textContent = !all.length
+    ? 'Keine Befehle in deiner Befehlsbibliothek.'
+    : visible.length +
+      ' von ' +
+      all.length +
+      ' Befehlen.' +
+      (panel.commandsLimited
+        ? ' Die Anzeige ist begrenzt; in OMNIDESK stehen weitere.'
+        : '')
+  for (const command of visible.slice(0, 50)) {
+    const section = document.createElement('article')
+    section.className = 'command'
+    const heading = document.createElement('h3')
+    heading.textContent = command.title
+    const meta = document.createElement('p')
+    meta.className = 'meta'
+    meta.textContent = command.category
+    const code = document.createElement('code')
+    code.textContent = command.command
+    const copy = document.createElement('button')
+    copy.className = 'secondary'
+    copy.textContent = 'Befehl kopieren'
+    copy.addEventListener('click', () =>
+      task(async () => {
+        const done = await copyText(command.command)
+        message(
+          done
+            ? 'Befehl in die Zwischenablage kopiert.'
+            : 'Kopieren wurde vom Browser abgelehnt. Befehl von Hand markieren.',
+          !done,
+        )
+      }),
+    )
+    section.append(heading, meta, code, copy)
+    host.append(section)
+  }
+  if (visible.length > 50) {
+    const note = document.createElement('p')
+    note.className = 'hint'
+    note.textContent =
+      'Es werden 50 Treffer angezeigt. Suche eingrenzen, um weitere zu sehen.'
+    host.append(note)
+  }
+}
+async function loadPanel() {
+  if (!connected) {
+    panel = null
+    el('quick-card').hidden = true
+    el('commands-card').hidden = true
+    return
+  }
+  el('quick-card').hidden = false
+  el('quick-state').textContent = 'Schnellzugriffe werden geladen…'
+  panel = await send({ type: 'PANEL' })
+  renderQuickAccess()
+  renderCommands()
+}
+el('panel-refresh').addEventListener('click', () => task(loadPanel))
+el('command-search').addEventListener('input', () => {
+  commandFilter = el('command-search').value
+  renderCommands()
+})
 el('capture').addEventListener('click', () =>
   task(async () => {
     if (

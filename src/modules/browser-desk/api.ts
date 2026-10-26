@@ -1,7 +1,11 @@
 import { useAuth } from '@clerk/clerk-react'
 import { useQuery } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
-import type { BrowserItem, BrowserProject } from '@/types/browser-desk'
+import type {
+  BrowserItem,
+  BrowserPanelView,
+  BrowserProject,
+} from '@/types/browser-desk'
 export function useBrowserItems(projectId: string | null = null) {
   const api = useApiFetch(),
     { userId } = useAuth()
@@ -25,3 +29,15 @@ export function useBrowserProjects() {
     retry: false,
   })
 }
+/** Panel-Konfiguration samt aufgelösten Schnellzugriffen und eigenen Befehlen. */
+export function useBrowserPanel() {
+  const api = useApiFetch(),
+    { userId } = useAuth()
+  return useQuery({
+    queryKey: ['browser-panel', userId],
+    queryFn: () => api<BrowserPanelView>('/api/browser/panel'),
+    enabled: Boolean(userId),
+    retry: false,
+  })
+}
+

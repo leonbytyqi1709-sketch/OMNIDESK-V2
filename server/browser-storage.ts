@@ -1,10 +1,20 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { monitoringSql, missingNeonStorage } from './neon-storage'
 import { BrowserDeskError } from './browser-policy'
+import {
+  browserPanelLinkUrl,
+  browserPanelModule,
+  MAX_BROWSER_PANEL_COMMANDS,
+} from '../src/lib/browser-panel'
 import type {
   BrowserDevice,
   BrowserItem,
   BrowserItemInput,
+  BrowserPanelCommand,
+  BrowserPanelConfig,
+  BrowserPanelEntry,
+  BrowserPanelResolvedEntry,
+  BrowserPanelView,
   BrowserProject,
 } from '../src/types/browser-desk'
 export const browserHash = (value: string) =>
@@ -14,11 +24,12 @@ export const browserDdl = [
   `CREATE INDEX IF NOT EXISTS v2_browser_items_owner_url ON v2_browser_items(user_id,url,updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS v2_browser_pairings(code_hash text PRIMARY KEY,user_id text NOT NULL,challenge text NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE TABLE IF NOT EXISTS v2_browser_devices(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,token_hash text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,last_used_at timestamptz,revoked_at timestamptz)`,
+  `CREATE TABLE IF NOT EXISTS v2_browser_panel(user_id text PRIMARY KEY,entries jsonb NOT NULL DEFAULT '[]'::jsonb,show_commands boolean NOT NULL DEFAULT true,command_category text,version integer NOT NULL DEFAULT 1,updated_at timestamptz NOT NULL DEFAULT now())`,
 ]
 export async function initializeBrowserStorage() {
   const sql = monitoringSql()
   const [state] =
-    await sql`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`
+    await sql`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_panel') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`
   if (state?.ready) return
   await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(184730022)`,
@@ -180,3 +191,179 @@ export async function listBrowserDevices(
 export async function revokeBrowserDevice(userId: string, deviceId: string) {
   await monitoringSql()`UPDATE v2_browser_devices SET revoked_at=coalesce(revoked_at,now()) WHERE id=${deviceId} AND user_id=${userId}`
 }
+const emptyPanel = (): BrowserPanelConfig => ({
+  entries: [],
+  showCommands: true,
+  commandCategory: null,
+  version: 1,
+})
+
+/**
+ * jsonb-Spalte in eine Eintragsliste überführen. Je nach Treiber kommt sie als
+ * bereits geparstes Array oder als Text an; beides wird akzeptiert, alles
+ * andere ergibt eine leere Liste statt eines Fehlers.
+ */
+function panelEntries(value: unknown): BrowserPanelEntry[] {
+  const parsed =
+    typeof value === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown
+          } catch {
+            return null
+          }
+        })()
+      : value
+  return Array.isArray(parsed) ? (parsed as BrowserPanelEntry[]) : []
+}
+
+/** Gespeicherte Panel-Konfiguration; fehlt sie, gelten die Voreinstellungen. */
+export async function readBrowserPanel(
+  userId: string,
+): Promise<BrowserPanelConfig> {
+  try {
+    const [row] =
+      await monitoringSql()`SELECT entries,show_commands AS "showCommands",command_category AS "commandCategory",version FROM v2_browser_panel WHERE user_id=${userId}`
+    if (!row) return emptyPanel()
+    return {
+      entries: panelEntries(row.entries),
+      showCommands: Boolean(row.showCommands),
+      commandCategory: (row.commandCategory as string | null) ?? null,
+      version: Number(row.version),
+    }
+  } catch (e) {
+    if (missingNeonStorage(e)) return emptyPanel()
+    throw e
+  }
+}
+
+/**
+ * Schnellzugriffe auflösen. Modulziele kommen aus der gemeinsamen Liste,
+ * Linkziele aus dem eigenen Link-Manager. Ein entferntes oder nicht mehr
+ * aufrufbares Ziel bleibt sichtbar und wird als nicht verfügbar gekennzeichnet,
+ * statt still zu verschwinden.
+ */
+async function resolvePanelEntries(
+  userId: string,
+  entries: BrowserPanelEntry[],
+  appOrigin: string,
+): Promise<BrowserPanelResolvedEntry[]> {
+  const linkIds = entries
+    .filter((entry) => entry.kind === 'link')
+    .map((entry) => entry.target)
+  const links = new Map<string, { title: string; url: string }>()
+  if (linkIds.length) {
+    const rows =
+      await monitoringSql()`SELECT id,title,url FROM links WHERE user_id=${userId} AND id=ANY(${linkIds}::uuid[])`
+    for (const row of rows)
+      links.set(String(row.id), {
+        title: String(row.title),
+        url: String(row.url),
+      })
+  }
+  return entries.map((entry) => {
+    if (entry.kind === 'module') {
+      const module = browserPanelModule(entry.target)
+      return {
+        ...entry,
+        label: module?.title ?? 'Unbekanntes Modul',
+        url: module ? appOrigin + module.path : null,
+        available: Boolean(module),
+      }
+    }
+    const link = links.get(entry.target)
+    const url = link ? browserPanelLinkUrl(link.url) : null
+    return {
+      ...entry,
+      label: link?.title ?? 'Entfernter Link',
+      url,
+      available: Boolean(url),
+    }
+  })
+}
+
+/** Eigene Befehle für das Panel, begrenzt und ohne stilles Abschneiden. */
+async function panelCommands(userId: string, category: string | null) {
+  const rows =
+    await monitoringSql()`SELECT id,title,command,category FROM commands WHERE user_id=${userId} AND (${category}::text IS NULL OR category=${category}::text) ORDER BY category,title,id LIMIT ${MAX_BROWSER_PANEL_COMMANDS + 1}`
+  const commands = (rows as unknown as BrowserPanelCommand[]).slice(
+    0,
+    MAX_BROWSER_PANEL_COMMANDS,
+  )
+  return { commands, limited: rows.length > commands.length }
+}
+
+/** Alle Kategorien der eigenen Befehle, für die Auswahl in der App. */
+async function panelCommandCategories(userId: string) {
+  const rows =
+    await monitoringSql()`SELECT DISTINCT category FROM commands WHERE user_id=${userId} ORDER BY category`
+  return rows.map((row) => String(row.category))
+}
+
+/**
+ * Vollständige Panel-Ansicht: Konfiguration, aufgelöste Schnellzugriffe und
+ * – falls eingeschaltet – die eigenen Befehle. Ein Abruf, damit das Panel
+ * nicht mehrere Anfragen nacheinander stellen muss.
+ */
+export async function browserPanelView(
+  userId: string,
+  appOrigin: string,
+): Promise<BrowserPanelView> {
+  const config = await readBrowserPanel(userId)
+  try {
+    const [quickAccess, commands, commandCategories] = await Promise.all([
+      resolvePanelEntries(userId, config.entries, appOrigin),
+      config.showCommands
+        ? panelCommands(userId, config.commandCategory)
+        : Promise.resolve({ commands: [], limited: false }),
+      panelCommandCategories(userId),
+    ])
+    return {
+      ...config,
+      quickAccess,
+      commands: commands.commands,
+      commandsLimited: commands.limited,
+      commandCategories,
+    }
+  } catch (e) {
+    if (missingNeonStorage(e))
+      return {
+        ...config,
+        quickAccess: [],
+        commands: [],
+        commandsLimited: false,
+        commandCategories: [],
+      }
+    throw e
+  }
+}
+
+/**
+ * Konfiguration speichern. Die Version schützt gegen das Überschreiben einer
+ * zwischenzeitlich in einem anderen Tab geänderten Einstellung.
+ */
+export async function saveBrowserPanel(
+  userId: string,
+  input: BrowserPanelConfig,
+): Promise<BrowserPanelConfig> {
+  await initializeBrowserStorage()
+  const sql = monitoringSql()
+  const [row] =
+    await sql`INSERT INTO v2_browser_panel(user_id,entries,show_commands,command_category,version)
+    VALUES(${userId},${JSON.stringify(input.entries)}::jsonb,${input.showCommands},${input.commandCategory},2)
+    ON CONFLICT(user_id) DO UPDATE SET entries=excluded.entries,show_commands=excluded.show_commands,command_category=excluded.command_category,version=v2_browser_panel.version+1,updated_at=now()
+    WHERE v2_browser_panel.version=${input.version}
+    RETURNING entries,show_commands AS "showCommands",command_category AS "commandCategory",version`
+  if (!row)
+    throw new BrowserDeskError(
+      'Die Panel-Einstellungen wurden zwischenzeitlich geändert. Seite neu laden und erneut speichern.',
+      409,
+    )
+  return {
+    entries: panelEntries(row.entries),
+    showCommands: Boolean(row.showCommands),
+    commandCategory: (row.commandCategory as string | null) ?? null,
+    version: Number(row.version),
+  }
+}
+

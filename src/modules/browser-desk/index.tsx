@@ -16,6 +16,7 @@ import type {
 import { browserSourceUrl } from '@/lib/browser-url'
 import { useBrowserItems, useBrowserProjects } from './api'
 import { BrowserPairing } from './Pairing'
+import { PanelSettings } from './PanelSettings'
 function Source({ url }: { url: string }) {
   let safe: string
   try {
@@ -241,6 +242,7 @@ function Workspace() {
         <Button onClick={() => setEditing(null)}>Neue Anmerkung</Button>
       </header>
       <BrowserPairing />
+      <PanelSettings />
       <Card>
         <CardHeader>
           <CardTitle>OMNIDESK in Google Chrome</CardTitle>
@@ -282,6 +284,12 @@ function Workspace() {
                 übernehmen“ wählen.
               </li>
             </ol>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Nach einem Update der App das ZIP erneut herunterladen, in
+              denselben Ordner entpacken und auf <code>chrome://extensions</code>{' '}
+              bei OMNIDESK „Neu laden“ wählen. Erst danach stehen neue
+              Panel-Funktionen zur Verfügung.
+            </p>
             <p className="mt-3 text-xs text-muted-foreground">
               Bei Seitenwechseln die neue Seite erneut über Symbol oder Shortcut
               freigeben. Interne Chrome-Seiten, der Web Store und manche

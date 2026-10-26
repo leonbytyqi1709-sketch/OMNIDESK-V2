@@ -477,3 +477,12 @@ Zur Langsamkeit: Die Faktenabfrage des Briefings wurde nach jeder erfolgreichen 
 
 Offen zur gemeinsamen Entscheidung bleiben Dashboard-Widgets für die neuen Module, der Ausbau der Browser-Kommandoebene zu einer aus OMNIDESK konfigurierbaren Oberfläche und ein Werkzeug für Proxmox VE. Diese drei sind ausdrücklich Gesprächspunkte, keine beauftragten Pakete. Einzelheiten und Prüfgrenzen: docs/VERBESSERUNGEN-26-10-2026.md. Der gemessene Zeitgewinn in der angemeldeten Produktivumgebung steht noch aus.
 
+
+### Browser-Kommandoebene, Stufe 1 · 26.10.2026
+
+Der Nutzer beauftragt den Ausbau der Kommandoebene und lässt ihn eigenständig fertigstellen. Umgesetzt ist die lesende erste Stufe: In OMNIDESK konfigurierbare Schnellzugriffe auf eigene Module und Link-Manager-Einträge sowie die eigene Befehlsbibliothek mit Suche und Kopierknopf im Seitenpanel. Erweiterungsversion 1.1.0; nach dem Update ist die Erweiterung in Chrome neu zu laden.
+
+Modulziele werden serverseitig gegen eine gemeinsame Liste geprüft, Linkziele gegen die eigenen Einträge; freie Adressen sind nicht konfigurierbar und der Passwort-Manager steht nicht zur Auswahl. Entfernte Ziele bleiben gekennzeichnet sichtbar. Lesen darf die Erweiterung über die gemeinsame Datenroute, schreiben ausschließlich die angemeldete App: Der Gerätezugang erhält keine zusätzlichen Rechte. Eine additive Tabelle mit Versionsschutz.
+
+Drei zusätzliche Tests gegen isoliertes PostgreSQL/WASM prüfen Zielprüfung, Besitzgrenzen, Versionsschutz und die fehlende Schreibmöglichkeit der Erweiterung; insgesamt 168 Tests bestanden. Die Erweiterung selbst wurde nicht in einem Browser ausgeführt und ist vom Nutzer zu bestätigen (TESTANLEITUNG-CLAUDE-CODE.txt). Stufe 2 mit Schreibrechten bleibt offen und unbeauftragt. Einzelheiten: docs/BROWSER-KOMMANDOEBENE.md.
+

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OMNIDESK – Kommandoebene",
-  "version": "1.0.0",
-  "description": "Bewusst ausgewählte Webseiten-Texte und persönliche Anmerkungen mit eigenen OMNIDESK-Projekten verbinden.",
+  "version": "1.1.0",
+  "description": "Eigene Schnellzugriffe, Befehle und bewusst ausgewählte Webseiten-Texte aus OMNIDESK direkt im Browser.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
   "host_permissions": ["https://omnidesk-v2-beta.vercel.app/*"],

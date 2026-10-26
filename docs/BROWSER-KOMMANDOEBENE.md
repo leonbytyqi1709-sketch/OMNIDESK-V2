@@ -61,3 +61,43 @@ Für die Nutzerabnahme: Paket im eigenen Chrome laden, ausdrücklich verbinden, 
 ### Rückmeldung des Nutzers · 21.10.2026
 
 Der Nutzer bestätigt nach Installation und Verbindung in seinem eigenen Google Chrome: „Alles hat funktioniert machen wir weiter?“ Die produktive Nutzung ist damit vom Nutzer live bestätigt. Die oben dokumentierte Cloud-Richtlinie bleibt eine Grenze der hiesigen nativen Automatisierung; sie macht die Nutzerbestätigung nicht rückgängig. Die Rückmeldung belegt keine einzeln protokollierte Durchführung aller Sonderfälle der Prüfliste. Der vollständige App-Test folgt weiterhin nach Abschluss der weiteren vereinbarten Änderungen.
+
+
+## Stufe 1 des Ausbaus · 26.10.2026
+
+Der Nutzer empfand die erste Version als zu schwach und beauftragte einen Ausbau, der die
+Kommandoebene aus OMNIDESK heraus konfigurierbar macht. Umgesetzt ist die lesende Stufe 1;
+Erweiterungsversion **1.1.0**.
+
+**Schnellzugriffe.** In der App legt der Nutzer unter *Panel im Browser einrichten* fest, welche
+Module und welche eigenen Einträge aus dem Link-Manager im Seitenpanel als Schaltflächen
+erscheinen, einschließlich Reihenfolge. Höchstens acht Einträge. Modulziele werden serverseitig
+gegen die gemeinsame Liste in `src/lib/browser-panel.ts` geprüft, Linkziele gegen die eigenen
+Einträge des Benutzers. Freie Adressen sind nicht konfigurierbar. Der Passwort-Manager steht
+bewusst nicht zur Auswahl. Ein entfernter oder nicht mehr auflösbarer Eintrag verschwindet nicht
+still, sondern bleibt als nicht verfügbar gekennzeichnet sichtbar.
+
+**Befehle.** Die eigene Befehlsbibliothek erscheint im Panel mit Suchfeld und einer Schaltfläche
+zum Kopieren, wahlweise auf eine Kategorie begrenzt oder ganz abgeschaltet. Es werden höchstens
+200 Befehle geliefert und 50 gleichzeitig angezeigt; beide Begrenzungen werden im Panel benannt
+statt still abzuschneiden. Befehle werden nicht ausgeführt und nicht verändert. Verweigert Chrome
+den Zugriff auf die Zwischenablage, erscheint ein Hinweis statt einer stillen Fehlfunktion.
+
+**Rechte.** `GET /api/browser/panel` liegt in der gemeinsamen Datenroute und steht damit der
+angemeldeten App und dem Gerätezugang der Erweiterung offen. `PUT /api/browser/panel` liegt
+ausschließlich in der Web-Route: Die Erweiterung kann die Konfiguration lesen, aber nicht ändern.
+Der Gerätezugang erhält dadurch keine weiteren Rechte an Aufgaben, Notizen, Vault oder anderen
+Modulen. Eine additive Tabelle `v2_browser_panel` mit Versionsschutz gegen paralleles
+Überschreiben; bestehende Tabellen bleiben unverändert.
+
+**Prüfgrenzen.** Drei zusätzliche Tests führen die tatsächliche API gegen isoliertes
+PostgreSQL/WASM aus und prüfen Zielprüfung, Besitzgrenzen, Versionsschutz und die fehlende
+Schreibmöglichkeit der Erweiterung. Die Erweiterung selbst wurde nicht in einem Browser
+ausgeführt: Sie ist an den Produktionsursprung gebunden und lässt sich in der
+Entwicklungsumgebung nicht laden. Installation, Panel-Darstellung und das Kopieren in die
+Zwischenablage muss der Nutzer bestätigen; Anleitung dafür in `TESTANLEITUNG-CLAUDE-CODE.txt`.
+Nach einem Update ist die Erweiterung in `chrome://extensions` neu zu laden.
+
+Stufe 2 – Aufgaben oder Notizen aus der aktuellen Seite anlegen – ist nicht umgesetzt. Sie würde
+der Erweiterung erstmals Schreibrechte geben und bleibt eine eigene Entscheidung des Nutzers.
+

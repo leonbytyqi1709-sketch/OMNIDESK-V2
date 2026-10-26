@@ -792,14 +792,16 @@ var init_mission_control = __esm({
 
 // src/db/schema/browser-desk.ts
 import {
+  boolean as boolean6,
   index as index18,
   integer as integer10,
+  jsonb as jsonb12,
   pgTable as pgTable22,
   text as text22,
   timestamp as timestamp22,
   uuid as uuid21
 } from "drizzle-orm/pg-core";
-var browserItems, browserPairings, browserDevices;
+var browserItems, browserPairings, browserDevices, browserPanel;
 var init_browser_desk = __esm({
   "src/db/schema/browser-desk.ts"() {
     init_projects();
@@ -841,12 +843,20 @@ var init_browser_desk = __esm({
       lastUsedAt: timestamp22("last_used_at", { withTimezone: true }),
       revokedAt: timestamp22("revoked_at", { withTimezone: true })
     });
+    browserPanel = pgTable22("v2_browser_panel", {
+      userId: text22("user_id").primaryKey(),
+      entries: jsonb12("entries").$type().notNull().default([]),
+      showCommands: boolean6("show_commands").notNull().default(true),
+      commandCategory: text22("command_category"),
+      version: integer10("version").notNull().default(1),
+      updatedAt: timestamp22("updated_at", { withTimezone: true }).notNull().defaultNow()
+    });
   }
 });
 
 // src/db/schema/shared-rooms.ts
 import {
-  boolean as boolean6,
+  boolean as boolean7,
   index as index19,
   integer as integer11,
   pgTable as pgTable23,
@@ -867,7 +877,7 @@ var init_shared_rooms = __esm({
         title: text23("title").notNull(),
         description: text23("description").notNull(),
         expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
-        closed: boolean6("closed").notNull().default(false),
+        closed: boolean7("closed").notNull().default(false),
         version: integer11("version").notNull().default(1),
         createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
       },
@@ -881,7 +891,7 @@ var init_shared_rooms = __esm({
         userId: text23("user_id").notNull(),
         name: text23("name").notNull(),
         role: text23("role").$type().notNull(),
-        revoked: boolean6("revoked").notNull().default(false),
+        revoked: boolean7("revoked").notNull().default(false),
         version: integer11("version").notNull().default(1)
       },
       (t) => [
@@ -895,7 +905,7 @@ var init_shared_rooms = __esm({
       tokenHash: text23("token_hash").notNull().unique(),
       role: text23("role").$type().notNull(),
       expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
-      revoked: boolean6("revoked").notNull().default(false),
+      revoked: boolean7("revoked").notNull().default(false),
       consumedBy: text23("consumed_by"),
       createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
     });
@@ -906,7 +916,7 @@ var init_shared_rooms = __esm({
         roomId: uuid22("room_id").notNull().references(() => sharedRooms.id, { onDelete: "cascade" }),
         kind: text23("kind").$type().notNull(),
         text: text23("text").notNull(),
-        done: boolean6("done").notNull().default(false),
+        done: boolean7("done").notNull().default(false),
         version: integer11("version").notNull().default(1),
         createdAt: timestamp23("created_at", { withTimezone: true }).notNull().defaultNow()
       },
@@ -936,6 +946,7 @@ __export(schema_exports, {
   browserDevices: () => browserDevices,
   browserItems: () => browserItems,
   browserPairings: () => browserPairings,
+  browserPanel: () => browserPanel,
   chatMessages: () => chatMessages,
   chatSessions: () => chatSessions,
   commands: () => commands,
@@ -7660,6 +7671,42 @@ function browserSourceUrl(value) {
   return result;
 }
 
+// src/lib/browser-panel.ts
+var BROWSER_PANEL_MODULES = [
+  { id: "dashboard", title: "Dashboard", path: "/" },
+  { id: "mission-control", title: "Mission Control", path: "/mission-control" },
+  { id: "browser-desk", title: "Browser-Kommandoebene", path: "/browser-desk" },
+  { id: "shared-rooms", title: "Gemeinsame R\xE4ume", path: "/shared-rooms" },
+  { id: "notes", title: "Notizen", path: "/notes" },
+  { id: "tasks", title: "Aufgaben", path: "/tasks" },
+  { id: "calendar", title: "Kalender & Booking", path: "/calendar" },
+  { id: "assistant", title: "Omni", path: "/assistant" },
+  { id: "projects", title: "Projektmanagement", path: "/projects" },
+  { id: "commands", title: "Befehlsbibliothek", path: "/commands" },
+  { id: "links", title: "Link-Manager", path: "/links" },
+  { id: "uptime", title: "Uptime-Monitor", path: "/uptime" },
+  { id: "deployments", title: "Deployments", path: "/deployments" },
+  { id: "github", title: "GitHub", path: "/github" },
+  { id: "account-map", title: "Kontenkarte", path: "/account-map" },
+  { id: "account-security", title: "Kontosicherheit", path: "/account-security" },
+  { id: "contacts", title: "Kontakte", path: "/contacts" },
+  { id: "cloud-monitor", title: "Cloud-Monitoring", path: "/cloud-monitor" },
+  { id: "pomodoro", title: "Pomodoro-Timer", path: "/pomodoro" }
+];
+var MAX_BROWSER_PANEL_ENTRIES = 8;
+var MAX_BROWSER_PANEL_COMMANDS = 200;
+function browserPanelModule(path) {
+  return BROWSER_PANEL_MODULES.find((entry) => entry.path === path) ?? null;
+}
+function browserPanelLinkUrl(value) {
+  try {
+    const url2 = new URL(value);
+    return url2.protocol === "http:" || url2.protocol === "https:" ? url2.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // server/browser-policy.ts
 var BrowserDeskError = class extends Error {
   status;
@@ -7701,6 +7748,34 @@ var browserExchangeInput = z37.object({
   code: z37.string().regex(/^[A-Za-z0-9_-]{43}$/),
   verifier: z37.string().regex(/^[A-Za-z0-9_-]{43}$/)
 }).strict();
+var browserPanelInput = z37.object({
+  entries: z37.array(
+    z37.object({
+      id: z37.uuid(),
+      kind: z37.enum(["module", "link"]),
+      target: z37.string().min(1).max(512)
+    }).strict()
+  ).max(MAX_BROWSER_PANEL_ENTRIES).superRefine((entries, ctx) => {
+    const seen = /* @__PURE__ */ new Set();
+    for (const entry of entries) {
+      if (seen.has(entry.id))
+        ctx.addIssue({
+          code: "custom",
+          message: "Ein Schnellzugriff ist doppelt enthalten."
+        });
+      seen.add(entry.id);
+      const valid = entry.kind === "module" ? Boolean(browserPanelModule(entry.target)) : z37.uuid().safeParse(entry.target).success;
+      if (!valid)
+        ctx.addIssue({
+          code: "custom",
+          message: "Ein Schnellzugriff verweist auf ein unbekanntes Ziel."
+        });
+    }
+  }),
+  showCommands: z37.boolean(),
+  commandCategory: z37.string().trim().min(1).max(100).nullable(),
+  version: z37.number().int().positive()
+}).strict();
 
 // server/browser-storage.ts
 init_neon_storage();
@@ -7710,11 +7785,12 @@ var browserDdl = [
   `CREATE TABLE IF NOT EXISTS v2_browser_items(id uuid PRIMARY KEY,user_id text NOT NULL,url text NOT NULL,title text NOT NULL,selection text NOT NULL,annotation text NOT NULL,project_id uuid REFERENCES projects(id) ON DELETE SET NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS v2_browser_items_owner_url ON v2_browser_items(user_id,url,updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS v2_browser_pairings(code_hash text PRIMARY KEY,user_id text NOT NULL,challenge text NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now())`,
-  `CREATE TABLE IF NOT EXISTS v2_browser_devices(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,token_hash text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,last_used_at timestamptz,revoked_at timestamptz)`
+  `CREATE TABLE IF NOT EXISTS v2_browser_devices(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,token_hash text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,last_used_at timestamptz,revoked_at timestamptz)`,
+  `CREATE TABLE IF NOT EXISTS v2_browser_panel(user_id text PRIMARY KEY,entries jsonb NOT NULL DEFAULT '[]'::jsonb,show_commands boolean NOT NULL DEFAULT true,command_category text,version integer NOT NULL DEFAULT 1,updated_at timestamptz NOT NULL DEFAULT now())`
 ];
 async function initializeBrowserStorage() {
   const sql10 = monitoringSql();
-  const [state2] = await sql10`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`;
+  const [state2] = await sql10`SELECT to_regclass('v2_browser_items') IS NOT NULL AND to_regclass('v2_browser_pairings') IS NOT NULL AND to_regclass('v2_browser_devices') IS NOT NULL AND to_regclass('v2_browser_panel') IS NOT NULL AND to_regclass('v2_browser_items_owner_url') IS NOT NULL AS ready`;
   if (state2?.ready) return;
   await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(184730022)`,
@@ -7847,10 +7923,132 @@ async function listBrowserDevices(userId) {
 async function revokeBrowserDevice(userId, deviceId) {
   await monitoringSql()`UPDATE v2_browser_devices SET revoked_at=coalesce(revoked_at,now()) WHERE id=${deviceId} AND user_id=${userId}`;
 }
+var emptyPanel = () => ({
+  entries: [],
+  showCommands: true,
+  commandCategory: null,
+  version: 1
+});
+function panelEntries(value) {
+  const parsed = typeof value === "string" ? (() => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  })() : value;
+  return Array.isArray(parsed) ? parsed : [];
+}
+async function readBrowserPanel(userId) {
+  try {
+    const [row] = await monitoringSql()`SELECT entries,show_commands AS "showCommands",command_category AS "commandCategory",version FROM v2_browser_panel WHERE user_id=${userId}`;
+    if (!row) return emptyPanel();
+    return {
+      entries: panelEntries(row.entries),
+      showCommands: Boolean(row.showCommands),
+      commandCategory: row.commandCategory ?? null,
+      version: Number(row.version)
+    };
+  } catch (e) {
+    if (missingNeonStorage(e)) return emptyPanel();
+    throw e;
+  }
+}
+async function resolvePanelEntries(userId, entries, appOrigin) {
+  const linkIds = entries.filter((entry) => entry.kind === "link").map((entry) => entry.target);
+  const links2 = /* @__PURE__ */ new Map();
+  if (linkIds.length) {
+    const rows = await monitoringSql()`SELECT id,title,url FROM links WHERE user_id=${userId} AND id=ANY(${linkIds}::uuid[])`;
+    for (const row of rows)
+      links2.set(String(row.id), {
+        title: String(row.title),
+        url: String(row.url)
+      });
+  }
+  return entries.map((entry) => {
+    if (entry.kind === "module") {
+      const module = browserPanelModule(entry.target);
+      return {
+        ...entry,
+        label: module?.title ?? "Unbekanntes Modul",
+        url: module ? appOrigin + module.path : null,
+        available: Boolean(module)
+      };
+    }
+    const link = links2.get(entry.target);
+    const url2 = link ? browserPanelLinkUrl(link.url) : null;
+    return {
+      ...entry,
+      label: link?.title ?? "Entfernter Link",
+      url: url2,
+      available: Boolean(url2)
+    };
+  });
+}
+async function panelCommands(userId, category) {
+  const rows = await monitoringSql()`SELECT id,title,command,category FROM commands WHERE user_id=${userId} AND (${category}::text IS NULL OR category=${category}::text) ORDER BY category,title,id LIMIT ${MAX_BROWSER_PANEL_COMMANDS + 1}`;
+  const commands2 = rows.slice(
+    0,
+    MAX_BROWSER_PANEL_COMMANDS
+  );
+  return { commands: commands2, limited: rows.length > commands2.length };
+}
+async function panelCommandCategories(userId) {
+  const rows = await monitoringSql()`SELECT DISTINCT category FROM commands WHERE user_id=${userId} ORDER BY category`;
+  return rows.map((row) => String(row.category));
+}
+async function browserPanelView(userId, appOrigin) {
+  const config = await readBrowserPanel(userId);
+  try {
+    const [quickAccess, commands2, commandCategories] = await Promise.all([
+      resolvePanelEntries(userId, config.entries, appOrigin),
+      config.showCommands ? panelCommands(userId, config.commandCategory) : Promise.resolve({ commands: [], limited: false }),
+      panelCommandCategories(userId)
+    ]);
+    return {
+      ...config,
+      quickAccess,
+      commands: commands2.commands,
+      commandsLimited: commands2.limited,
+      commandCategories
+    };
+  } catch (e) {
+    if (missingNeonStorage(e))
+      return {
+        ...config,
+        quickAccess: [],
+        commands: [],
+        commandsLimited: false,
+        commandCategories: []
+      };
+    throw e;
+  }
+}
+async function saveBrowserPanel(userId, input) {
+  await initializeBrowserStorage();
+  const sql10 = monitoringSql();
+  const [row] = await sql10`INSERT INTO v2_browser_panel(user_id,entries,show_commands,command_category,version)
+    VALUES(${userId},${JSON.stringify(input.entries)}::jsonb,${input.showCommands},${input.commandCategory},2)
+    ON CONFLICT(user_id) DO UPDATE SET entries=excluded.entries,show_commands=excluded.show_commands,command_category=excluded.command_category,version=v2_browser_panel.version+1,updated_at=now()
+    WHERE v2_browser_panel.version=${input.version}
+    RETURNING entries,show_commands AS "showCommands",command_category AS "commandCategory",version`;
+  if (!row)
+    throw new BrowserDeskError(
+      "Die Panel-Einstellungen wurden zwischenzeitlich ge\xE4ndert. Seite neu laden und erneut speichern.",
+      409
+    );
+  return {
+    entries: panelEntries(row.entries),
+    showCommands: Boolean(row.showCommands),
+    commandCategory: row.commandCategory ?? null,
+    version: Number(row.version)
+  };
+}
 
 // server/routes/browser-desk.ts
 var versionInput = z38.object({ version: z38.number().int().positive() }).strict();
 var browserDataDependencies = {
+  browserPanelView,
   browserProjects,
   ownsBrowserProject,
   listBrowserItems,
@@ -7883,6 +8081,12 @@ function baseRoute() {
 }
 function createBrowserDataRoute(deps = browserDataDependencies) {
   const route = baseRoute();
+  route.get(
+    "/panel",
+    async (c) => c.json(
+      await deps.browserPanelView(c.get("userId"), new URL(c.req.url).origin)
+    )
+  );
   route.get(
     "/projects",
     async (c) => c.json(await deps.browserProjects(c.get("userId")))
@@ -7951,6 +8155,7 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
 }
 var browserWebDependencies = {
   ...browserDataDependencies,
+  saveBrowserPanel,
   createBrowserPairing,
   listBrowserDevices,
   revokeBrowserDevice
@@ -7971,6 +8176,19 @@ function createBrowserWebRoute(deps = browserWebDependencies) {
     return c.json(
       await deps.createBrowserPairing(c.get("userId"), input.data.challenge)
     );
+  });
+  route.put("/panel", async (c) => {
+    const input = browserPanelInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json(
+        {
+          error: input.error.issues[0]?.message ?? "Schnellzugriffe, Befehlsanzeige oder Versionsstand pr\xFCfen."
+        },
+        400
+      );
+    return c.json(await deps.saveBrowserPanel(c.get("userId"), input.data));
   });
   route.get(
     "/devices",

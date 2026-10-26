@@ -7,11 +7,13 @@ import {
   browserUpdateInput,
   browserPairInput,
   browserExchangeInput,
+  browserPanelInput,
 } from '../browser-policy'
 import { browserSourceUrl } from '../../src/lib/browser-url'
 import * as storage from '../browser-storage'
 const versionInput = z.object({ version: z.number().int().positive() }).strict()
 export const browserDataDependencies = {
+  browserPanelView: storage.browserPanelView,
   browserProjects: storage.browserProjects,
   ownsBrowserProject: storage.ownsBrowserProject,
   listBrowserItems: storage.listBrowserItems,
@@ -47,6 +49,13 @@ function baseRoute() {
 }
 export function createBrowserDataRoute(deps = browserDataDependencies) {
   const route = baseRoute()
+  // Lesend für App und Erweiterung. Die Erweiterung erhält hierüber ihre
+  // Schnellzugriffe und Befehle; ändern kann sie die Konfiguration nicht.
+  route.get('/panel', async (c) =>
+    c.json(
+      await deps.browserPanelView(c.get('userId'), new URL(c.req.url).origin),
+    ),
+  )
   route.get('/projects', async (c) =>
     c.json(await deps.browserProjects(c.get('userId'))),
   )
@@ -119,6 +128,7 @@ export function createBrowserDataRoute(deps = browserDataDependencies) {
 }
 export const browserWebDependencies = {
   ...browserDataDependencies,
+  saveBrowserPanel: storage.saveBrowserPanel,
   createBrowserPairing: storage.createBrowserPairing,
   listBrowserDevices: storage.listBrowserDevices,
   revokeBrowserDevice: storage.revokeBrowserDevice,
@@ -140,6 +150,22 @@ export function createBrowserWebRoute(deps = browserWebDependencies) {
     return c.json(
       await deps.createBrowserPairing(c.get('userId'), input.data.challenge),
     )
+  })
+  // Schreiben ausschließlich aus der angemeldeten App, nie aus der Erweiterung.
+  route.put('/panel', async (c) => {
+    const input = browserPanelInput.safeParse(
+      await c.req.json().catch(() => null),
+    )
+    if (!input.success)
+      return c.json(
+        {
+          error:
+            input.error.issues[0]?.message ??
+            'Schnellzugriffe, Befehlsanzeige oder Versionsstand prüfen.',
+        },
+        400,
+      )
+    return c.json(await deps.saveBrowserPanel(c.get('userId'), input.data))
   })
   route.get('/devices', async (c) =>
     c.json(await deps.listBrowserDevices(c.get('userId'))),

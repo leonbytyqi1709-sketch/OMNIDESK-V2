@@ -134,6 +134,7 @@ async function handle(message) {
     return { revoked }
   }
   const operations = {
+    PANEL: () => request('/data/panel', 'GET', undefined, value.token),
     PROJECTS: () => request('/data/projects', 'GET', undefined, value.token),
     ITEMS: () =>
       request(

@@ -1,0 +1,174 @@
+TESTANLEITUNG - BROWSER-KOMMANDOEBENE, STUFE 1
+Erstellt von Claude Code am 26.10.2026
+
+
+WAS NEU IST
+
+Das Seitenpanel der Chrome-Erweiterung hat zwei neue Bereiche bekommen:
+
+1. Schnellzugriffe
+   Du legst in OMNIDESK fest, welche Module und welche Links aus deinem
+   Link-Manager im Panel als Schaltflaechen erscheinen. Ein Klick oeffnet das
+   Ziel in einem neuen Tab. Maximal acht Eintraege, Reihenfolge selbst
+   bestimmbar.
+
+2. Befehle
+   Deine Befehlsbibliothek erscheint im Panel mit Suchfeld und einem Knopf
+   "Befehl kopieren". Du kannst die Anzeige abschalten oder auf eine Kategorie
+   begrenzen.
+
+Beides liest die Erweiterung nur. Aendern kannst du die Einstellungen
+ausschliesslich in der angemeldeten OMNIDESK-App. Der Gerätezugang der
+Erweiterung hat weiterhin keine Schreibrechte auf Aufgaben, Notizen, Vault
+oder sonstige Module.
+
+
+WICHTIG VORAB
+
+Die Erweiterung muss neu geladen werden. Die alte Version (1.0.0) kennt die
+neuen Bereiche nicht und zeigt sie deshalb nicht an. Die neue Version ist
+1.1.0.
+
+
+SCHRITT 1 - ERWEITERUNG AKTUALISIEREN
+
+1. In OMNIDESK das Modul "Browser-Kommandoebene" oeffnen.
+2. "Chrome-Erweiterung herunterladen" anklicken.
+3. Das ZIP in GENAU DEN ORDNER entpacken, in dem die Erweiterung schon liegt,
+   und vorhandene Dateien ueberschreiben.
+4. In Chrome chrome://extensions oeffnen.
+5. Bei "OMNIDESK - Kommandoebene" auf "Neu laden" klicken.
+6. Pruefen, dass dort jetzt Version 1.1.0 steht.
+
+Deine bestehende Verbindung bleibt dabei erhalten. Du musst dich nicht neu
+verbinden.
+
+
+SCHRITT 2 - SCHNELLZUGRIFFE EINRICHTEN
+
+1. In OMNIDESK im Modul "Browser-Kommandoebene" nach unten scrollen zur neuen
+   Karte "Panel im Browser einrichten".
+2. Im Auswahlfeld "Modul hinzufuegen..." zwei Module auswaehlen, zum Beispiel
+   "Aufgaben" und "Mission Control".
+3. Im Auswahlfeld "Link hinzufuegen..." einen deiner gespeicherten Links
+   auswaehlen. Falls du noch keine Links hast, steht dort "Keine Links
+   vorhanden" - dann diesen Teil ueberspringen.
+4. Mit den Pfeilen die Reihenfolge aendern und mit dem Papierkorb einen
+   Eintrag wieder entfernen, damit du beides einmal gesehen hast.
+5. Auf "Panel-Einstellungen speichern" klicken.
+
+Erwartet: Eine gruene Meldung "Panel gespeichert. Im Browser-Panel
+Aktualisieren waehlen."
+
+
+SCHRITT 3 - IM PANEL PRUEFEN
+
+1. Eine beliebige normale Webseite oeffnen, zum Beispiel heise.de.
+2. Das OMNIDESK-Symbol anklicken oder Alt+Umschalt+O druecken.
+3. Oben im Panel steht jetzt der Bereich "Schnellzugriffe".
+4. Falls dort noch nichts steht: auf "Aktualisieren" klicken.
+
+Erwartet: Deine ausgewaehlten Eintraege erscheinen als Schaltflaechen, in
+deiner Reihenfolge.
+
+5. Auf einen Modul-Schnellzugriff klicken.
+
+Erwartet: Das Modul oeffnet sich in einem neuen Tab in deiner OMNIDESK-App.
+
+6. Auf einen Link-Schnellzugriff klicken.
+
+Erwartet: Die Webseite aus deinem Link-Manager oeffnet sich in einem neuen
+Tab.
+
+
+SCHRITT 4 - BEFEHLE PRUEFEN
+
+1. Im Panel den Bereich "Befehle" ansehen.
+
+Erwartet: Deine Befehle aus der Befehlsbibliothek mit Titel, Kategorie und
+dem Befehl selbst.
+
+2. Oben in das Suchfeld einen Teil eines Befehlstitels tippen.
+
+Erwartet: Die Liste filtert sofort, und darueber steht "x von y Befehlen".
+
+3. Bei einem Befehl auf "Befehl kopieren" klicken.
+
+Erwartet: Meldung "Befehl in die Zwischenablage kopiert."
+
+4. In ein beliebiges Textfeld Strg+V druecken und pruefen, ob der richtige
+   Befehl eingefuegt wird.
+
+Falls Chrome das Kopieren verweigert, erscheint stattdessen der Hinweis
+"Kopieren wurde vom Browser abgelehnt. Befehl von Hand markieren." Das waere
+eine Auffaelligkeit - bitte notieren, mit welcher Chrome-Version.
+
+
+SCHRITT 5 - EINSTELLUNGEN GEGENPRUEFEN
+
+1. Zurueck in OMNIDESK, Karte "Panel im Browser einrichten".
+2. Den Haken bei "Eigene Befehle im Panel anzeigen" entfernen.
+3. Speichern.
+4. Im Panel auf "Aktualisieren" klicken.
+
+Erwartet: Der gesamte Bereich "Befehle" verschwindet.
+
+5. Haken wieder setzen, diesmal zusaetzlich eine Kategorie auswaehlen.
+6. Speichern, im Panel aktualisieren.
+
+Erwartet: Nur noch Befehle dieser Kategorie erscheinen.
+
+
+SCHRITT 6 - GRENZFALL PRUEFEN (optional, aber aussagekraeftig)
+
+1. Einen Link, den du als Schnellzugriff eingerichtet hast, im Link-Manager
+   loeschen.
+2. Im Panel auf "Aktualisieren" klicken.
+
+Erwartet: Der Eintrag verschwindet NICHT still, sondern bleibt blass sichtbar.
+Ein Klick darauf meldet "Dieses Ziel ist nicht mehr verfuegbar. In OMNIDESK
+unter Browser-Kommandoebene pruefen."
+
+Das ist Absicht: Die App soll nicht so tun, als haette es den Eintrag nie
+gegeben.
+
+
+WAS ICH GEPRUEFT HABE UND WAS NICHT
+
+Geprueft habe ich:
+- 168 automatische Tests bestanden, keine fehlgeschlagen (vorher 165).
+- Die drei neuen Tests pruefen die echte API gegen eine isolierte Datenbank:
+  dass nur bekannte Module und eigene Links gespeichert werden koennen, dass
+  fremde Links und fremde Befehle nicht sichtbar werden, dass ein veralteter
+  Versionsstand nicht ueberschreibt und dass die Erweiterung die
+  Konfiguration lesen, aber NICHT schreiben kann.
+- Typpruefung sauber, Lint unveraendert bei den sieben bekannten Warnungen.
+- Build erfolgreich, Erweiterungspaket neu erzeugt.
+- Bereitstellung auf Vercel erfolgreich.
+
+NICHT geprueft habe ich:
+- Die Erweiterung selbst in deinem Chrome. Das kann ich nicht: Sie ist fest an
+  die Produktionsadresse gebunden und laesst sich bei mir nicht laden. Alle
+  Schritte oben sind deshalb echte Tests, keine Wiederholung von etwas, das
+  ich schon gesehen haette.
+- Das Kopieren in die Zwischenablage aus dem Seitenpanel heraus. Chrome kann
+  das je nach Version einschraenken; deshalb gibt es den Rueckfall-Hinweis.
+
+
+WENN ETWAS NICHT FUNKTIONIERT
+
+Bitte notiere jeweils:
+- In welchem Schritt es war.
+- Was du gemacht hast.
+- Was du erwartet hast.
+- Was tatsaechlich passiert ist.
+
+Wenn im Panel eine Fehlermeldung erscheint, bitte den genauen Wortlaut
+mitschreiben. Ich arbeite das dann morgen mit dir durch.
+
+
+WAS DAMIT NOCH NICHT GEHT
+
+Aus der Seite heraus eine Aufgabe oder Notiz anlegen. Das waere Stufe 2 und
+braucht Schreibrechte fuer die Erweiterung, die sie heute bewusst nicht hat.
+Darueber entscheidest du, wenn Stufe 1 im Alltag taugt.

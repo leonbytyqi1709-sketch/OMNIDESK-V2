@@ -1,11 +1,14 @@
 import {
+  boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core'
+import type { BrowserPanelEntry } from '../../types/browser-desk'
 import { projects } from './projects'
 export const browserItems = pgTable(
   'v2_browser_items',
@@ -54,4 +57,15 @@ export const browserDevices = pgTable('v2_browser_devices', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+})
+/** Konfiguration des Browser-Seitenpanels, eine Zeile je Benutzer. */
+export const browserPanel = pgTable('v2_browser_panel', {
+  userId: text('user_id').primaryKey(),
+  entries: jsonb('entries').$type<BrowserPanelEntry[]>().notNull().default([]),
+  showCommands: boolean('show_commands').notNull().default(true),
+  commandCategory: text('command_category'),
+  version: integer('version').notNull().default(1),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 })
