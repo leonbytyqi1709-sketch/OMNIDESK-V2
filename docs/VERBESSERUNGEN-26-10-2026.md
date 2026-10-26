@@ -93,14 +93,12 @@ heraus zu konfigurieren — etwa eine eigene Seitenleiste im Browser mit selbst 
 Schnellzugriffen und eigenen Befehlen. Das ist ein eigenes Paket mit Entwurf, Abstimmung und
 neuer Erweiterungsversion. Offen.
 
-### 6 · Werkzeug für Proxmox VE
+### 6 · Werkzeug für Proxmox VE — zurückgestellt
 
-Der Nutzer arbeitet im Betrieb intensiv mit Proxmox VE und wünscht sich dafür ein Modul. Denkbar
-wären eine lesende Übersicht über Knoten, virtuelle Maschinen und Container mit Zustand und
-Auslastung, die Sichtbarkeit von Sicherungen und Snapshots sowie eine Verbindung zu Mission
-Control. Zu klären sind Erreichbarkeit der Proxmox-API aus der Cloud, Art des Zugangs
-(API-Token mit eingeschränkten Rechten) und ob Aktionen wie Start oder Stopp überhaupt erlaubt
-sein sollen. Offen.
+Der Nutzer hat das Thema am 26.10.2026 selbst zurückgestellt: Der Aufwand stünde in keinem
+Verhältnis zum Nutzen, weil er nur wenige Server betreibt und das Werkzeug selten gebraucht
+würde. Nicht erneut anbieten und nicht als offene Aufgabe führen. Eine spätere Wiederaufnahme
+bleibt dem Nutzer überlassen.
 
 ## Offen aus der laufenden Arbeit
 
