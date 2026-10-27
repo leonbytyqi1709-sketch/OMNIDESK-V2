@@ -103,3 +103,48 @@ export const browserPanelInput = z
     version: z.number().int().positive(),
   })
   .strict()
+/**
+ * Erfassung aus dem Browser-Panel.
+ *
+ * Die Kennung kommt vom Panel, damit ein wiederholter Versuch nach einem
+ * Verbindungsabbruch nichts doppelt anlegt. Die Quelle wird wie überall auf
+ * eine unterstützte Seitenadresse normalisiert.
+ */
+export const browserCaptureInput = z
+  .object({
+    id: z.uuid(),
+    kind: z.enum(['note', 'task', 'projectTask']),
+    title: z.string().trim().min(1).max(300),
+    text: z.string().max(20_000),
+    source: z
+      .object({
+        url: z
+          .string()
+          .max(4096)
+          .transform((value, ctx) => {
+            try {
+              return browserSourceUrl(value)
+            } catch {
+              ctx.addIssue({
+                code: 'custom',
+                message: 'Ungültige oder nicht unterstützte Seitenadresse.',
+              })
+              return z.NEVER
+            }
+          }),
+        title: z.string().trim().max(300),
+      })
+      .strict()
+      .nullable(),
+    projectId: z.uuid().nullable(),
+  })
+  .strict()
+  .refine(
+    (value) => value.kind !== 'projectTask' || Boolean(value.projectId),
+    'Für eine Projektaufgabe fehlt das Projekt.',
+  )
+  .refine(
+    (value) => value.kind === 'projectTask' || !value.projectId,
+    'Ein Projekt ist nur bei Projektaufgaben vorgesehen.',
+  )
+

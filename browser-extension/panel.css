@@ -212,6 +212,26 @@ a {
   font-size: 11px;
   padding: 6px 8px;
 }
+.source {
+  font-size: 11px;
+  color: #b4b4bf;
+  background: #121216;
+  border: 1px solid #303039;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+#result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+#result button {
+  font-size: 11px;
+  padding: 6px 8px;
+}
 [hidden] {
   display: none !important;
 }

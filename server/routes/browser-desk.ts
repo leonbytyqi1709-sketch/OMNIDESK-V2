@@ -8,11 +8,13 @@ import {
   browserPairInput,
   browserExchangeInput,
   browserPanelInput,
+  browserCaptureInput,
 } from '../browser-policy'
 import { browserSourceUrl } from '../../src/lib/browser-url'
 import * as storage from '../browser-storage'
 const versionInput = z.object({ version: z.number().int().positive() }).strict()
 export const browserDataDependencies = {
+  captureBrowserEntry: storage.captureBrowserEntry,
   browserPanelView: storage.browserPanelView,
   browserProjects: storage.browserProjects,
   ownsBrowserProject: storage.ownsBrowserProject,
@@ -59,6 +61,26 @@ export function createBrowserDataRoute(deps = browserDataDependencies) {
   route.get('/projects', async (c) =>
     c.json(await deps.browserProjects(c.get('userId'))),
   )
+  // Anlegen in Notizen, Aufgaben oder Projektaufgaben. Bewusst nur anlegen:
+  // Ändern und Löschen bleiben den Modulen in der angemeldeten App vorbehalten.
+  route.post('/capture', async (c) => {
+    const input = browserCaptureInput.safeParse(
+      await c.req.json().catch(() => null),
+    )
+    if (!input.success)
+      return c.json(
+        {
+          error:
+            input.error.issues[0]?.message ??
+            'Ziel, Titel, Text oder Projekt prüfen.',
+        },
+        400,
+      )
+    return c.json(
+      await deps.captureBrowserEntry(c.get('userId'), input.data),
+      201,
+    )
+  })
   route.get('/items', async (c) => {
     const projectId = c.req.query('projectId'),
       rawUrl = c.req.query('url')

@@ -101,3 +101,43 @@ Nach einem Update ist die Erweiterung in `chrome://extensions` neu zu laden.
 Stufe 2 – Aufgaben oder Notizen aus der aktuellen Seite anlegen – ist nicht umgesetzt. Sie würde
 der Erweiterung erstmals Schreibrechte geben und bleibt eine eigene Entscheidung des Nutzers.
 
+
+## Erfassen statt Anmerken · 27.10.2026
+
+Der Nutzer hat Stufe 1 ausprobiert und klargestellt, dass sein Ziel nicht getroffen war: Er will
+im Browser eine schnelle Notiz schreiben und sie anschließend im **Notizen-Modul** wiederfinden,
+nicht in einem eigenen Anmerkungsbereich. Nach gemeinsamer Abstimmung umgesetzt;
+Erweiterungsversion **1.2.0**.
+
+**Schnell erfassen.** Das Panel legt auf Wunsch eine Notiz, eine persönliche Aufgabe oder eine
+Projektaufgabe an. Aufgaben entstehen offen mit mittlerer Priorität, Projektaufgaben im Backlog
+des gewählten eigenen Projekts. Eine übernommene Seite wird bei Notiz und Aufgabe automatisch
+unter den Text gesetzt; der eingegebene Text bleibt davor unverändert stehen. Projektaufgaben
+haben in der Datenbank kein Textfeld, dort werden weder Text noch Quelle gespeichert – das Panel
+weist darauf hin, statt es zu verschweigen.
+
+Das Lesen der Seite bleibt eine bewusste Handlung: Titel, Adresse und Textauswahl werden erst auf
+Klick übernommen, und bereits ausgefüllte Felder werden dabei nie überschrieben.
+
+**Keine Doppelungen.** Die Kennung eines Eintrags entsteht im Panel. Ein zweiter Versuch mit
+derselben Kennung legt nichts doppelt an, sondern meldet den vorhandenen Eintrag zurück. Gehört
+die Kennung einem anderen Konto, wird die Erfassung abgelehnt, ohne etwas über den fremden
+Eintrag preiszugeben.
+
+**Rechte.** `POST /api/browser/capture` liegt in der gemeinsamen Datenroute; der Gerätezugang der
+Erweiterung darf damit erstmals schreiben. Das ist bewusst und eng begrenzt: ausschließlich
+Anlegen in Notizen, Aufgaben und Projektaufgaben. Kein Ändern, kein Löschen, kein Zugriff auf
+Vault, Kontosicherheit oder andere Module, und weiterhin kein Schreibweg auf die
+Panel-Konfiguration. Projektbesitz wird serverseitig geprüft. Der Zugang bleibt jederzeit
+widerrufbar.
+
+**Altbestand.** Der getrennte Anmerkungsbereich nimmt keine neuen Einträge mehr auf. Vorhandene
+Einträge bleiben erhalten und in der App unter *Frühere Browser-Anmerkungen* lesbar, bearbeitbar
+und löschbar. Es wurde nichts migriert und nichts gelöscht.
+
+**Prüfgrenzen.** Zusätzliche Tests führen die tatsächliche API gegen isoliertes PostgreSQL/WASM
+aus und prüfen Zieltabellen, Quellenanhang, Idempotenz, Besitzgrenzen, Projektprüfung und die
+weiterhin fehlende Schreibmöglichkeit auf die Konfiguration. Die Erweiterung selbst wurde nicht
+in einem Browser ausgeführt; Installation und Bedienung bestätigt der Nutzer anhand von
+`TESTANLEITUNG-CLAUDE-CODE.txt`.
+

@@ -135,6 +135,8 @@ async function handle(message) {
   }
   const operations = {
     PANEL: () => request('/data/panel', 'GET', undefined, value.token),
+    SAVE_CAPTURE: () =>
+      request('/data/capture', 'POST', message.input, value.token),
     PROJECTS: () => request('/data/projects', 'GET', undefined, value.token),
     ITEMS: () =>
       request(

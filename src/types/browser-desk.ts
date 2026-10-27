@@ -72,3 +72,29 @@ export interface BrowserPanelView extends BrowserPanelConfig {
   commandCategories: string[]
 }
 
+/** Zielmodul einer Erfassung aus dem Browser. */
+export type BrowserCaptureKind = 'note' | 'task' | 'projectTask'
+
+/** Was das Panel zum Erfassen schickt. */
+export interface BrowserCaptureInput {
+  /** Vom Panel erzeugt, damit ein zweiter Versuch nichts doppelt anlegt */
+  id: string
+  kind: BrowserCaptureKind
+  title: string
+  text: string
+  /** Besuchte Seite; wird bei Notiz und Aufgabe automatisch angehängt */
+  source: { url: string; title: string } | null
+  /** Nur für Projektaufgaben */
+  projectId: string | null
+}
+
+/** Ergebnis einer Erfassung, mit Weg zum angelegten Eintrag. */
+export interface BrowserCaptureResult {
+  kind: BrowserCaptureKind
+  id: string
+  /** Pfad in OMNIDESK, an dem der Eintrag zu finden ist */
+  href: string
+  /** true, wenn genau diese Erfassung bereits vorlag */
+  alreadyCaptured: boolean
+}
+

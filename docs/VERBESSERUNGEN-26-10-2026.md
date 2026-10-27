@@ -101,7 +101,7 @@ verschwindet auch das Widget.
 Bewusst **nicht** gebaut: GitHub und Deployments (stehen bereits in Mission Control, wären eine
 Doppelung), Kontenkarte und Browser-Quellen (ändern sich zu selten für eine Dauerkachel).
 
-### 5 · Browser-Kommandoebene mit echtem Nutzen
+### 5 · Browser-Kommandoebene mit echtem Nutzen — umgesetzt, siehe 27.10.2026
 
 Der Nutzer empfindet das Modul als zu schwach. Gewünscht ist, die Kommandoebene aus OMNIDESK
 heraus zu konfigurieren — etwa eine eigene Seitenleiste im Browser mit selbst gewählten Modulen,
@@ -121,3 +121,11 @@ bleibt dem Nutzer überlassen.
   (siehe [GESAMTTEST-AUFFAELLIGKEITEN.md](GESAMTTEST-AUFFAELLIGKEITEN.md), Punkt 1).
 - Das Neon-Monitoring ist nach wie vor nicht eingerichtet; ohne Einrichtung bleiben Historie und
   Diagramme leer.
+
+## Nachtrag 27.10.2026
+
+Punkt 5 ist umgesetzt, allerdings erst im zweiten Anlauf. Die zunächst gebaute lesende Stufe traf
+das Ziel des Nutzers nicht: Er wollte von Anfang an im Browser erfassen und die Einträge in seinen
+normalen Modulen wiederfinden. Nach gemeinsamer Klärung legt das Panel jetzt Notizen, Aufgaben und
+Projektaufgaben direkt an. Einzelheiten in docs/BROWSER-KOMMANDOEBENE.md.
+

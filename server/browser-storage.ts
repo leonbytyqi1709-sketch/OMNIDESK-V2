@@ -7,6 +7,8 @@ import {
   MAX_BROWSER_PANEL_COMMANDS,
 } from '../src/lib/browser-panel'
 import type {
+  BrowserCaptureInput,
+  BrowserCaptureResult,
   BrowserDevice,
   BrowserItem,
   BrowserItemInput,
@@ -364,6 +366,93 @@ export async function saveBrowserPanel(
     showCommands: Boolean(row.showCommands),
     commandCategory: (row.commandCategory as string | null) ?? null,
     version: Number(row.version),
+  }
+}
+
+/**
+ * Quellenangabe, die unter einen erfassten Text gehängt wird. Der Titel stammt
+ * von der Seite selbst und wird als Text behandelt, nie als Markup.
+ */
+function captureSource(source: BrowserCaptureInput['source']) {
+  if (!source) return ''
+  const label = source.title.trim()
+  const lines = ['', '', 'Quelle: ' + (label || source.url)]
+  if (label) lines.push(source.url)
+  return lines.join('\n')
+}
+
+/**
+ * Erfassung aus dem Browser in das jeweilige Modul.
+ *
+ * Es wird ausschließlich angelegt, nie verändert oder gelöscht. Die Kennung
+ * kommt vom Panel: Ein zweiter Versuch mit derselben Kennung legt nichts
+ * doppelt an, sondern meldet den vorhandenen Eintrag zurück.
+ *
+ * Projektaufgaben speichern nur einen Titel – die Tabelle hat kein Textfeld.
+ * Die Quelle geht dort deshalb bewusst nicht mit; das Panel weist darauf hin.
+ */
+export async function captureBrowserEntry(
+  userId: string,
+  input: BrowserCaptureInput,
+): Promise<BrowserCaptureResult> {
+  const sql = monitoringSql()
+  const body = input.text.trim() + captureSource(input.source)
+
+  if (input.kind === 'projectTask') {
+    const [row] =
+      await sql`INSERT INTO project_tasks(id,user_id,project_id,title)
+      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title}
+      WHERE EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
+      ON CONFLICT(id) DO NOTHING RETURNING id`
+    if (row)
+      return {
+        kind: input.kind,
+        id: String(row.id),
+        href: `/projects?project=${input.projectId}`,
+        alreadyCaptured: false,
+      }
+    const [existing] =
+      await sql`SELECT project_id AS "projectId" FROM project_tasks WHERE id=${input.id} AND user_id=${userId}`
+    if (!existing)
+      throw new BrowserDeskError(
+        'Projekt gehört nicht zu deinem Konto oder ist nicht mehr vorhanden. Projekt neu auswählen.',
+        409,
+      )
+    return {
+      kind: input.kind,
+      id: input.id,
+      href: `/projects?project=${String(existing.projectId)}`,
+      alreadyCaptured: true,
+    }
+  }
+
+  const table = input.kind === 'note' ? 'notes' : 'tasks'
+  const [row] =
+    input.kind === 'note'
+      ? await sql`INSERT INTO notes(id,user_id,title,content) VALUES(${input.id}::uuid,${userId},${input.title},${body}) ON CONFLICT(id) DO NOTHING RETURNING id`
+      : await sql`INSERT INTO tasks(id,user_id,title,description,priority,status) VALUES(${input.id}::uuid,${userId},${input.title},${body},'medium','todo') ON CONFLICT(id) DO NOTHING RETURNING id`
+  if (row)
+    return {
+      kind: input.kind,
+      id: String(row.id),
+      href: input.kind === 'note' ? `/notes?note=${input.id}` : '/tasks',
+      alreadyCaptured: false,
+    }
+
+  const [existing] = await sql.query(
+    `SELECT id FROM ${table} WHERE id=$1 AND user_id=$2`,
+    [input.id, userId],
+  )
+  if (!existing)
+    throw new BrowserDeskError(
+      'Diese Erfassung gehört zu einem anderen Konto. Panel neu laden und erneut versuchen.',
+      409,
+    )
+  return {
+    kind: input.kind,
+    id: input.id,
+    href: input.kind === 'note' ? `/notes?note=${input.id}` : '/tasks',
+    alreadyCaptured: true,
   }
 }
 

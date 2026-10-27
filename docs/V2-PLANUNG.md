@@ -486,3 +486,12 @@ Modulziele werden serverseitig gegen eine gemeinsame Liste geprüft, Linkziele g
 
 Drei zusätzliche Tests gegen isoliertes PostgreSQL/WASM prüfen Zielprüfung, Besitzgrenzen, Versionsschutz und die fehlende Schreibmöglichkeit der Erweiterung; insgesamt 168 Tests bestanden. Die Erweiterung selbst wurde nicht in einem Browser ausgeführt und ist vom Nutzer zu bestätigen (TESTANLEITUNG-CLAUDE-CODE.txt). Stufe 2 mit Schreibrechten bleibt offen und unbeauftragt. Einzelheiten: docs/BROWSER-KOMMANDOEBENE.md.
 
+
+### Browser-Kommandoebene: Erfassen statt Anmerken · 27.10.2026
+
+Der Nutzer probiert Stufe 1 aus und stellt klar, dass sein eigentliches Ziel verfehlt wurde: Er will im Browser eine schnelle Notiz schreiben und sie im Notizen-Modul wiederfinden. Nach gemeinsamer Klärung legt das Panel jetzt Notizen, persönliche Aufgaben und Projektaufgaben direkt in den vorhandenen Modulen an; eine übernommene Seite wird bei Notiz und Aufgabe automatisch unter den Text gesetzt. Projektaufgaben haben kein Textfeld, dort entfallen Text und Quelle mit sichtbarem Hinweis. Erweiterungsversion 1.2.0.
+
+Der Gerätezugang der Erweiterung darf damit erstmals schreiben, eng begrenzt auf das Anlegen dieser drei Eintragsarten. Kein Ändern, kein Löschen, kein Zugriff auf Vault oder andere Module, kein Schreibweg auf die Panel-Konfiguration; Projektbesitz wird serverseitig geprüft. Die vom Panel vergebene Kennung verhindert Doppelungen bei einem zweiten Versuch. Der getrennte Anmerkungsbereich nimmt keine neuen Einträge mehr auf; vorhandene bleiben als Altbestand erhalten, es wurde nichts migriert und nichts gelöscht.
+
+170 Tests bestanden. Die Erweiterung selbst wurde nicht in einem Browser ausgeführt; Bestätigung durch den Nutzer anhand TESTANLEITUNG-CLAUDE-CODE.txt steht aus. Einzelheiten: docs/BROWSER-KOMMANDOEBENE.md.
+

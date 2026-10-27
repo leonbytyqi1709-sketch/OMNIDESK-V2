@@ -7776,6 +7776,33 @@ var browserPanelInput = z37.object({
   commandCategory: z37.string().trim().min(1).max(100).nullable(),
   version: z37.number().int().positive()
 }).strict();
+var browserCaptureInput = z37.object({
+  id: z37.uuid(),
+  kind: z37.enum(["note", "task", "projectTask"]),
+  title: z37.string().trim().min(1).max(300),
+  text: z37.string().max(2e4),
+  source: z37.object({
+    url: z37.string().max(4096).transform((value, ctx) => {
+      try {
+        return browserSourceUrl(value);
+      } catch {
+        ctx.addIssue({
+          code: "custom",
+          message: "Ung\xFCltige oder nicht unterst\xFCtzte Seitenadresse."
+        });
+        return z37.NEVER;
+      }
+    }),
+    title: z37.string().trim().max(300)
+  }).strict().nullable(),
+  projectId: z37.uuid().nullable()
+}).strict().refine(
+  (value) => value.kind !== "projectTask" || Boolean(value.projectId),
+  "F\xFCr eine Projektaufgabe fehlt das Projekt."
+).refine(
+  (value) => value.kind === "projectTask" || !value.projectId,
+  "Ein Projekt ist nur bei Projektaufgaben vorgesehen."
+);
 
 // server/browser-storage.ts
 init_neon_storage();
@@ -8044,10 +8071,71 @@ async function saveBrowserPanel(userId, input) {
     version: Number(row.version)
   };
 }
+function captureSource(source2) {
+  if (!source2) return "";
+  const label = source2.title.trim();
+  const lines = ["", "", "Quelle: " + (label || source2.url)];
+  if (label) lines.push(source2.url);
+  return lines.join("\n");
+}
+async function captureBrowserEntry(userId, input) {
+  const sql10 = monitoringSql();
+  const body = input.text.trim() + captureSource(input.source);
+  if (input.kind === "projectTask") {
+    const [row2] = await sql10`INSERT INTO project_tasks(id,user_id,project_id,title)
+      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title}
+      WHERE EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
+      ON CONFLICT(id) DO NOTHING RETURNING id`;
+    if (row2)
+      return {
+        kind: input.kind,
+        id: String(row2.id),
+        href: `/projects?project=${input.projectId}`,
+        alreadyCaptured: false
+      };
+    const [existing2] = await sql10`SELECT project_id AS "projectId" FROM project_tasks WHERE id=${input.id} AND user_id=${userId}`;
+    if (!existing2)
+      throw new BrowserDeskError(
+        "Projekt geh\xF6rt nicht zu deinem Konto oder ist nicht mehr vorhanden. Projekt neu ausw\xE4hlen.",
+        409
+      );
+    return {
+      kind: input.kind,
+      id: input.id,
+      href: `/projects?project=${String(existing2.projectId)}`,
+      alreadyCaptured: true
+    };
+  }
+  const table = input.kind === "note" ? "notes" : "tasks";
+  const [row] = input.kind === "note" ? await sql10`INSERT INTO notes(id,user_id,title,content) VALUES(${input.id}::uuid,${userId},${input.title},${body}) ON CONFLICT(id) DO NOTHING RETURNING id` : await sql10`INSERT INTO tasks(id,user_id,title,description,priority,status) VALUES(${input.id}::uuid,${userId},${input.title},${body},'medium','todo') ON CONFLICT(id) DO NOTHING RETURNING id`;
+  if (row)
+    return {
+      kind: input.kind,
+      id: String(row.id),
+      href: input.kind === "note" ? `/notes?note=${input.id}` : "/tasks",
+      alreadyCaptured: false
+    };
+  const [existing] = await sql10.query(
+    `SELECT id FROM ${table} WHERE id=$1 AND user_id=$2`,
+    [input.id, userId]
+  );
+  if (!existing)
+    throw new BrowserDeskError(
+      "Diese Erfassung geh\xF6rt zu einem anderen Konto. Panel neu laden und erneut versuchen.",
+      409
+    );
+  return {
+    kind: input.kind,
+    id: input.id,
+    href: input.kind === "note" ? `/notes?note=${input.id}` : "/tasks",
+    alreadyCaptured: true
+  };
+}
 
 // server/routes/browser-desk.ts
 var versionInput = z38.object({ version: z38.number().int().positive() }).strict();
 var browserDataDependencies = {
+  captureBrowserEntry,
   browserPanelView,
   browserProjects,
   ownsBrowserProject,
@@ -8091,6 +8179,22 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
     "/projects",
     async (c) => c.json(await deps.browserProjects(c.get("userId")))
   );
+  route.post("/capture", async (c) => {
+    const input = browserCaptureInput.safeParse(
+      await c.req.json().catch(() => null)
+    );
+    if (!input.success)
+      return c.json(
+        {
+          error: input.error.issues[0]?.message ?? "Ziel, Titel, Text oder Projekt pr\xFCfen."
+        },
+        400
+      );
+    return c.json(
+      await deps.captureBrowserEntry(c.get("userId"), input.data),
+      201
+    );
+  });
   route.get("/items", async (c) => {
     const projectId = c.req.query("projectId"), rawUrl = c.req.query("url");
     if (projectId && !z38.uuid().safeParse(projectId).success)

@@ -235,11 +235,10 @@ function Workspace() {
             Browser-Kommandoebene
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Bewusst gespeicherte Quellen, Textpassagen und Anmerkungen –
-            persönlich oder im Projekt.
+            Im Browser erfasst, in deinen Modulen gespeichert: Notizen,
+            Aufgaben und Projektaufgaben direkt aus der Seite heraus.
           </p>
         </div>
-        <Button onClick={() => setEditing(null)}>Neue Anmerkung</Button>
       </header>
       <BrowserPairing />
       <PanelSettings />
@@ -249,10 +248,12 @@ function Workspace() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Ein Seitenpanel neben deiner Webseite. Text markieren, Kontext
-            übernehmen, prüfen und speichern. Keine Aufzeichnung deines
-            Browserverlaufs und kein automatisches Lesen aller Webseiten. Chrome
-            ab Version 116; aktuelle Edge-Versionen sind kompatibel.
+            Ein Seitenpanel neben deiner Webseite. Gedanken festhalten, Seite
+            auf Klick übernehmen und als Notiz, Aufgabe oder Projektaufgabe
+            speichern – zu finden in den jeweiligen Modulen, nicht in einem
+            Extrabereich. Keine Aufzeichnung deines Browserverlaufs und kein
+            automatisches Lesen aller Webseiten. Chrome ab Version 116;
+            aktuelle Edge-Versionen sind kompatibel.
           </p>
           <Button asChild>
             <a href="/downloads/omnidesk-browser.zip" download>
@@ -279,9 +280,10 @@ function Workspace() {
                 wählen. Die Freigabe bestätigst du in dieser angemeldeten App.
               </li>
               <li>
-                Auf einer Webseite Text markieren, das OMNIDESK-Symbol anklicken
-                oder <kbd>Alt+Umschalt+O</kbd> drücken. Im Panel „Seitenkontext
-                übernehmen“ wählen.
+                Auf einer Webseite das OMNIDESK-Symbol anklicken oder{' '}
+                <kbd>Alt+Umschalt+O</kbd> drücken. Im Panel unter „Schnell
+                erfassen“ das Ziel wählen, bei Bedarf „Seite übernehmen“ und
+                speichern.
               </li>
             </ol>
             <p className="mt-3 text-xs text-muted-foreground">
@@ -310,6 +312,17 @@ function Workspace() {
           }
         />
       )}
+      <div className="space-y-2 border-t border-border pt-6">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Frühere Browser-Anmerkungen
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Diese Einträge stammen aus der ersten Version der Kommandoebene und
+          liegen in einem eigenen Bereich. Sie bleiben hier lesbar, bearbeitbar
+          und löschbar. Neu erfasste Inhalte landen stattdessen direkt in
+          Notizen, Aufgaben und Projektaufgaben.
+        </p>
+      </div>
       <div className="flex flex-wrap gap-3">
         <Input
           aria-label="Browser-Anmerkungen durchsuchen"
@@ -368,8 +381,8 @@ function Workspace() {
       )}
       {!list.isPending && !list.error && !items.length && (
         <p className="rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
-          Noch keine passenden Browser-Anmerkungen. Speichere eine Auswahl über
-          die Chrome-Erweiterung oder lege hier eine Anmerkung an.
+          Keine früheren Browser-Anmerkungen vorhanden. Neu erfasste Inhalte
+          liegen in Notizen, Aufgaben und Projektaufgaben.
         </p>
       )}
       <div className="grid items-start gap-4 lg:grid-cols-2">

@@ -1,23 +1,30 @@
+const APP = 'https://omnidesk-v2-beta.vercel.app'
 const el = (id) => document.getElementById(id)
+const KIND_HINTS = {
+  note: 'Die Notiz erscheint im Notizen-Modul. Eine übernommene Seite wird unter den Text gesetzt.',
+  task: 'Die Aufgabe erscheint im Aufgaben-Modul, offen und mit mittlerer Priorität. Eine übernommene Seite wird in die Beschreibung gesetzt.',
+  projectTask:
+    'Die Projektaufgabe landet im Backlog des gewählten Projekts. Projektaufgaben speichern nur einen Titel – Text und Quelle werden dort nicht abgelegt.',
+}
+const emptyDraft = () => ({
+  ownerDeviceId: null,
+  id: crypto.randomUUID(),
+  kind: 'note',
+  title: '',
+  text: '',
+  projectId: '',
+  source: null,
+})
 let deviceId = null,
   authChanged = false
-let state = {
-    ownerDeviceId: null,
-    id: crypto.randomUUID(),
-    version: null,
-    url: '',
-    title: '',
-    selection: '',
-    annotation: '',
-    projectId: null,
-  },
+let state = emptyDraft(),
   connected = false,
   busy = false,
   dirty = false,
-  items = [],
   panel = null,
   commandFilter = '',
   draftKey = 'draft'
+
 async function send(message) {
   const reply = await chrome.runtime.sendMessage(message)
   if (!reply?.ok)
@@ -31,14 +38,33 @@ function message(text, error = false) {
   el('message').className = error ? 'error' : 'success'
 }
 function fields() {
-  for (const key of ['url', 'title', 'selection', 'annotation'])
-    el(key).value = state[key]
+  el('kind').value = state.kind
+  el('title').value = state.title
+  el('text').value = state.text
   el('project').value = state.projectId ?? ''
+  el('kind-hint').textContent = KIND_HINTS[state.kind] ?? ''
+  el('project-field').hidden = state.kind !== 'projectTask'
+  el('text-field').hidden = state.kind === 'projectTask'
+  if (state.source) {
+    el('source').hidden = false
+    el('source').textContent =
+      (state.source.title ? state.source.title + ' · ' : '') + state.source.url
+    el('source-state').textContent =
+      state.kind === 'projectTask'
+        ? 'Seite übernommen. Bei Projektaufgaben wird sie nicht mitgespeichert.'
+        : 'Seite übernommen. Sie wird automatisch unter deinen Text gesetzt.'
+  } else {
+    el('source').hidden = true
+    el('source').textContent = ''
+    el('source-state').textContent =
+      'Noch keine Seite übernommen. Ohne Übernahme wird nur dein Text gespeichert.'
+  }
 }
 function read() {
-  for (const key of ['title', 'selection', 'annotation'])
-    state[key] = el(key).value
-  state.projectId = el('project').value || null
+  state.kind = el('kind').value
+  state.title = el('title').value
+  state.text = el('text').value
+  state.projectId = el('project').value || ''
 }
 async function persist() {
   read()
@@ -55,7 +81,7 @@ async function task(fn) {
   } finally {
     busy = false
     document.querySelectorAll('button').forEach((b) => (b.disabled = false))
-    el('save').disabled = !connected || !state.url
+    el('save').disabled = !connected
     if (authChanged) {
       authChanged = false
       void task(status)
@@ -66,20 +92,10 @@ async function status() {
   const value = await send({ type: 'STATUS' })
   connected = value.connected
   deviceId = value.deviceId
+  // Kontowechsel: Ein Entwurf eines anderen Geräts darf nicht übernommen werden.
   if (connected && state.ownerDeviceId && state.ownerDeviceId !== deviceId) {
-    state = {
-      ownerDeviceId: deviceId,
-      id: crypto.randomUUID(),
-      version: null,
-      url: '',
-      title: '',
-      selection: '',
-      annotation: '',
-      projectId: null,
-    }
+    state = emptyDraft()
     dirty = false
-    items = []
-    render()
   }
   if (connected) state.ownerDeviceId = deviceId
   el('connection').textContent = connected
@@ -88,126 +104,30 @@ async function status() {
     : 'Nicht verbunden. Anmeldung und Freigabe erfolgen in deiner OMNIDESK-App.'
   el('connect').hidden = connected
   el('disconnect').hidden = !connected
-  el('save').disabled = !connected || !state.url
+  el('capture-card').hidden = !connected
+  el('save').disabled = !connected
   if (!connected) {
     if (state.ownerDeviceId) {
-      state = {
-        ownerDeviceId: null,
-        id: crypto.randomUUID(),
-        version: null,
-        url: '',
-        title: '',
-        selection: '',
-        annotation: '',
-        projectId: null,
-      }
+      state = emptyDraft()
       dirty = false
-      fields()
     }
-    items = []
-    render()
+    fields()
     await loadPanel()
     return
   }
   const projects = await send({ type: 'PROJECTS' }),
     select = el('project')
-  select.replaceChildren(new Option('Persönlich · ohne Projekt', ''))
+  select.replaceChildren(new Option('Projekt wählen…', ''))
   for (const p of projects) select.add(new Option(p.name, p.id))
   if (state.projectId && !projects.some((p) => p.id === state.projectId)) {
-    state.projectId = null
+    state.projectId = ''
     message(
-      'Das vorherige Projekt ist nicht mehr zugänglich. Bitte neu zuordnen.',
+      'Das vorherige Projekt ist nicht mehr zugänglich. Bitte neu auswählen.',
       true,
     )
   }
   fields()
   await loadPanel()
-  await load()
-}
-async function load() {
-  if (!connected || !state.url) {
-    el('list-state').textContent = connected
-      ? 'Zuerst einen Seitenkontext übernehmen.'
-      : 'Verbinde die Erweiterung, um deine gespeicherten Anmerkungen zu laden.'
-    return
-  }
-  items = []
-  render()
-  el('list-state').textContent = 'Anmerkungen werden geladen…'
-  const data = await send({ type: 'ITEMS', url: state.url })
-  items = data.items
-  render()
-  el('list-state').textContent = items.length
-    ? items.length +
-      ' Einträge zur übernommenen Quelle.' +
-      (data.limited ? ' Der angezeigte Ausschnitt ist begrenzt.' : '')
-    : 'Noch keine Anmerkungen zu dieser Quelle.'
-}
-function render() {
-  const host = el('items')
-  host.replaceChildren()
-  for (const item of items) {
-    const section = document.createElement('article')
-    section.className = 'item'
-    const h = document.createElement('h3')
-    h.textContent = item.title
-    section.append(h)
-    if (item.selection) {
-      const quote = document.createElement('blockquote')
-      quote.textContent = item.selection
-      section.append(quote)
-    }
-    if (item.annotation) {
-      const text = document.createElement('p')
-      text.textContent = item.annotation
-      section.append(text)
-    }
-    const meta = document.createElement('p')
-    meta.className = 'meta'
-    meta.textContent =
-      (item.projectName ?? 'Persönlich') +
-      ' · ' +
-      new Date(item.updatedAt).toLocaleString('de-DE')
-    section.append(meta)
-    const actions = document.createElement('div')
-    actions.className = 'actions'
-    const edit = document.createElement('button')
-    edit.className = 'secondary'
-    edit.textContent = 'Bearbeiten'
-    edit.addEventListener('click', () =>
-      task(async () => {
-        if (dirty && !confirm('Nicht gespeicherten Entwurf verwerfen?')) return
-        state = {
-          ownerDeviceId: deviceId,
-          id: item.id,
-          version: item.version,
-          url: item.url,
-          title: item.title,
-          selection: item.selection,
-          annotation: item.annotation,
-          projectId: item.projectId,
-        }
-        dirty = false
-        fields()
-        await persist()
-        el('annotation').focus()
-      }),
-    )
-    const remove = document.createElement('button')
-    remove.className = 'secondary'
-    remove.textContent = 'Löschen'
-    remove.addEventListener('click', () =>
-      task(async () => {
-        if (!confirm('Diese Browser-Anmerkung löschen?')) return
-        await send({ type: 'DELETE', id: item.id, version: item.version })
-        message('Anmerkung gelöscht.')
-        await load()
-      }),
-    )
-    actions.append(edit, remove)
-    section.append(actions)
-    host.append(section)
-  }
 }
 async function openTarget(url) {
   await chrome.tabs.create({ url })
@@ -332,36 +252,40 @@ async function loadPanel() {
   renderQuickAccess()
   renderCommands()
 }
-el('panel-refresh').addEventListener('click', () => task(loadPanel))
-el('command-search').addEventListener('input', () => {
-  commandFilter = el('command-search').value
-  renderCommands()
-})
+function showResult(result) {
+  const host = el('result')
+  host.replaceChildren()
+  const text = document.createElement('span')
+  const labels = {
+    note: 'Notiz',
+    task: 'Aufgabe',
+    projectTask: 'Projektaufgabe',
+  }
+  text.textContent =
+    (result.alreadyCaptured
+      ? labels[result.kind] + ' war bereits gespeichert. '
+      : labels[result.kind] + ' gespeichert. ') + ' '
+  const link = document.createElement('button')
+  link.className = 'secondary'
+  link.textContent = 'In OMNIDESK öffnen'
+  link.addEventListener('click', () =>
+    task(async () => {
+      await openTarget(APP + result.href)
+    }),
+  )
+  host.append(text, link)
+}
 el('capture').addEventListener('click', () =>
   task(async () => {
-    if (
-      dirty &&
-      !confirm(
-        'Nicht gespeicherten Entwurf verwerfen und neue Seite übernehmen?',
-      )
-    )
-      return
     const page = await send({ type: 'CAPTURE' })
-    state = {
-      ...page,
-      ownerDeviceId: deviceId,
-      id: crypto.randomUUID(),
-      version: null,
-      annotation: '',
-      projectId: state.projectId,
-    }
-    dirty = Boolean(page.selection)
+    state.source = { url: page.url, title: page.title }
+    // Leere Felder sinnvoll vorbelegen, vorhandene Eingaben nie überschreiben.
+    if (!state.title.trim()) state.title = page.title
+    if (!state.text.trim() && page.selection) state.text = page.selection
+    dirty = true
     fields()
     await persist()
-    message(
-      'Seitenkontext übernommen. Prüfe Text und Quelle vor dem Speichern.',
-    )
-    await load()
+    message('Seite übernommen. Titel und Text prüfen, dann speichern.')
   }),
 )
 el('connect').addEventListener('click', () =>
@@ -375,17 +299,9 @@ el('connect').addEventListener('click', () =>
 el('disconnect').addEventListener('click', () =>
   task(async () => {
     const result = await send({ type: 'DISCONNECT' })
-    state = {
-      id: crypto.randomUUID(),
-      version: null,
-      url: '',
-      title: '',
-      selection: '',
-      annotation: '',
-      projectId: null,
-    }
-    fields()
+    state = emptyDraft()
     dirty = false
+    fields()
     await status()
     message(
       result.revoked
@@ -395,71 +311,61 @@ el('disconnect').addEventListener('click', () =>
     )
   }),
 )
-el('refresh').addEventListener('click', () => task(load))
+el('panel-refresh').addEventListener('click', () => task(loadPanel))
+el('command-search').addEventListener('input', () => {
+  commandFilter = el('command-search').value
+  renderCommands()
+})
 el('new').addEventListener('click', () =>
   task(async () => {
     if (dirty && !confirm('Nicht gespeicherten Entwurf verwerfen?')) return
-    state = {
-      ...state,
-      id: crypto.randomUUID(),
-      version: null,
-      selection: '',
-      annotation: '',
-    }
+    const kind = state.kind
+    state = { ...emptyDraft(), ownerDeviceId: deviceId, kind }
     dirty = false
     fields()
+    el('result').replaceChildren()
     await persist()
-    message('Neuer Eintrag zur übernommenen Quelle.')
+    message('Eingaben geleert.')
   }),
 )
+el('kind').addEventListener('change', () => {
+  state.kind = el('kind').value
+  dirty = true
+  fields()
+  void persist()
+})
 el('editor').addEventListener('submit', (event) => {
   event.preventDefault()
   void task(async () => {
     read()
-    if (!state.url || (!state.selection.trim() && !state.annotation.trim()))
-      throw Error(
-        'Zuerst eine Seite übernehmen und Text oder Anmerkung eingeben.',
-      )
-    if (state.version) {
-      await send({
-        type: 'UPDATE',
+    if (!state.title.trim())
+      throw Error('Ein Titel fehlt. Ohne Titel wird nichts gespeichert.')
+    if (state.kind === 'projectTask' && !state.projectId)
+      throw Error('Für eine Projektaufgabe fehlt das Projekt.')
+    const projectTask = state.kind === 'projectTask'
+    const result = await send({
+      type: 'SAVE_CAPTURE',
+      input: {
         id: state.id,
-        input: {
-          title: state.title,
-          selection: state.selection,
-          annotation: state.annotation,
-          projectId: state.projectId,
-          version: state.version,
-        },
-      })
-    } else {
-      await send({
-        type: 'CREATE',
-        input: {
-          id: state.id,
-          title: state.title,
-          url: state.url,
-          selection: state.selection,
-          annotation: state.annotation,
-          projectId: state.projectId,
-        },
-      })
-    }
-    state = {
-      ...state,
-      id: crypto.randomUUID(),
-      version: null,
-      selection: '',
-      annotation: '',
-    }
+        kind: state.kind,
+        title: state.title.trim(),
+        text: projectTask ? '' : state.text,
+        source: projectTask ? null : state.source,
+        projectId: projectTask ? state.projectId : null,
+      },
+    })
+    // Neue Kennung: Die nächste Eingabe ist bewusst ein neuer Eintrag.
+    const kind = state.kind,
+      projectId = state.projectId
+    state = { ...emptyDraft(), ownerDeviceId: deviceId, kind, projectId }
     dirty = false
     fields()
     await persist()
     message('In OMNIDESK gespeichert.')
-    await load()
+    showResult(result)
   })
 })
-for (const key of ['title', 'selection', 'annotation', 'project'])
+for (const key of ['title', 'text', 'project'])
   el(key).addEventListener('input', () => {
     dirty = true
     void persist()
@@ -475,8 +381,8 @@ void task(async () => {
   draftKey = 'draft:' + window.id
   const saved = await chrome.storage.session.get(draftKey)
   if (saved[draftKey]) {
-    state = saved[draftKey]
-    dirty = Boolean(state.selection || state.annotation)
+    state = { ...emptyDraft(), ...saved[draftKey] }
+    dirty = Boolean(state.title || state.text)
   }
   fields()
   await status()
