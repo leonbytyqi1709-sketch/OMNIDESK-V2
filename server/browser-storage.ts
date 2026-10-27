@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { monitoringSql, missingNeonStorage } from './neon-storage'
 import { BrowserDeskError } from './browser-policy'
+import { ensureProjectTaskDescription } from './project-task-description'
 import {
   browserPanelLinkUrl,
   browserPanelModule,
@@ -399,9 +400,10 @@ export async function captureBrowserEntry(
   const body = input.text.trim() + captureSource(input.source)
 
   if (input.kind === 'projectTask') {
+    await ensureProjectTaskDescription()
     const [row] =
-      await sql`INSERT INTO project_tasks(id,user_id,project_id,title)
-      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title}
+      await sql`INSERT INTO project_tasks(id,user_id,project_id,title,description)
+      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title},${body}
       WHERE EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
       ON CONFLICT(id) DO NOTHING RETURNING id`
     if (row)

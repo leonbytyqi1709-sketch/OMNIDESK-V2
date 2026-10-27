@@ -206,6 +206,8 @@ var init_projects = __esm({
         userId: text7("user_id").notNull(),
         projectId: uuid6("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
         title: text7("title").notNull(),
+        /** Freitext zur Aufgabe, etwa aus der Browser-Kommandoebene übernommen */
+        description: text7("description").notNull().default(""),
         status: text7("status").$type().notNull().default("backlog"),
         priority: text7("priority").$type().notNull().default("medium"),
         createdAt: timestamp7("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2155,6 +2157,31 @@ init_schema();
 import { and as and7, asc as asc4, desc as desc4, eq as eq7, getTableColumns as getTableColumns3, sql as sql9 } from "drizzle-orm";
 import { Hono as Hono7 } from "hono";
 import { z as z10 } from "zod";
+
+// server/project-task-description.ts
+init_neon_storage();
+var ensured = null;
+function ensureProjectTaskDescription() {
+  ensured ??= (async () => {
+    try {
+      const sql10 = monitoringSql();
+      const [state2] = await sql10`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='project_tasks' AND column_name='description') AS ready`;
+      if (state2?.ready) return;
+      await sql10.transaction([
+        sql10`SELECT pg_advisory_xact_lock(184730023)`,
+        sql10.query(
+          `ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`
+        )
+      ]);
+    } catch (e) {
+      ensured = null;
+      if (!missingNeonStorage(e)) throw e;
+    }
+  })();
+  return ensured;
+}
+
+// server/routes/projects.ts
 var taskFields = {
   ...getTableColumns3(projectTasks),
   fingerprint: sql9`md5(to_jsonb(${projectTasks})::text)`
@@ -2168,6 +2195,9 @@ var projectInput = z10.object({
 });
 var projectTaskInput = z10.object({
   title: z10.string().trim().min(1, "Titel fehlt").max(300),
+  // Optional, damit bestehende Aufrufe ohne Beschreibung unveraendert gelten
+  // und die Update-Route mit .partial() nichts ungewollt leert.
+  description: z10.string().max(1e4).optional(),
   status: z10.enum(PROJECT_TASK_STATUSES),
   priority: z10.enum(TASK_PRIORITIES)
 });
@@ -2179,7 +2209,7 @@ var milestoneInput = z10.object({
 var projectsRoute = new Hono7();
 projectsRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  await retireWorkingHistory();
+  await Promise.all([retireWorkingHistory(), ensureProjectTaskDescription()]);
   await next();
 });
 projectsRoute.get("/", async (c) => {
@@ -8082,8 +8112,9 @@ async function captureBrowserEntry(userId, input) {
   const sql10 = monitoringSql();
   const body = input.text.trim() + captureSource(input.source);
   if (input.kind === "projectTask") {
-    const [row2] = await sql10`INSERT INTO project_tasks(id,user_id,project_id,title)
-      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title}
+    await ensureProjectTaskDescription();
+    const [row2] = await sql10`INSERT INTO project_tasks(id,user_id,project_id,title,description)
+      SELECT ${input.id}::uuid,${userId},${input.projectId}::uuid,${input.title},${body}
       WHERE EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId}::uuid AND user_id=${userId})
       ON CONFLICT(id) DO NOTHING RETURNING id`;
     if (row2)

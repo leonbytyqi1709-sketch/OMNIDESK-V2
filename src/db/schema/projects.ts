@@ -51,6 +51,8 @@ export const projectTasks = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
+    /** Freitext zur Aufgabe, etwa aus der Browser-Kommandoebene übernommen */
+    description: text('description').notNull().default(''),
     status: text('status')
       .$type<ProjectTaskStatus>()
       .notNull()

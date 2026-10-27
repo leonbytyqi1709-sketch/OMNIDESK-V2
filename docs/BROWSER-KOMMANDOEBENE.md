@@ -141,3 +141,17 @@ weiterhin fehlende Schreibmöglichkeit auf die Konfiguration. Die Erweiterung se
 in einem Browser ausgeführt; Installation und Bedienung bestätigt der Nutzer anhand von
 `TESTANLEITUNG-CLAUDE-CODE.txt`.
 
+
+## Projektaufgaben mit Text · 27.10.2026
+
+Auf Wunsch des Nutzers behalten auch Projektaufgaben den erfassten Text und die Quelle.
+`project_tasks` hat dafür eine zusätzliche Spalte `description` bekommen. Der Zusatz erfolgt
+additiv zur Laufzeit beim ersten Zugriff auf das Projektmodul oder beim ersten Erfassen – wie bei
+den V2-Tabellen – und ist durch eine Sperre gegen gleichzeitige Ausführung geschützt. Bestehende
+Aufgaben behalten ihren Inhalt und erhalten einen leeren Text; es wurde nichts migriert und nichts
+gelöscht. Erweiterungsversion **1.3.0**.
+
+Das Projekt-Board zeigt den Text unter dem Titel der Aufgabe. Ein Editor für Projektaufgaben
+existiert dort weiterhin nicht: Der Text ist lesbar, aber in der App noch nicht änderbar. Das ist
+bewusst offen und kein übersehener Fall.
+

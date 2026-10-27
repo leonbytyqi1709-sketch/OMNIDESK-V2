@@ -12,6 +12,7 @@ import {
 } from '../../src/db/schema/index'
 
 import { retireWorkingHistory } from '../retire-working-history'
+import { ensureProjectTaskDescription } from '../project-task-description'
 import { editFingerprint } from '../edit-version'
 const taskFields = {
   ...getTableColumns(projectTasks),
@@ -28,6 +29,9 @@ const projectInput = z.object({
 
 const projectTaskInput = z.object({
   title: z.string().trim().min(1, 'Titel fehlt').max(300),
+  // Optional, damit bestehende Aufrufe ohne Beschreibung unveraendert gelten
+  // und die Update-Route mit .partial() nichts ungewollt leert.
+  description: z.string().max(10_000).optional(),
   status: z.enum(PROJECT_TASK_STATUSES),
   priority: z.enum(TASK_PRIORITIES),
 })
@@ -41,7 +45,7 @@ const milestoneInput = z.object({
 export const projectsRoute = new Hono()
 projectsRoute.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
-  await retireWorkingHistory()
+  await Promise.all([retireWorkingHistory(), ensureProjectTaskDescription()])
   await next()
 })
 

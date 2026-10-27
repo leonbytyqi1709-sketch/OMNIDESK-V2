@@ -56,6 +56,11 @@ function BoardCard({
           {task.title}
         </p>
       </div>
+      {task.description && (
+        <p className="line-clamp-4 pl-4 text-xs whitespace-pre-wrap break-words text-muted-foreground">
+          {task.description}
+        </p>
+      )}
       <div className="flex items-center justify-between">
         <Button
           variant="ghost"

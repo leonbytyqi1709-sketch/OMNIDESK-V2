@@ -431,11 +431,21 @@ test('capture creates entries in the real modules, stays owner-scoped and never 
       id: projectTaskId,
       kind: 'projectTask',
       title: 'Im Projekt klären',
-      text: '',
-      source: null,
+      text: 'Mit dem Team abstimmen.',
+      source: { url: 'https://example.com/plan', title: 'Der Plan' },
       projectId: project,
     })
     assert.equal(projectTask.href, '/projects?project=' + project)
+    const storedProjectTask = (
+      await pg.query<{ description: string; status: string }>(
+        'SELECT description,status FROM project_tasks WHERE id=$1',
+        [projectTaskId],
+      )
+    ).rows[0]
+    assert.equal(storedProjectTask.status, 'backlog')
+    // Auch Projektaufgaben behalten jetzt Text und Quelle.
+    assert.ok(storedProjectTask.description.startsWith('Mit dem Team'))
+    assert.ok(storedProjectTask.description.includes('https://example.com/plan'))
     assert.equal(
       (await pg.query('SELECT id FROM project_tasks')).rows.length,
       1,

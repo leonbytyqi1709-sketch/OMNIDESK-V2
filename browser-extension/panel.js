@@ -4,7 +4,7 @@ const KIND_HINTS = {
   note: 'Die Notiz erscheint im Notizen-Modul. Eine übernommene Seite wird unter den Text gesetzt.',
   task: 'Die Aufgabe erscheint im Aufgaben-Modul, offen und mit mittlerer Priorität. Eine übernommene Seite wird in die Beschreibung gesetzt.',
   projectTask:
-    'Die Projektaufgabe landet im Backlog des gewählten Projekts. Projektaufgaben speichern nur einen Titel – Text und Quelle werden dort nicht abgelegt.',
+    'Die Projektaufgabe landet im Backlog des gewählten Projekts. Eine übernommene Seite wird unter den Text gesetzt.',
 }
 const emptyDraft = () => ({
   ownerDeviceId: null,
@@ -44,15 +44,12 @@ function fields() {
   el('project').value = state.projectId ?? ''
   el('kind-hint').textContent = KIND_HINTS[state.kind] ?? ''
   el('project-field').hidden = state.kind !== 'projectTask'
-  el('text-field').hidden = state.kind === 'projectTask'
   if (state.source) {
     el('source').hidden = false
     el('source').textContent =
       (state.source.title ? state.source.title + ' · ' : '') + state.source.url
     el('source-state').textContent =
-      state.kind === 'projectTask'
-        ? 'Seite übernommen. Bei Projektaufgaben wird sie nicht mitgespeichert.'
-        : 'Seite übernommen. Sie wird automatisch unter deinen Text gesetzt.'
+      'Seite übernommen. Sie wird automatisch unter deinen Text gesetzt.'
   } else {
     el('source').hidden = true
     el('source').textContent = ''
@@ -342,16 +339,15 @@ el('editor').addEventListener('submit', (event) => {
       throw Error('Ein Titel fehlt. Ohne Titel wird nichts gespeichert.')
     if (state.kind === 'projectTask' && !state.projectId)
       throw Error('Für eine Projektaufgabe fehlt das Projekt.')
-    const projectTask = state.kind === 'projectTask'
     const result = await send({
       type: 'SAVE_CAPTURE',
       input: {
         id: state.id,
         kind: state.kind,
         title: state.title.trim(),
-        text: projectTask ? '' : state.text,
-        source: projectTask ? null : state.source,
-        projectId: projectTask ? state.projectId : null,
+        text: state.text,
+        source: state.source,
+        projectId: state.kind === 'projectTask' ? state.projectId : null,
       },
     })
     // Neue Kennung: Die nächste Eingabe ist bewusst ein neuer Eintrag.

@@ -26,6 +26,7 @@ export interface ProjectTaskDto {
   id: string
   projectId: string
   title: string
+  description: string
   status: ProjectTaskStatus
   priority: TaskPriority
   createdAt: string
