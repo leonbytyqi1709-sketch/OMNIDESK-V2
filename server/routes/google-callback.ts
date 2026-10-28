@@ -1,14 +1,22 @@
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { deleteCookie, getCookie } from 'hono/cookie'
 import { db } from '../../src/db/client'
 import { connectedAccounts } from '../../src/db/schema/index'
-import { exchangeGoogleCode } from '../google-auth'
+import {
+  GOOGLE_COOKIE,
+  GOOGLE_COOKIE_PATH,
+  exchangeGoogleCode,
+  googleConfig,
+  readGoogleTransaction,
+} from '../google-auth'
 
 export const googleCallbackRoute = new Hono()
 
 googleCallbackRoute.get('/callback', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  c.header('Referrer-Policy', 'no-referrer')
   const code = c.req.query('code')
-  const stateRaw = c.req.query('state')
   const errorParam = c.req.query('error')
 
   // Ursprung der tatsächlichen Anfrage als Grundlage: Ohne gesetzte Variable
@@ -25,37 +33,32 @@ googleCallbackRoute.get('/callback', async (c) => {
       }
     })()
 
-  if (errorParam) {
-    return c.redirect(
-      `${frontendUrl}/settings?error=${encodeURIComponent(`Google-Anmeldung abgebrochen: ${errorParam}`)}`,
-    )
-  }
-
-  if (!code || !stateRaw) {
-    return c.redirect(
-      `${frontendUrl}/settings?error=${encodeURIComponent('Ungültige Antwort von Google erhalten.')}`,
-    )
-  }
-
   try {
-    let stateData: { userId: string; returnTo?: string }
-    try {
-      stateData = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf-8'))
-    } catch {
+    // Die Anmeldung ist an ein verschlüsseltes HttpOnly-Cookie dieses Browsers
+    // gebunden; über den State lässt sich kein fremdes OMNIDESK-Konto wählen.
+    const transaction = readGoogleTransaction(getCookie(c, GOOGLE_COOKIE), c.req.query('state'))
+    deleteCookie(c, GOOGLE_COOKIE, {
+      path: GOOGLE_COOKIE_PATH,
+      secure: googleConfig().secure,
+      httpOnly: true,
+      sameSite: 'Lax',
+    })
+
+    if (errorParam) {
       return c.redirect(
-        `${frontendUrl}/settings?error=${encodeURIComponent('Ungültiger State-Parameter.')}`,
+        `${frontendUrl}${transaction.returnTo}?error=${encodeURIComponent('Google-Anmeldung abgebrochen oder nicht erlaubt.')}`,
+      )
+    }
+    if (!code) {
+      return c.redirect(
+        `${frontendUrl}${transaction.returnTo}?error=${encodeURIComponent('Google hat keinen Anmeldecode zurückgegeben.')}`,
       )
     }
 
-    const { userId, returnTo = '/settings' } = stateData
-    if (!userId) {
-      return c.redirect(
-        `${frontendUrl}/settings?error=${encodeURIComponent('Benutzer-ID im State fehlt.')}`,
-      )
-    }
+    const { userId, returnTo } = transaction
 
     // 1. Tokens bei Google anfordern
-    const tokens = await exchangeGoogleCode(code)
+    const tokens = await exchangeGoogleCode(code, transaction.verifier)
 
     // 2. Benutzer-Profil von Google abrufen (E-Mail, Name, Avatar)
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -156,10 +159,13 @@ googleCallbackRoute.get('/callback', async (c) => {
       })
     }
 
-    const destination = returnTo.startsWith('/') ? returnTo : '/settings'
-    return c.redirect(`${frontendUrl}${destination}?connected=google&email=${encodeURIComponent(profile.email)}`)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unerwarteter Fehler bei der Google-Verbindung.'
-    return c.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(msg)}`)
+    return c.redirect(
+      `${frontendUrl}${returnTo}?connected=google&email=${encodeURIComponent(profile.email)}`,
+    )
+  } catch {
+    // Keine Anbieterinhalte, Codes oder Tokens in Rückleitungsadressen.
+    return c.redirect(
+      `${frontendUrl}/settings?error=${encodeURIComponent('Google konnte nicht verbunden werden. Bitte Anmeldung erneut starten und die Google-Konfiguration prüfen.')}`,
+    )
   }
 })

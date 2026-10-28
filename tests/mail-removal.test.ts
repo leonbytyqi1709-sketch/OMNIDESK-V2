@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createApp } from '../server/app'
-import { getGoogleOAuthUrl } from '../server/google-auth'
+import { startGoogleAuthorization } from '../server/google-auth'
 
 test('Google authorization retains Drive and identity scopes without requesting Gmail access', () => {
-  const previous = process.env.GOOGLE_CLIENT_ID
+  const names = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'] as const
+  const previous = names.map((name) => process.env[name])
   process.env.GOOGLE_CLIENT_ID = 'test-client'
+  process.env.GOOGLE_CLIENT_SECRET = 'test-only-secret-not-a-real-credential'
+  process.env.GOOGLE_REDIRECT_URI = 'https://v2.test/api/integrations/google/callback'
   try {
-    const url = new URL(getGoogleOAuthUrl('test-user'))
+    const url = new URL(startGoogleAuthorization('test-user').url)
     const scopes = url.searchParams.get('scope')!.split(' ')
     assert.equal(url.origin, 'https://accounts.google.com')
     assert.ok(scopes.includes('https://www.googleapis.com/auth/drive.metadata.readonly'))
@@ -15,8 +18,11 @@ test('Google authorization retains Drive and identity scopes without requesting 
     assert.ok(scopes.includes('https://www.googleapis.com/auth/userinfo.profile'))
     assert.ok(scopes.every((scope) => !scope.includes('/auth/gmail.')))
   } finally {
-    if (previous === undefined) delete process.env.GOOGLE_CLIENT_ID
-    else process.env.GOOGLE_CLIENT_ID = previous
+    names.forEach((name, index) => {
+      const value = previous[index]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    })
   }
 })
 

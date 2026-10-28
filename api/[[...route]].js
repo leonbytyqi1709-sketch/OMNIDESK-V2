@@ -1497,7 +1497,7 @@ var init_uptime_check = __esm({
 });
 
 // server/neon-monitor.ts
-import { z as z17 } from "zod";
+import { z as z18 } from "zod";
 function readNeonLinks() {
   const value = process.env.NEON_MONITOR_LINKS;
   if (!value?.trim()) return [];
@@ -1507,7 +1507,7 @@ function readNeonLinks() {
   } catch {
     throw new NeonConfigurationError("NEON_MONITOR_LINKS enth\xE4lt ung\xFCltiges JSON. In Vercel die vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen und ohne zus\xE4tzliche \xE4u\xDFere Anf\xFChrungszeichen eintragen und neu deployen.");
   }
-  const result = z17.array(neonLinkSchema).max(100).safeParse(parsed);
+  const result = z18.array(neonLinkSchema).max(100).safeParse(parsed);
   if (!result.success) {
     const path = result.error.issues[0]?.path;
     const field = path?.length ? path.join(".") : "Liste";
@@ -1583,10 +1583,10 @@ async function fetchNeonSnapshot(link) {
 var neonId, neonLinkSchema, NeonConfigurationError, metric, projectSchema, branchSchema, endpointSchema;
 var init_neon_monitor = __esm({
   "server/neon-monitor.ts"() {
-    neonId = z17.string().regex(/^[a-z0-9-]{1,60}$/);
-    neonLinkSchema = z17.object({
-      userId: z17.string().min(1),
-      projectId: z17.uuid(),
+    neonId = z18.string().regex(/^[a-z0-9-]{1,60}$/);
+    neonLinkSchema = z18.object({
+      userId: z18.string().min(1),
+      projectId: z18.uuid(),
       neonProjectId: neonId,
       branchId: neonId
     });
@@ -1596,35 +1596,35 @@ var init_neon_monitor = __esm({
         this.name = "NeonConfigurationError";
       }
     };
-    metric = z17.number().finite().nonnegative().optional().nullable();
-    projectSchema = z17.object({ project: z17.object({
-      id: z17.string(),
-      name: z17.string(),
-      region_id: z17.string().optional(),
-      pg_version: z17.number().optional(),
+    metric = z18.number().finite().nonnegative().optional().nullable();
+    projectSchema = z18.object({ project: z18.object({
+      id: z18.string(),
+      name: z18.string(),
+      region_id: z18.string().optional(),
+      pg_version: z18.number().optional(),
       synthetic_storage_size: metric,
       compute_time_seconds: metric,
       active_time_seconds: metric,
       data_transfer_bytes: metric,
-      consumption_period_start: z17.string().optional(),
-      consumption_period_end: z17.string().optional()
+      consumption_period_start: z18.string().optional(),
+      consumption_period_end: z18.string().optional()
     }) });
-    branchSchema = z17.object({ branch: z17.object({
-      id: z17.string(),
-      project_id: z17.string(),
-      name: z17.string(),
-      current_state: z17.string(),
+    branchSchema = z18.object({ branch: z18.object({
+      id: z18.string(),
+      project_id: z18.string(),
+      name: z18.string(),
+      current_state: z18.string(),
       logical_size: metric
     }) });
-    endpointSchema = z17.object({ endpoints: z17.array(z17.object({
-      id: z17.string(),
-      branch_id: z17.string(),
-      project_id: z17.string(),
-      current_state: z17.string(),
-      pending_state: z17.string().optional(),
-      type: z17.string(),
-      disabled: z17.boolean(),
-      last_active: z17.string().optional(),
+    endpointSchema = z18.object({ endpoints: z18.array(z18.object({
+      id: z18.string(),
+      branch_id: z18.string(),
+      project_id: z18.string(),
+      current_state: z18.string(),
+      pending_state: z18.string().optional(),
+      type: z18.string(),
+      disabled: z18.boolean(),
+      last_active: z18.string().optional(),
       autoscaling_limit_min_cu: metric,
       autoscaling_limit_max_cu: metric
     })) });
@@ -1735,7 +1735,7 @@ import { handle } from "hono/vercel";
 
 // server/app.ts
 import { Hono as Hono30 } from "hono";
-import { z as z41 } from "zod";
+import { z as z42 } from "zod";
 
 // server/auth.ts
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -2662,55 +2662,143 @@ init_client();
 init_schema();
 import { and as and10, eq as eq12 } from "drizzle-orm";
 import { Hono as Hono11 } from "hono";
+import { deleteCookie, getCookie } from "hono/cookie";
 
 // server/google-auth.ts
 init_client();
 init_schema();
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual
+} from "node:crypto";
 import { eq as eq11 } from "drizzle-orm";
+import { z as z14 } from "zod";
 var GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
   "https://www.googleapis.com/auth/drive.metadata.readonly"
 ];
-function getGoogleOAuthUrl(userId, returnTo = "/settings") {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:8787/api/integrations/google/callback";
-  if (!clientId) {
-    throw new Error("GOOGLE_CLIENT_ID ist nicht in .env.local konfiguriert.");
+var GOOGLE_COOKIE = "omnidesk-google-oauth";
+var GOOGLE_COOKIE_PATH = "/api/integrations/google";
+var GOOGLE_OAUTH_MAX_AGE = 600;
+var DEFAULT_REDIRECT_URI = "http://localhost:8787/api/integrations/google/callback";
+function googleConfig() {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !secret) {
+    throw new Error(
+      "Google ist noch nicht eingerichtet. GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET fehlen oder sind unvollst\xE4ndig."
+    );
   }
-  const state2 = Buffer.from(JSON.stringify({ userId, returnTo })).toString("base64url");
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim() || DEFAULT_REDIRECT_URI;
+  let redirect;
+  try {
+    redirect = new URL(redirectUri);
+  } catch {
+    throw new Error("GOOGLE_REDIRECT_URI ist keine g\xFCltige Adresse.");
+  }
+  if (redirect.username || redirect.password || redirect.search || redirect.hash || redirect.pathname !== `${GOOGLE_COOKIE_PATH}/callback` || redirect.protocol !== "https:" && !(redirect.protocol === "http:" && ["localhost", "127.0.0.1"].includes(redirect.hostname))) {
+    throw new Error(
+      "GOOGLE_REDIRECT_URI muss auf den Google-Callback dieser App zeigen (HTTPS; lokal HTTP erlaubt)."
+    );
+  }
+  return {
+    clientId,
+    secret,
+    redirectUri,
+    origin: redirect.origin,
+    secure: redirect.protocol === "https:"
+  };
+}
+function sealGoogleValue(value, purpose) {
+  const key = createHash("sha256").update(`omnidesk-google-${purpose}\0`).update(googleConfig().secret).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `gg1.${Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url")}`;
+}
+function openGoogleValue(value, purpose) {
+  if (!value.startsWith("gg1.")) {
+    throw new Error("Google-Anmeldung ung\xFCltig. Bitte erneut starten.");
+  }
+  const buffer = Buffer.from(value.slice(4), "base64url");
+  if (buffer.length < 29) {
+    throw new Error("Google-Anmeldung ung\xFCltig. Bitte erneut starten.");
+  }
+  const key = createHash("sha256").update(`omnidesk-google-${purpose}\0`).update(googleConfig().secret).digest();
+  const decipher = createDecipheriv("aes-256-gcm", key, buffer.subarray(0, 12));
+  decipher.setAuthTag(buffer.subarray(12, 28));
+  return Buffer.concat([decipher.update(buffer.subarray(28)), decipher.final()]).toString("utf8");
+}
+var transactionSchema = z14.object({
+  userId: z14.string().min(1),
+  state: z14.string().min(32),
+  verifier: z14.string().min(43),
+  returnTo: z14.enum(["/settings", "/cloud-monitor"]),
+  createdAt: z14.number()
+});
+function startGoogleAuthorization(userId, returnTo) {
+  const config = googleConfig();
+  const state2 = randomBytes(32).toString("base64url");
+  const verifier = randomBytes(48).toString("base64url");
+  const transaction = transactionSchema.parse({
+    userId,
+    state: state2,
+    verifier,
+    returnTo: returnTo === "/cloud-monitor" ? returnTo : "/settings",
+    createdAt: Date.now()
+  });
   const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
     response_type: "code",
     scope: GOOGLE_SCOPES.join(" "),
     access_type: "offline",
     prompt: "consent",
-    state: state2
+    state: state2,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256"
   });
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  return {
+    url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    cookie: sealGoogleValue(JSON.stringify(transaction), "transaction")
+  };
 }
-async function exchangeGoogleCode(code) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:8787/api/integrations/google/callback";
-  if (!clientId || !clientSecret) {
-    throw new Error("Google OAuth-Zugangsdaten fehlen in .env.local.");
+function readGoogleTransaction(cookie, state2) {
+  if (!cookie || !state2) {
+    throw new Error("Google-Anmeldung fehlt oder ist abgelaufen. Bitte erneut starten.");
   }
+  const transaction = transactionSchema.parse(JSON.parse(openGoogleValue(cookie, "transaction")));
+  const expected = Buffer.from(transaction.state);
+  const supplied = Buffer.from(state2);
+  const age = Date.now() - transaction.createdAt;
+  if (age < 0 || age > GOOGLE_OAUTH_MAX_AGE * 1e3 || expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+    throw new Error("Google-Anmeldung ung\xFCltig oder abgelaufen. Bitte erneut starten.");
+  }
+  return transaction;
+}
+async function exchangeGoogleCode(code, verifier) {
+  const config = googleConfig();
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code"
-    })
+      client_id: config.clientId,
+      client_secret: config.secret,
+      redirect_uri: config.redirectUri,
+      grant_type: "authorization_code",
+      code_verifier: verifier
+    }),
+    signal: AbortSignal.timeout(15e3)
   });
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Code-Austausch mit Google fehlgeschlagen (${res.status}): ${errText}`);
+    throw new Error(
+      `Code-Austausch mit Google fehlgeschlagen (HTTP ${res.status}). Bitte Anmeldung erneut starten.`
+    );
   }
   return await res.json();
 }
@@ -2756,8 +2844,9 @@ async function getValidGoogleAccessToken(account) {
 // server/routes/google-callback.ts
 var googleCallbackRoute = new Hono11();
 googleCallbackRoute.get("/callback", async (c) => {
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
   const code = c.req.query("code");
-  const stateRaw = c.req.query("state");
   const errorParam = c.req.query("error");
   const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || (() => {
     try {
@@ -2766,32 +2855,26 @@ googleCallbackRoute.get("/callback", async (c) => {
       return "http://localhost:5173";
     }
   })();
-  if (errorParam) {
-    return c.redirect(
-      `${frontendUrl}/settings?error=${encodeURIComponent(`Google-Anmeldung abgebrochen: ${errorParam}`)}`
-    );
-  }
-  if (!code || !stateRaw) {
-    return c.redirect(
-      `${frontendUrl}/settings?error=${encodeURIComponent("Ung\xFCltige Antwort von Google erhalten.")}`
-    );
-  }
   try {
-    let stateData;
-    try {
-      stateData = JSON.parse(Buffer.from(stateRaw, "base64url").toString("utf-8"));
-    } catch {
+    const transaction = readGoogleTransaction(getCookie(c, GOOGLE_COOKIE), c.req.query("state"));
+    deleteCookie(c, GOOGLE_COOKIE, {
+      path: GOOGLE_COOKIE_PATH,
+      secure: googleConfig().secure,
+      httpOnly: true,
+      sameSite: "Lax"
+    });
+    if (errorParam) {
       return c.redirect(
-        `${frontendUrl}/settings?error=${encodeURIComponent("Ung\xFCltiger State-Parameter.")}`
+        `${frontendUrl}${transaction.returnTo}?error=${encodeURIComponent("Google-Anmeldung abgebrochen oder nicht erlaubt.")}`
       );
     }
-    const { userId, returnTo = "/settings" } = stateData;
-    if (!userId) {
+    if (!code) {
       return c.redirect(
-        `${frontendUrl}/settings?error=${encodeURIComponent("Benutzer-ID im State fehlt.")}`
+        `${frontendUrl}${transaction.returnTo}?error=${encodeURIComponent("Google hat keinen Anmeldecode zur\xFCckgegeben.")}`
       );
     }
-    const tokens = await exchangeGoogleCode(code);
+    const { userId, returnTo } = transaction;
+    const tokens = await exchangeGoogleCode(code, transaction.verifier);
     const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
@@ -2860,11 +2943,13 @@ googleCallbackRoute.get("/callback", async (c) => {
         metadata: driveMeta
       });
     }
-    const destination = returnTo.startsWith("/") ? returnTo : "/settings";
-    return c.redirect(`${frontendUrl}${destination}?connected=google&email=${encodeURIComponent(profile.email)}`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unerwarteter Fehler bei der Google-Verbindung.";
-    return c.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(msg)}`);
+    return c.redirect(
+      `${frontendUrl}${returnTo}?connected=google&email=${encodeURIComponent(profile.email)}`
+    );
+  } catch {
+    return c.redirect(
+      `${frontendUrl}/settings?error=${encodeURIComponent("Google konnte nicht verbunden werden. Bitte Anmeldung erneut starten und die Google-Konfiguration pr\xFCfen.")}`
+    );
   }
 });
 
@@ -2874,8 +2959,8 @@ import { Hono as Hono12 } from "hono";
 import { setCookie } from "hono/cookie";
 
 // server/microsoft-auth.ts
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { z as z14 } from "zod";
+import { createCipheriv as createCipheriv2, createDecipheriv as createDecipheriv2, createHash as createHash2, randomBytes as randomBytes2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { z as z15 } from "zod";
 var MICROSOFT_COOKIE = "omnidesk-ms-oauth";
 var MICROSOFT_COOKIE_PATH = "/api/integrations/microsoft";
 var MICROSOFT_SCOPES = ["offline_access", "User.Read", "Files.Read"];
@@ -2896,9 +2981,9 @@ function microsoftConfig() {
   return { clientId, secret, redirectUri, origin: redirect.origin, secure: redirect.protocol === "https:", tenant };
 }
 function sealMicrosoftValue(value, purpose) {
-  const key = createHash("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const key = createHash2("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
+  const iv = randomBytes2(12);
+  const cipher = createCipheriv2("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return `ms1.${Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url")}`;
 }
@@ -2906,23 +2991,23 @@ function openMicrosoftValue(value, purpose) {
   if (!value.startsWith("ms1.")) throw new Error("OneDrive-Verbindung ung\xFCltig. Bitte erneut verbinden.");
   const buffer = Buffer.from(value.slice(4), "base64url");
   if (buffer.length < 29) throw new Error("OneDrive-Verbindung ung\xFCltig. Bitte erneut verbinden.");
-  const key = createHash("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
-  const decipher = createDecipheriv("aes-256-gcm", key, buffer.subarray(0, 12));
+  const key = createHash2("sha256").update(`omnidesk-microsoft-${purpose}\0`).update(microsoftConfig().secret).digest();
+  const decipher = createDecipheriv2("aes-256-gcm", key, buffer.subarray(0, 12));
   decipher.setAuthTag(buffer.subarray(12, 28));
   return Buffer.concat([decipher.update(buffer.subarray(28)), decipher.final()]).toString("utf8");
 }
-var transactionSchema = z14.object({
-  userId: z14.string().min(1),
-  state: z14.string().min(32),
-  verifier: z14.string().min(43),
-  returnTo: z14.enum(["/settings", "/cloud-monitor"]),
-  createdAt: z14.number()
+var transactionSchema2 = z15.object({
+  userId: z15.string().min(1),
+  state: z15.string().min(32),
+  verifier: z15.string().min(43),
+  returnTo: z15.enum(["/settings", "/cloud-monitor"]),
+  createdAt: z15.number()
 });
 function startMicrosoftAuthorization(userId, returnTo) {
   const config = microsoftConfig();
-  const state2 = randomBytes(32).toString("base64url");
-  const verifier = randomBytes(48).toString("base64url");
-  const transaction = transactionSchema.parse({
+  const state2 = randomBytes2(32).toString("base64url");
+  const verifier = randomBytes2(48).toString("base64url");
+  const transaction = transactionSchema2.parse({
     userId,
     state: state2,
     verifier,
@@ -2937,7 +3022,7 @@ function startMicrosoftAuthorization(userId, returnTo) {
     response_mode: "query",
     scope: MICROSOFT_SCOPES.join(" "),
     state: state2,
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge: createHash2("sha256").update(verifier).digest("base64url"),
     code_challenge_method: "S256",
     prompt: "select_account"
   }).toString();
@@ -2945,20 +3030,20 @@ function startMicrosoftAuthorization(userId, returnTo) {
 }
 function readMicrosoftTransaction(cookie, state2) {
   if (!cookie || !state2) throw new Error("OneDrive-Anmeldung fehlt oder ist abgelaufen. Bitte erneut starten.");
-  const transaction = transactionSchema.parse(JSON.parse(openMicrosoftValue(cookie, "transaction")));
+  const transaction = transactionSchema2.parse(JSON.parse(openMicrosoftValue(cookie, "transaction")));
   const expected = Buffer.from(transaction.state);
   const supplied = Buffer.from(state2);
   const age = Date.now() - transaction.createdAt;
-  if (age < 0 || age > OAUTH_MAX_AGE * 1e3 || expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+  if (age < 0 || age > OAUTH_MAX_AGE * 1e3 || expected.length !== supplied.length || !timingSafeEqual2(expected, supplied)) {
     throw new Error("OneDrive-Anmeldung ung\xFCltig oder abgelaufen. Bitte erneut starten.");
   }
   return transaction;
 }
-var tokenSchema = z14.object({
-  access_token: z14.string().min(1),
-  refresh_token: z14.string().min(1).optional(),
-  expires_in: z14.number().positive(),
-  scope: z14.string().optional()
+var tokenSchema = z15.object({
+  access_token: z15.string().min(1),
+  refresh_token: z15.string().min(1).optional(),
+  expires_in: z15.number().positive(),
+  scope: z15.string().optional()
 });
 async function requestTokens(parameters) {
   const config = microsoftConfig();
@@ -2978,19 +3063,19 @@ async function requestTokens(parameters) {
 }
 var exchangeMicrosoftCode = (code, verifier) => requestTokens({ grant_type: "authorization_code", code, code_verifier: verifier });
 var refreshMicrosoftTokens = (refreshToken) => requestTokens({ grant_type: "refresh_token", refresh_token: refreshToken, scope: MICROSOFT_SCOPES.join(" ") });
-var bytes = z14.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-var driveSchema = z14.object({ id: z14.string().min(1), driveType: z14.string(), quota: z14.object({
+var bytes = z15.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+var driveSchema = z15.object({ id: z15.string().min(1), driveType: z15.string(), quota: z15.object({
   used: bytes,
   total: bytes.positive(),
   deleted: bytes.optional(),
   remaining: bytes.optional(),
-  state: z14.string().optional()
+  state: z15.string().optional()
 }) });
-var profileSchema = z14.object({
-  id: z14.string().min(1),
-  displayName: z14.string().optional(),
-  mail: z14.string().nullable().optional(),
-  userPrincipalName: z14.string().optional()
+var profileSchema = z15.object({
+  id: z15.string().min(1),
+  displayName: z15.string().optional(),
+  mail: z15.string().nullable().optional(),
+  userPrincipalName: z15.string().optional()
 });
 async function getMicrosoftStorage(accessToken) {
   const response = await fetch("https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType,quota", {
@@ -3081,7 +3166,7 @@ function publicAccount(account) {
 // server/routes/integrations.ts
 init_client();
 init_schema();
-import { z as z15 } from "zod";
+import { z as z16 } from "zod";
 
 // server/mega-auth.ts
 import { Storage } from "megajs";
@@ -3127,21 +3212,21 @@ async function syncMegaAccount(sessionJson) {
 }
 
 // server/routes/integrations.ts
-var createAccountInput = z15.object({
-  provider: z15.enum(["google", "mega"]),
-  email: z15.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
-  password: z15.string().optional(),
+var createAccountInput = z16.object({
+  provider: z16.enum(["google", "mega"]),
+  email: z16.string().trim().email("Ung\xFCltige E-Mail-Adresse").max(255),
+  password: z16.string().optional(),
   // Für Live-MEGA-Login
-  label: z15.string().trim().max(100).optional(),
-  accessToken: z15.string().trim().optional(),
-  refreshToken: z15.string().trim().optional(),
-  storageUsedBytes: z15.string().optional(),
-  storageTotalBytes: z15.string().optional(),
-  metadata: z15.record(z15.string(), z15.unknown()).optional()
+  label: z16.string().trim().max(100).optional(),
+  accessToken: z16.string().trim().optional(),
+  refreshToken: z16.string().trim().optional(),
+  storageUsedBytes: z16.string().optional(),
+  storageTotalBytes: z16.string().optional(),
+  metadata: z16.record(z16.string(), z16.unknown()).optional()
 });
-var updateAccountInput = z15.object({
-  label: z15.string().trim().max(100).optional(),
-  metadata: z15.record(z15.string(), z15.unknown()).optional()
+var updateAccountInput = z16.object({
+  label: z16.string().trim().max(100).optional(),
+  metadata: z16.record(z16.string(), z16.unknown()).optional()
 });
 var integrationsRoute = new Hono12();
 integrationsRoute.get("/microsoft/auth-url", (c) => {
@@ -3165,13 +3250,27 @@ integrationsRoute.get("/microsoft/auth-url", (c) => {
   }
 });
 integrationsRoute.get("/google/auth-url", (c) => {
-  const returnTo = c.req.query("returnTo") || "/settings";
+  c.header("Cache-Control", "no-store");
   try {
-    const url2 = getGoogleOAuthUrl(c.get("userId"), returnTo);
-    return c.json({ url: url2 });
+    const config = googleConfig();
+    if (config.secure && new URL(c.req.url).origin !== config.origin) {
+      return c.json(
+        { error: "Bitte Google auf der in GOOGLE_REDIRECT_URI konfigurierten App-Adresse verbinden." },
+        400
+      );
+    }
+    const authorization = startGoogleAuthorization(c.get("userId"), c.req.query("returnTo"));
+    setCookie(c, GOOGLE_COOKIE, authorization.cookie, {
+      path: GOOGLE_COOKIE_PATH,
+      httpOnly: true,
+      secure: config.secure,
+      sameSite: "Lax",
+      maxAge: GOOGLE_OAUTH_MAX_AGE
+    });
+    return c.json({ url: authorization.url });
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : "Google OAuth URL konnte nicht generiert werden." },
+      { error: err instanceof Error ? err.message : "Google-Anmeldung konnte nicht gestartet werden." },
       400
     );
   }
@@ -3200,7 +3299,7 @@ integrationsRoute.get("/accounts", async (c) => {
 integrationsRoute.post("/accounts", async (c) => {
   const parsed = createAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const {
     provider,
@@ -3266,7 +3365,7 @@ integrationsRoute.post("/accounts", async (c) => {
 integrationsRoute.put("/accounts/:id", async (c) => {
   const parsed = updateAccountInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z15.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.update(connectedAccounts).set({
     ...parsed.data,
@@ -3378,7 +3477,7 @@ init_client();
 init_integrations();
 import { and as and13, eq as eq15 } from "drizzle-orm";
 import { Hono as Hono13 } from "hono";
-import { deleteCookie, getCookie } from "hono/cookie";
+import { deleteCookie as deleteCookie2, getCookie as getCookie2 } from "hono/cookie";
 async function persistMicrosoftConnection(connection) {
   const accounts = await db.select().from(connectedAccounts).where(and13(
     eq15(connectedAccounts.userId, connection.userId),
@@ -3412,8 +3511,8 @@ function createMicrosoftCallbackRoute(persist = persistMicrosoftConnection) {
       return c.redirect(url2.toString());
     };
     try {
-      const transaction = readMicrosoftTransaction(getCookie(c, MICROSOFT_COOKIE), c.req.query("state"));
-      deleteCookie(c, MICROSOFT_COOKIE, { path: MICROSOFT_COOKIE_PATH, secure: microsoftConfig().secure, httpOnly: true, sameSite: "Lax" });
+      const transaction = readMicrosoftTransaction(getCookie2(c, MICROSOFT_COOKIE), c.req.query("state"));
+      deleteCookie2(c, MICROSOFT_COOKIE, { path: MICROSOFT_COOKIE_PATH, secure: microsoftConfig().secure, httpOnly: true, sameSite: "Lax" });
       if (c.req.query("error")) return redirect(transaction.returnTo, "error", "Microsoft-Anmeldung abgebrochen oder nicht erlaubt.");
       const code = c.req.query("code");
       if (!code) return redirect(transaction.returnTo, "error", "Microsoft hat keinen Anmeldecode zur\xFCckgegeben.");
@@ -3598,15 +3697,15 @@ init_schema();
 init_uptime_check();
 import { and as and16, desc as desc8, eq as eq18, gte as gte2, inArray } from "drizzle-orm";
 import { Hono as Hono15 } from "hono";
-import { z as z16 } from "zod";
-var monitorInput = z16.object({
-  name: z16.string().trim().min(1, "Name ist erforderlich").max(100),
-  type: z16.enum(MONITOR_TYPES).default("http"),
-  url: z16.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
-  port: z16.number().int().min(1).max(65535).nullable().optional(),
-  expectedStatus: z16.number().int().min(100).max(599).default(200),
-  timeoutMs: z16.number().int().min(1e3).max(3e4).default(1e4),
-  active: z16.boolean().default(true)
+import { z as z17 } from "zod";
+var monitorInput = z17.object({
+  name: z17.string().trim().min(1, "Name ist erforderlich").max(100),
+  type: z17.enum(MONITOR_TYPES).default("http"),
+  url: z17.string().trim().min(1, "URL oder Host ist erforderlich").max(500),
+  port: z17.number().int().min(1).max(65535).nullable().optional(),
+  expectedStatus: z17.number().int().min(100).max(599).default(200),
+  timeoutMs: z17.number().int().min(1e3).max(3e4).default(1e4),
+  active: z17.boolean().default(true)
 });
 var uptimeRoute = new Hono15();
 uptimeRoute.get("/", async (c) => {
@@ -3694,7 +3793,7 @@ uptimeRoute.post("/", async (c) => {
   const userId = c.get("userId");
   const parsed = monitorInput.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z17.prettifyError(parsed.error) }, 400);
   }
   const [row] = await db.insert(uptimeMonitors).values({
     ...parsed.data,
@@ -3712,7 +3811,7 @@ uptimeRoute.put("/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = monitorInput.partial().safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z16.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z17.prettifyError(parsed.error) }, 400);
   }
   const [existing] = await db.select().from(uptimeMonitors).where(and16(eq18(uptimeMonitors.id, id), eq18(uptimeMonitors.userId, userId)));
   if (!existing) {
@@ -3769,7 +3868,7 @@ init_neon_storage();
 init_neon_runner();
 import { and as and18, eq as eq20, inArray as inArray3 } from "drizzle-orm";
 import { Hono as Hono16 } from "hono";
-import { z as z18 } from "zod";
+import { z as z19 } from "zod";
 async function ownsProject2(link) {
   const [row] = await db.select({ id: projects.id }).from(projects).where(and18(eq20(projects.id, link.projectId), eq20(projects.userId, link.userId)));
   return Boolean(row);
@@ -3816,7 +3915,7 @@ function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, owns
     }
   });
   route.post("/:projectId/monitoring/alerts/:alertId/acknowledge", async (c) => {
-    if (!z18.uuid().safeParse(c.req.param("alertId")).success) return c.json({ error: "Ung\xFCltige Warnungskennung." }, 400);
+    if (!z19.uuid().safeParse(c.req.param("alertId")).success) return c.json({ error: "Ung\xFCltige Warnungskennung." }, 400);
     if (!await dependencies.acknowledgeNeonAlert(c.get("neonLink"), c.req.param("alertId"))) return c.json({ error: "Warnung nicht gefunden." }, 404);
     return c.json({ ok: true });
   });
@@ -3893,29 +3992,29 @@ var neonMonitorRoute = createNeonMonitorRoute();
 
 // server/routes/briefing.ts
 import { Hono as Hono18 } from "hono";
-import { z as z22 } from "zod";
+import { z as z23 } from "zod";
 
 // server/briefing-data.ts
 init_neon_storage();
 init_neon_monitor();
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 
 // server/account-security-store.ts
 init_neon_storage();
 
 // server/account-security-policy.ts
-import { z as z19 } from "zod";
+import { z as z20 } from "zod";
 
 // src/types/account-security.ts
 var SECURITY_STATES = ["unknown", "enabled", "disabled", "unsupported"];
 
 // server/account-security-policy.ts
-var state = z19.enum(SECURITY_STATES);
-var securityAccountSchema = z19.object({
-  name: z19.string().trim().min(1).max(120),
-  provider: z19.string().trim().max(100),
-  login: z19.string().trim().max(200),
-  securityUrl: z19.string().trim().max(1e3).refine((value) => {
+var state = z20.enum(SECURITY_STATES);
+var securityAccountSchema = z20.object({
+  name: z20.string().trim().min(1).max(120),
+  provider: z20.string().trim().max(100),
+  login: z20.string().trim().max(200),
+  securityUrl: z20.string().trim().max(1e3).refine((value) => {
     if (!value) return true;
     try {
       const url2 = new URL(value);
@@ -3924,18 +4023,18 @@ var securityAccountSchema = z19.object({
       return false;
     }
   }, "Nur HTTPS-Adressen ohne Zugangsdaten, Suchparameter oder Fragment verwenden."),
-  importance: z19.enum(["critical", "high", "normal"]),
+  importance: z20.enum(["critical", "high", "normal"]),
   passkey: state,
   twoFactor: state,
   recovery: state,
   recoveryCodes: state,
-  recoveryMethods: z19.array(z19.enum(["email", "phone", "trusted_contact", "recovery_key", "hardware_key"])).max(5).refine((items) => new Set(items).size === items.length),
-  reviewIntervalDays: z19.union([z19.literal(30), z19.literal(90), z19.literal(180), z19.literal(365)]),
-  connectedAccountId: z19.uuid().nullable(),
-  reviewed: z19.boolean()
+  recoveryMethods: z20.array(z20.enum(["email", "phone", "trusted_contact", "recovery_key", "hardware_key"])).max(5).refine((items) => new Set(items).size === items.length),
+  reviewIntervalDays: z20.union([z20.literal(30), z20.literal(90), z20.literal(180), z20.literal(365)]),
+  connectedAccountId: z20.uuid().nullable(),
+  reviewed: z20.boolean()
 }).strict().refine((value) => value.recovery === "enabled" || value.recoveryMethods.length === 0, "Wiederherstellungsarten nur bei vorhandenem Wiederherstellungsweg angeben.");
-var securityVersionSchema = z19.object({ version: z19.number().int().positive() }).strict();
-var securityUpdateSchema = z19.object({ account: securityAccountSchema, version: z19.number().int().positive() }).strict();
+var securityVersionSchema = z20.object({ version: z20.number().int().positive() }).strict();
+var securityUpdateSchema = z20.object({ account: securityAccountSchema, version: z20.number().int().positive() }).strict();
 var SecurityAccountError = class extends Error {
   status;
   constructor(message, status) {
@@ -4325,7 +4424,7 @@ function createBriefingCollector(dependencies = { readBriefingState, previousBri
         return partial(key, "unavailable");
       }
     }));
-    const digest = createHash2("sha256").update(JSON.stringify({ day: day2, preferences, sections: sections.map(({ changes: _changes, ...facts }) => facts) })).digest("hex");
+    const digest = createHash3("sha256").update(JSON.stringify({ day: day2, preferences, sections: sections.map(({ changes: _changes, ...facts }) => facts) })).digest("hex");
     return { checkedAt: now.toISOString(), day: day2, timeZone: preferences.timeZone, digest, previousVisitAt, storageReady: Boolean(state2), preferences, preferenceVersion: state2?.version ?? 0, sections };
   };
 }
@@ -4334,25 +4433,25 @@ var collectBriefing = createBriefingCollector();
 // server/briefing-ai.ts
 init_neon_storage();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { z as z21 } from "zod";
+import { z as z22 } from "zod";
 
 // server/briefing-policy.ts
-import { z as z20 } from "zod";
+import { z as z21 } from "zod";
 
 // src/types/briefing.ts
 var BRIEFING_SOURCES = ["tasks", "projects", "calendar", "uptime", "neon", "security"];
 
 // server/briefing-policy.ts
-var briefingPreferencesSchema = z20.object({ timeZone: z20.string().max(80).refine((value) => {
+var briefingPreferencesSchema = z21.object({ timeZone: z21.string().max(80).refine((value) => {
   try {
     new Intl.DateTimeFormat("de-DE", { timeZone: value });
     return true;
   } catch {
     return false;
   }
-}), showOnOpen: z20.boolean(), aiEnabled: z20.boolean(), sources: z20.object({ tasks: z20.boolean(), projects: z20.boolean(), calendar: z20.boolean(), uptime: z20.boolean(), neon: z20.boolean(), security: z20.boolean() }).strict() }).strict();
-var briefingContextSchema = z20.object({ visitId: z20.uuid().optional(), exclude: z20.array(z20.enum(BRIEFING_SOURCES)).max(6).default([]) }).strict();
-var briefingRecommendationsSchema = z20.object({ recommendations: z20.array(z20.object({ sourceId: z20.string().max(160), reason: z20.enum(["overdue", "today", "upcoming", "high_priority", "attention", "review"]) }).strict()).max(3) }).strict();
+}), showOnOpen: z21.boolean(), aiEnabled: z21.boolean(), sources: z21.object({ tasks: z21.boolean(), projects: z21.boolean(), calendar: z21.boolean(), uptime: z21.boolean(), neon: z21.boolean(), security: z21.boolean() }).strict() }).strict();
+var briefingContextSchema = z21.object({ visitId: z21.uuid().optional(), exclude: z21.array(z21.enum(BRIEFING_SOURCES)).max(6).default([]) }).strict();
+var briefingRecommendationsSchema = z21.object({ recommendations: z21.array(z21.object({ sourceId: z21.string().max(160), reason: z21.enum(["overdue", "today", "upcoming", "high_priority", "attention", "review"]) }).strict()).max(3) }).strict();
 
 // server/briefing-ai.ts
 function validateBriefingRecommendations(value, snapshot) {
@@ -4408,7 +4507,7 @@ async function callBriefingAI(snapshot) {
       } finally {
         reader.releaseLock();
       }
-      const payload = z21.object({ choices: z21.array(z21.object({ message: z21.object({ content: z21.string().max(8e3) }) })).min(1) }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      const payload = z22.object({ choices: z22.array(z22.object({ message: z22.object({ content: z22.string().max(8e3) }) })).min(1) }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       const content = payload.choices[0].message.content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
       return validateBriefingRecommendations(JSON.parse(content), snapshot);
     } catch {
@@ -4472,13 +4571,13 @@ function createBriefingRoute(dependencies = { collectBriefing, generateBriefingM
     return c.json(await dependencies.collectBriefing(c.get("userId"), parsed.data.visitId, parsed.data.exclude));
   });
   route.post("/visit", async (c) => {
-    const parsed = z22.object({ visitId: z22.uuid() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z23.object({ visitId: z23.uuid() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Besuchskennung." }, 400);
     await dependencies.recordBriefingVisit(c.get("userId"), parsed.data.visitId);
     return c.json({ ok: true });
   });
   route.put("/preferences", async (c) => {
-    const parsed = z22.object({ preferences: briefingPreferencesSchema, version: z22.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z23.object({ preferences: briefingPreferencesSchema, version: z23.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Einstellungen, Zeitzone oder Version." }, 400);
     await dependencies.saveBriefingPreferences(c.get("userId"), parsed.data.version, parsed.data.preferences);
     return c.json({ ok: true });
@@ -4495,19 +4594,19 @@ var briefingRoute = createBriefingRoute();
 
 // server/routes/account-map.ts
 import { Hono as Hono19 } from "hono";
-import { z as z24 } from "zod";
+import { z as z25 } from "zod";
 
 // server/account-map-policy.ts
-import { z as z23 } from "zod";
-var accountRelationSchema = z23.object({
-  fromAccountId: z23.uuid(),
-  toAccountId: z23.uuid(),
-  type: z23.enum(["login", "recovery_email", "recovery_other"]),
-  loginDependency: z23.enum(["only_known", "alternative_known", "unknown"]).nullable(),
-  reviewed: z23.boolean()
+import { z as z24 } from "zod";
+var accountRelationSchema = z24.object({
+  fromAccountId: z24.uuid(),
+  toAccountId: z24.uuid(),
+  type: z24.enum(["login", "recovery_email", "recovery_other"]),
+  loginDependency: z24.enum(["only_known", "alternative_known", "unknown"]).nullable(),
+  reviewed: z24.boolean()
 }).strict().refine((value) => value.fromAccountId !== value.toAccountId, "Ein Konto kann nicht auf sich selbst verweisen.").refine((value) => value.type === "login" ? value.loginDependency !== null : value.loginDependency === null, "Anmeldeabh\xE4ngigkeit passt nicht zum Verbindungstyp.");
-var relationVersionSchema = z23.object({ version: z23.number().int().positive() }).strict();
-var relationUpdateSchema = z23.object({ relation: accountRelationSchema, version: z23.number().int().positive() }).strict();
+var relationVersionSchema = z24.object({ version: z24.number().int().positive() }).strict();
+var relationUpdateSchema = z24.object({ relation: accountRelationSchema, version: z24.number().int().positive() }).strict();
 
 // server/account-map-store.ts
 init_neon_storage();
@@ -4622,13 +4721,13 @@ function createAccountMapRoute(dependencies = { createAccountRelation, deleteAcc
     return c.json(await dependencies.createAccountRelation(c.get("userId"), parsed.data), 201);
   });
   route.put("/:id", async (c) => {
-    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     const parsed = relationUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Verbindung oder Eintragsversion." }, 400);
     return c.json(await dependencies.updateAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.relation));
   });
   route.delete("/:id", async (c) => {
-    if (!z24.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
+    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     const parsed = relationVersionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
     return c.json(await dependencies.deleteAccountRelation(c.get("userId"), c.req.param("id"), parsed.data.version));
@@ -4639,7 +4738,7 @@ var accountMapRoute = createAccountMapRoute();
 
 // server/routes/account-security.ts
 import { Hono as Hono20 } from "hono";
-import { z as z25 } from "zod";
+import { z as z26 } from "zod";
 function createAccountSecurityRoute(dependencies = { createSecurityAccount, deleteSecurityAccount, initializeSecurityStorage, readSecurityOverview, reviewSecurityAccount, updateSecurityAccount }) {
   const route = new Hono20();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Sicherheits\xFCbersicht nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
@@ -4659,11 +4758,11 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.createSecurityAccount(c.get("userId"), parsed.data), 201);
   });
   route.use("/:id/*", async (c, next) => {
-    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z26.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     await next();
   });
   route.put("/:id", async (c) => {
-    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z26.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Kontodaten oder Eintragsversion." }, 400);
     return c.json(await dependencies.updateSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version, parsed.data.account));
@@ -4674,7 +4773,7 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
     return c.json(await dependencies.reviewSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
   });
   route.delete("/:id", async (c) => {
-    if (!z25.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
+    if (!z26.uuid().safeParse(c.req.param("id")).success) return c.json({ error: "Ung\xFCltige Kontokennung." }, 400);
     const parsed = securityVersionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Ung\xFCltige Eintragsversion." }, 400);
     return c.json(await dependencies.deleteSecurityAccount(c.get("userId"), c.req.param("id"), parsed.data.version));
@@ -4685,13 +4784,13 @@ var accountSecurityRoute = createAccountSecurityRoute();
 
 // server/routes/github.ts
 import { Hono as Hono21 } from "hono";
-import { z as z27 } from "zod";
+import { z as z28 } from "zod";
 
 // server/github-monitor.ts
-import { z as z26 } from "zod";
-var githubOwner = z26.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
-var githubRepo = z26.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
-var repositoryName = z26.string().refine((value) => {
+import { z as z27 } from "zod";
+var githubOwner = z27.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/);
+var githubRepo = z27.string().regex(/^[A-Za-z0-9_.-]{1,100}$/).refine((value) => value !== "." && value !== "..");
+var repositoryName = z27.string().refine((value) => {
   const parts = value.split("/");
   return parts.length === 2 && githubOwner.safeParse(parts[0]).success && githubRepo.safeParse(parts[1]).success;
 });
@@ -4702,9 +4801,9 @@ var GitHubError = class extends Error {
     this.status = status;
   }
 };
-var text24 = z26.string();
-var nullableDate = z26.string().nullable().optional();
-var repoSchema = z26.object({ id: z26.number(), full_name: text24, name: text24, private: z26.boolean(), default_branch: text24, updated_at: nullableDate, html_url: text24 });
+var text24 = z27.string();
+var nullableDate = z27.string().nullable().optional();
+var repoSchema = z27.object({ id: z27.number(), full_name: text24, name: text24, private: z27.boolean(), default_branch: text24, updated_at: nullableDate, html_url: text24 });
 function url(value) {
   try {
     const parsed = new URL(value);
@@ -4766,7 +4865,7 @@ async function githubGet(path, query = {}) {
 async function listGitHubRepositories() {
   const repositories = [];
   for (let page = 1; page <= 10; page++) {
-    const items = z26.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
+    const items = z27.array(repoSchema).parse(await githubGet("/user/repos", { per_page: "100", page: String(page), sort: "updated", affiliation: "owner,collaborator,organization_member" }));
     for (const item2 of items) if (!repositories.some((repo) => repo.id === item2.id)) repositories.push(project(item2));
     if (items.length < 100) return { repositories, limited: false };
   }
@@ -4778,14 +4877,14 @@ async function fetchGitHubSnapshot(name) {
   const repository = project(repoSchema.parse(await githubGet(root)));
   if (repository.fullName.toLowerCase() !== name.toLowerCase()) throw new GitHubError("Repository-Zuordnung stimmt nicht mit der GitHub-Antwort \xFCberein.");
   const item2 = (id, title2, href, status, updatedAt, sha, branch) => ({ id: String(id), title: title2.slice(0, 1e3), url: url(href), status, updatedAt: updatedAt ?? null, ...sha ? { sha } : {}, ...branch ? { branch } : {} });
-  const issueSchema = z26.object({ id: z26.number(), number: z26.number(), title: text24, html_url: text24, state: text24, updated_at: nullableDate, draft: z26.boolean().optional(), pull_request: z26.unknown().optional() });
+  const issueSchema = z27.object({ id: z27.number(), number: z27.number(), title: text24, html_url: text24, state: text24, updated_at: nullableDate, draft: z27.boolean().optional(), pull_request: z27.unknown().optional() });
   const loaders2 = {
-    branches: async () => z26.array(z26.object({ name: text24, protected: z26.boolean(), commit: z26.object({ sha: text24 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
-    commits: async () => z26.array(z26.object({ sha: text24, html_url: text24, commit: z26.object({ message: text24, committer: z26.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
-    issues: async () => z26.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
-    pulls: async () => z26.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
-    runs: async () => z26.object({ workflow_runs: z26.array(z26.object({ id: z26.number(), name: text24.nullable(), html_url: text24, status: text24, conclusion: text24.nullable(), updated_at: nullableDate, head_sha: text24, head_branch: text24.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
-    releases: async () => z26.array(z26.object({ id: z26.number(), name: text24.nullable(), tag_name: text24, html_url: text24, published_at: nullableDate, draft: z26.boolean(), prerelease: z26.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
+    branches: async () => z27.array(z27.object({ name: text24, protected: z27.boolean(), commit: z27.object({ sha: text24 }) })).parse(await githubGet(`${root}/branches`, { per_page: "20" })).map((b) => item2(b.name, b.name, `https://github.com/${name}/tree/${encodeURIComponent(b.name)}`, b.protected ? "Gesch\xFCtzt" : "Branch", null, b.commit.sha, b.name)),
+    commits: async () => z27.array(z27.object({ sha: text24, html_url: text24, commit: z27.object({ message: text24, committer: z27.object({ date: nullableDate }).nullable() }) })).parse(await githubGet(`${root}/commits`, { per_page: "20", sha: repository.defaultBranch })).map((c) => item2(c.sha, c.commit.message, c.html_url, "Commit", c.commit.committer?.date, c.sha, repository.defaultBranch)),
+    issues: async () => z27.array(issueSchema).parse(await githubGet(`${root}/issues`, { per_page: "20", state: "open", sort: "updated" })).filter((i) => !i.pull_request).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.state, i.updated_at)),
+    pulls: async () => z27.array(issueSchema).parse(await githubGet(`${root}/pulls`, { per_page: "20", state: "open", sort: "updated" })).map((i) => item2(i.id, `#${i.number} ${i.title}`, i.html_url, i.draft ? "Entwurf" : i.state, i.updated_at)),
+    runs: async () => z27.object({ workflow_runs: z27.array(z27.object({ id: z27.number(), name: text24.nullable(), html_url: text24, status: text24, conclusion: text24.nullable(), updated_at: nullableDate, head_sha: text24, head_branch: text24.nullable() })) }).parse(await githubGet(`${root}/actions/runs`, { per_page: "20" })).workflow_runs.map((r) => item2(r.id, r.name ?? "Workflow", r.html_url, r.conclusion ?? r.status, r.updated_at, r.head_sha, r.head_branch ?? void 0)),
+    releases: async () => z27.array(z27.object({ id: z27.number(), name: text24.nullable(), tag_name: text24, html_url: text24, published_at: nullableDate, draft: z27.boolean(), prerelease: z27.boolean() })).parse(await githubGet(`${root}/releases`, { per_page: "20" })).map((r) => item2(r.id, r.name || r.tag_name, r.html_url, r.draft ? "Entwurf" : r.prerelease ? "Vorabversion" : "Release", r.published_at))
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
@@ -4860,8 +4959,8 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.put("/links/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
     const userId = c.get("userId");
-    const parsed = z27.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
-    if (!z27.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
+    const parsed = z28.object({ repository: repositoryName }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!z28.uuid().safeParse(projectId).success || !parsed.success) return c.json({ error: "Ung\xFCltige Projekt-/Repository-Zuordnung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, projectId)) return c.json({ error: "Eigenes OMNIDESK-Projekt nicht gefunden." }, 404);
     await dependencies.fetchGitHubSnapshot(parsed.data.repository);
     if (!await dependencies.saveGitHubLink(userId, projectId, parsed.data.repository)) return c.json({ error: "Projekt nicht mehr verf\xFCgbar." }, 404);
@@ -4870,7 +4969,7 @@ function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepos
   route.delete("/links/:projectId", async (c) => {
     const id = c.req.param("projectId");
     const userId = c.get("userId");
-    if (!z27.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (!z28.uuid().safeParse(id).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     if (!await dependencies.ownsGitHubProject(userId, id)) return c.json({ error: "Projekt nicht gefunden." }, 404);
     await dependencies.deleteGitHubLink(userId, id);
     return c.json({ ok: true });
@@ -4886,11 +4985,11 @@ import { and as and21, eq as eq23 } from "drizzle-orm";
 import { Hono as Hono22 } from "hono";
 
 // server/vercel-monitor.ts
-import { z as z28 } from "zod";
-var identifier = z28.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
-var linkSchema = z28.object({
-  userId: z28.string().min(1),
-  projectId: z28.uuid(),
+import { z as z29 } from "zod";
+var identifier = z29.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+var linkSchema = z29.object({
+  userId: z29.string().min(1),
+  projectId: z29.uuid(),
   vercelProjectId: identifier,
   teamId: identifier.optional()
 });
@@ -4913,7 +5012,7 @@ function readVercelLinks() {
   } catch {
     throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "DEPLOYMENT_PROJECT_LINKS enth\xE4lt ung\xFCltiges JSON. Vollst\xE4ndige Liste von [ bis ] ohne Markdown-Codezeichen eintragen und neu deployen.", 503);
   }
-  const result = z28.array(linkSchema).max(100).safeParse(parsed);
+  const result = z29.array(linkSchema).max(100).safeParse(parsed);
   if (!result.success) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", `DEPLOYMENT_PROJECT_LINKS ist ung\xFCltig. Feld ${result.error.issues[0]?.path.join(".") || "Liste"} pr\xFCfen.`, 503);
   const identities = result.data.map((link) => `${link.userId}:${link.projectId}`);
   if (new Set(identities).size !== identities.length) throw new VercelMonitorError("VERCEL_CONFIG_INVALID", "Pro Benutzer und OMNIDESK-Projekt ist nur eine Vercel-Zuordnung erlaubt.", 503);
@@ -4960,23 +5059,23 @@ async function vercelGet(path, link, query = {}) {
   if (!response.ok) throw new VercelMonitorError("VERCEL_API_ERROR", `Vercel-Abfrage fehlgeschlagen (HTTP ${response.status}). Token, Team-Zuordnung, Zugriffsrechte oder API-Limit pr\xFCfen.`);
   return boundedJson(response);
 }
-var deploymentSchema = z28.object({
-  id: z28.string().optional(),
-  uid: z28.string().optional(),
-  projectId: z28.string().optional(),
-  url: z28.string().optional().nullable(),
-  state: z28.string().optional(),
-  readyState: z28.string().optional(),
-  target: z28.string().optional().nullable(),
-  createdAt: z28.number().optional(),
-  created: z28.number().optional(),
-  meta: z28.record(z28.string(), z28.unknown()).optional()
+var deploymentSchema = z29.object({
+  id: z29.string().optional(),
+  uid: z29.string().optional(),
+  projectId: z29.string().optional(),
+  url: z29.string().optional().nullable(),
+  state: z29.string().optional(),
+  readyState: z29.string().optional(),
+  target: z29.string().optional().nullable(),
+  createdAt: z29.number().optional(),
+  created: z29.number().optional(),
+  meta: z29.record(z29.string(), z29.unknown()).optional()
 }).refine((value) => Boolean(value.id || value.uid), "Missing deployment identifier");
-var projectSchema2 = z28.object({
-  id: z28.string(),
-  name: z28.string(),
-  link: z28.object({ type: z28.string().optional(), org: z28.string().optional(), repo: z28.string().optional() }).nullable().optional(),
-  targets: z28.object({ production: deploymentSchema.nullable().optional() }).optional()
+var projectSchema2 = z29.object({
+  id: z29.string(),
+  name: z29.string(),
+  link: z29.object({ type: z29.string().optional(), org: z29.string().optional(), repo: z29.string().optional() }).nullable().optional(),
+  targets: z29.object({ production: deploymentSchema.nullable().optional() }).optional()
 });
 function safeDeploymentUrl(value) {
   if (!value) return null;
@@ -5006,7 +5105,7 @@ function publicDeployment(value) {
 async function fetchVercelSnapshot(link) {
   const [projectResult, deploymentsResult] = await Promise.allSettled([
     vercelGet(`/v9/projects/${encodeURIComponent(link.vercelProjectId)}`, link).then((value) => projectSchema2.parse(value)),
-    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z28.object({ deployments: z28.array(deploymentSchema) }).parse(value).deployments)
+    vercelGet("/v7/deployments", link, { projectId: link.vercelProjectId, limit: "20" }).then((value) => z29.object({ deployments: z29.array(deploymentSchema) }).parse(value).deployments)
   ]);
   if (projectResult.status === "fulfilled" && projectResult.value.id !== link.vercelProjectId) {
     throw new VercelMonitorError("VERCEL_PROJECT_MISMATCH", "Die Vercel-Antwort passt nicht zur hinterlegten Projekt-ID.");
@@ -5045,19 +5144,19 @@ function redactBuildLog(text25) {
 }
 async function fetchVercelLogs(link, deploymentId) {
   if (!identifier.safeParse(deploymentId).success) throw new VercelMonitorError("VERCEL_DEPLOYMENT_INVALID", "Ung\xFCltige Deployment-ID.", 400);
-  const detail = z28.object({ id: z28.string(), projectId: z28.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
+  const detail = z29.object({ id: z29.string(), projectId: z29.string() }).parse(await vercelGet(`/v13/deployments/${encodeURIComponent(deploymentId)}`, link));
   if (detail.id !== deploymentId || detail.projectId !== link.vercelProjectId) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Dieses Deployment geh\xF6rt nicht zum zugeordneten Projekt.", 404);
   const raw = await vercelGet(
     `/v3/deployments/${encodeURIComponent(deploymentId)}/events`,
     link,
     { follow: "0", builds: "1", direction: "backward", limit: "100" }
   );
-  const parsedEvents = z28.array(z28.object({
-    text: z28.string().nullable().optional(),
-    type: z28.string().optional(),
-    created: z28.number().optional(),
-    date: z28.number().optional(),
-    deploymentId: z28.string().optional()
+  const parsedEvents = z29.array(z29.object({
+    text: z29.string().nullable().optional(),
+    type: z29.string().optional(),
+    created: z29.number().optional(),
+    date: z29.number().optional(),
+    deploymentId: z29.string().optional()
   }).nullable()).parse(raw);
   const events = parsedEvents.filter((event) => event !== null);
   if (events.some((event) => event.deploymentId && event.deploymentId !== deploymentId)) throw new VercelMonitorError("VERCEL_DEPLOYMENT_FORBIDDEN", "Log-Zuordnung stimmt nicht mit dem Deployment \xFCberein.", 404);
@@ -5073,14 +5172,14 @@ async function fetchVercelProjects() {
   const projects2 = [];
   const unavailable = [];
   let limited = false;
-  const pageSchema = z28.object({ pagination: z28.object({ next: z28.number().nullable().optional() }).optional() });
+  const pageSchema = z29.object({ pagination: z29.object({ next: z29.number().nullable().optional() }).optional() });
   async function pages(path, field, teamId) {
     const items = [];
     let until;
     for (let page = 0; page < 10; page++) {
       const raw = await vercelGet(path, { teamId }, { limit: "100", ...until ? { until } : {} });
       const parsed = pageSchema.parse(raw);
-      items.push(...z28.array(z28.unknown()).parse(z28.record(z28.string(), z28.unknown()).parse(raw)[field]));
+      items.push(...z29.array(z29.unknown()).parse(z29.record(z29.string(), z29.unknown()).parse(raw)[field]));
       const next = parsed.pagination?.next;
       if (next == null) return items;
       if (String(next) === until) {
@@ -5094,7 +5193,7 @@ async function fetchVercelProjects() {
   }
   const teams = [];
   try {
-    teams.push(...z28.array(z28.object({ id: identifier, name: z28.string() })).parse(await pages("/v2/teams", "teams")));
+    teams.push(...z29.array(z29.object({ id: identifier, name: z29.string() })).parse(await pages("/v2/teams", "teams")));
   } catch {
     unavailable.push("Team-Liste");
   }
@@ -5103,7 +5202,7 @@ async function fetchVercelProjects() {
   for (let i = 0; i < scopes.length; i += 4) {
     await Promise.all(scopes.slice(i, i + 4).map(async (scope) => {
       try {
-        const items = z28.array(z28.object({ id: identifier, name: z28.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
+        const items = z29.array(z29.object({ id: identifier, name: z29.string(), accountId: identifier.optional() })).parse(await pages("/v10/projects", "projects", scope.id));
         for (const item2 of items) {
           const teamId = item2.accountId?.startsWith("team_") ? item2.accountId : scope.id ?? null;
           if (!projects2.some((project2) => project2.id === item2.id && project2.teamId === teamId)) {
@@ -5215,7 +5314,7 @@ var deploymentsRoute = createDeploymentsRoute();
 
 // server/routes/omni-memory-auto.ts
 import { Hono as Hono23 } from "hono";
-import { z as z30 } from "zod";
+import { z as z31 } from "zod";
 
 // server/omni-memory-auto-storage.ts
 init_neon_storage();
@@ -5225,7 +5324,7 @@ import { randomUUID as randomUUID3 } from "node:crypto";
 init_neon_storage();
 
 // server/omni-memory-policy.ts
-import { z as z29 } from "zod";
+import { z as z30 } from "zod";
 
 // src/types/omni-memory.ts
 var MEMORY_CATEGORIES = [
@@ -5242,20 +5341,20 @@ var OmniMemoryError = class extends Error {
     this.status = status;
   }
 };
-var memoryInputSchema = z29.object({
-  title: z29.string().trim().min(1).max(160),
-  content: z29.string().trim().min(1).max(4e3),
-  category: z29.enum(MEMORY_CATEGORIES),
-  projectId: z29.uuid().nullable(),
-  pinned: z29.boolean(),
-  archived: z29.boolean()
+var memoryInputSchema = z30.object({
+  title: z30.string().trim().min(1).max(160),
+  content: z30.string().trim().min(1).max(4e3),
+  category: z30.enum(MEMORY_CATEGORIES),
+  projectId: z30.uuid().nullable(),
+  pinned: z30.boolean(),
+  archived: z30.boolean()
 }).strict();
-var createMemorySchema = memoryInputSchema.extend({ id: z29.uuid(), sourceMessageId: z29.uuid().nullable().default(null) }).strict();
-var updateMemorySchema = memoryInputSchema.extend({ version: z29.number().int().positive() }).strict();
-var chatMemoryOptions = z29.object({
-  enabled: z29.boolean(),
-  projectId: z29.uuid().nullable(),
-  autoCapture: z29.boolean().optional()
+var createMemorySchema = memoryInputSchema.extend({ id: z30.uuid(), sourceMessageId: z30.uuid().nullable().default(null) }).strict();
+var updateMemorySchema = memoryInputSchema.extend({ version: z30.number().int().positive() }).strict();
+var chatMemoryOptions = z30.object({
+  enabled: z30.boolean(),
+  projectId: z30.uuid().nullable(),
+  autoCapture: z30.boolean().optional()
 }).strict();
 
 // server/omni-memory-storage.ts
@@ -5476,7 +5575,7 @@ function createAutoMemoryRoute(dependencies = { applyAutoMemoryEvent, dismissAut
   for (const action of ["accept", "dismiss"])
     route.post(`/:id/${action}`, async (c) => {
       const id = c.req.param("id");
-      if (!z30.uuid().safeParse(id).success || !z30.object({}).strict().safeParse(await c.req.json().catch(() => null)).success)
+      if (!z31.uuid().safeParse(id).success || !z31.object({}).strict().safeParse(await c.req.json().catch(() => null)).success)
         return c.json({ error: "Ung\xFCltiger Ged\xE4chtnisvorschlag." }, 400);
       return c.json(
         await (action === "accept" ? dependencies.applyAutoMemoryEvent : dependencies.dismissAutoMemoryEvent)(c.get("userId"), id)
@@ -5488,7 +5587,7 @@ var autoMemoryRoute = createAutoMemoryRoute();
 
 // server/routes/omni-memory.ts
 import { Hono as Hono24 } from "hono";
-import { z as z31 } from "zod";
+import { z as z32 } from "zod";
 function createOmniMemoryRoute(dependencies = {
   readOmniMemories,
   createOmniMemory,
@@ -5528,7 +5627,7 @@ function createOmniMemoryRoute(dependencies = {
     );
   });
   route.use("/:id/*", async (c, next) => {
-    if (!z31.uuid().safeParse(c.req.param("id")).success)
+    if (!z32.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
     await next();
   });
@@ -5539,7 +5638,7 @@ function createOmniMemoryRoute(dependencies = {
     )
   );
   route.put("/:id", async (c) => {
-    if (!z31.uuid().safeParse(c.req.param("id")).success)
+    if (!z32.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
     const parsed = updateMemorySchema.safeParse(
       await c.req.json().catch(() => null)
@@ -5555,9 +5654,9 @@ function createOmniMemoryRoute(dependencies = {
     );
   });
   route.delete("/:id", async (c) => {
-    if (!z31.uuid().safeParse(c.req.param("id")).success)
+    if (!z32.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Erinnerung." }, 400);
-    const parsed = z31.object({ version: z31.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
+    const parsed = z32.object({ version: z32.number().int().positive() }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Version fehlt." }, 400);
     return c.json(
       await dependencies.deleteOmniMemory(
@@ -5573,7 +5672,7 @@ var omniMemoryRoute = createOmniMemoryRoute();
 
 // server/routes/omni-actions.ts
 import { Hono as Hono25 } from "hono";
-import { z as z33 } from "zod";
+import { z as z34 } from "zod";
 
 // server/omni-actions-context.ts
 init_neon_storage();
@@ -5613,7 +5712,7 @@ function publicOmniContext(context) {
 }
 
 // server/omni-actions-policy.ts
-import { z as z32 } from "zod";
+import { z as z33 } from "zod";
 var OmniActionError = class extends Error {
   status;
   constructor(message, status = 400) {
@@ -5621,13 +5720,13 @@ var OmniActionError = class extends Error {
     this.status = status;
   }
 };
-var title = z32.string().trim().min(1).max(300);
-var priority = z32.enum(["high", "medium", "low"]);
-var day = z32.iso.date().refine(
+var title = z33.string().trim().min(1).max(300);
+var priority = z33.enum(["high", "medium", "low"]);
+var day = z33.iso.date().refine(
   (v) => !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v
 );
-var localTime = z32.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-var omniTimeZone = z32.string().max(80).refine((v) => {
+var localTime = z33.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+var omniTimeZone = z33.string().max(80).refine((v) => {
   try {
     new Intl.DateTimeFormat("de-DE", { timeZone: v });
     return true;
@@ -5635,67 +5734,67 @@ var omniTimeZone = z32.string().max(80).refine((v) => {
     return false;
   }
 });
-var personalFields = z32.object({
+var personalFields = z33.object({
   title: title.optional(),
-  description: z32.string().max(1e4).optional(),
+  description: z33.string().max(1e4).optional(),
   priority: priority.optional(),
-  status: z32.enum(["todo", "in_progress", "done"]).optional(),
+  status: z33.enum(["todo", "in_progress", "done"]).optional(),
   dueDate: day.nullable().optional()
 }).strict().refine((v) => Object.keys(v).length > 0);
-var projectFields = z32.object({
+var projectFields = z33.object({
   title: title.optional(),
   priority: priority.optional(),
-  status: z32.enum(["backlog", "todo", "in_progress", "done"]).optional()
+  status: z33.enum(["backlog", "todo", "in_progress", "done"]).optional()
 }).strict().refine((v) => Object.keys(v).length > 0);
-var omniOperationSchema = z32.discriminatedUnion("kind", [
-  z32.object({
-    kind: z32.literal("create_task"),
+var omniOperationSchema = z33.discriminatedUnion("kind", [
+  z33.object({
+    kind: z33.literal("create_task"),
     title,
-    description: z32.string().max(1e4),
+    description: z33.string().max(1e4),
     priority,
-    status: z32.enum(["todo", "in_progress", "done"]),
+    status: z33.enum(["todo", "in_progress", "done"]),
     dueDate: day.nullable()
   }).strict(),
-  z32.object({
-    kind: z32.literal("update_task"),
-    taskId: z32.uuid(),
+  z33.object({
+    kind: z33.literal("update_task"),
+    taskId: z33.uuid(),
     changes: personalFields
   }).strict(),
-  z32.object({
-    kind: z32.literal("create_project_task"),
-    projectId: z32.uuid(),
+  z33.object({
+    kind: z33.literal("create_project_task"),
+    projectId: z33.uuid(),
     title,
     priority,
-    status: z32.enum(["backlog", "todo", "in_progress", "done"])
+    status: z33.enum(["backlog", "todo", "in_progress", "done"])
   }).strict(),
-  z32.object({
-    kind: z32.literal("update_project_task"),
-    taskId: z32.uuid(),
+  z33.object({
+    kind: z33.literal("update_project_task"),
+    taskId: z33.uuid(),
     changes: projectFields
   }).strict(),
-  z32.object({
-    kind: z32.literal("create_appointment"),
+  z33.object({
+    kind: z33.literal("create_appointment"),
     title,
-    description: z32.string().max(1e4),
-    location: z32.string().max(300),
+    description: z33.string().max(1e4),
+    location: z33.string().max(300),
     priority,
     startLocal: localTime,
     endLocal: localTime
   }).strict(),
-  z32.object({
-    kind: z32.literal("append_project_note"),
-    projectId: z32.uuid(),
-    text: z32.string().trim().min(1).max(5e3)
+  z33.object({
+    kind: z33.literal("append_project_note"),
+    projectId: z33.uuid(),
+    text: z33.string().trim().min(1).max(5e3)
   }).strict()
 ]);
-var omniPlannerOutput = z32.discriminatedUnion("type", [
-  z32.object({
-    type: z32.literal("clarification"),
-    message: z32.string().trim().min(1).max(1500)
+var omniPlannerOutput = z33.discriminatedUnion("type", [
+  z33.object({
+    type: z33.literal("clarification"),
+    message: z33.string().trim().min(1).max(1500)
   }).strict(),
-  z32.object({
-    type: z32.literal("plan"),
-    operations: z32.array(omniOperationSchema).min(1).max(5)
+  z33.object({
+    type: z33.literal("plan"),
+    operations: z33.array(omniOperationSchema).min(1).max(5)
   }).strict()
 ]);
 function localTimeToIso(local, timeZone) {
@@ -6160,9 +6259,9 @@ function createOmniActionsRoute(dependencies = {
     async (c) => c.json(await dependencies.readOmniPlans(c.get("userId")))
   );
   route.post("/plan", async (c) => {
-    const parsed = z33.object({
-      requestId: z33.uuid(),
-      prompt: z33.string().trim().min(1).max(4e3),
+    const parsed = z34.object({
+      requestId: z34.uuid(),
+      prompt: z34.string().trim().min(1).max(4e3),
       timeZone: omniTimeZone
     }).strict().safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
@@ -6196,9 +6295,9 @@ function createOmniActionsRoute(dependencies = {
   for (const action of ["confirm", "cancel"])
     route.post(`/:id/${action}`, async (c) => {
       const id = c.req.param("id");
-      if (!z33.uuid().safeParse(id).success)
+      if (!z34.uuid().safeParse(id).success)
         return c.json({ error: "Ung\xFCltige Vorschlagskennung." }, 400);
-      const body = z33.object({}).strict().safeParse(await c.req.json().catch(() => null));
+      const body = z34.object({}).strict().safeParse(await c.req.json().catch(() => null));
       if (!body.success)
         return c.json(
           {
@@ -6215,16 +6314,16 @@ function createOmniActionsRoute(dependencies = {
 var omniActionsRoute = createOmniActionsRoute();
 
 // server/omni-memory-auto-policy.ts
-import { z as z34 } from "zod";
-var autoExtractionSchema = z34.object({
-  items: z34.array(
-    z34.object({
-      title: z34.string().trim().min(1).max(160),
-      evidence: z34.string().trim().min(6).max(1500),
-      category: z34.enum(MEMORY_CATEGORIES),
-      targetId: z34.uuid().nullable(),
-      certainty: z34.enum(["explicit", "uncertain"]),
-      correction: z34.boolean()
+import { z as z35 } from "zod";
+var autoExtractionSchema = z35.object({
+  items: z35.array(
+    z35.object({
+      title: z35.string().trim().min(1).max(160),
+      evidence: z35.string().trim().min(6).max(1500),
+      category: z35.enum(MEMORY_CATEGORIES),
+      targetId: z35.uuid().nullable(),
+      certainty: z35.enum(["explicit", "uncertain"]),
+      correction: z35.boolean()
     }).strict()
   ).max(3)
 }).strict();
@@ -6570,7 +6669,7 @@ init_client();
 init_schema();
 import { and as and22, asc as asc5, desc as desc9, eq as eq24 } from "drizzle-orm";
 import { Hono as Hono26 } from "hono";
-import { z as z35 } from "zod";
+import { z as z36 } from "zod";
 var chatRoute = new Hono26();
 var preferredKeyIndex = 0;
 function getApiKeys() {
@@ -6583,14 +6682,14 @@ function getApiKeys() {
 function isFailoverStatus(status) {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
-var createSessionSchema = z35.object({
-  title: z35.string().trim().max(200).optional()
+var createSessionSchema = z36.object({
+  title: z36.string().trim().max(200).optional()
 });
-var updateSessionSchema = z35.object({
-  title: z35.string().trim().min(1).max(200)
+var updateSessionSchema = z36.object({
+  title: z36.string().trim().min(1).max(200)
 });
-var sendMessageSchema = z35.object({
-  content: z35.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4),
+var sendMessageSchema = z36.object({
+  content: z36.string().trim().min(1, "Nachricht darf nicht leer sein").max(2e4),
   memory: chatMemoryOptions.optional()
 });
 chatRoute.get("/sessions", async (c) => {
@@ -6614,7 +6713,7 @@ chatRoute.put("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const parsed = updateSessionSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z35.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z36.prettifyError(parsed.error) }, 400);
   }
   const [updated] = await db.update(chatSessions).set({
     title: parsed.data.title,
@@ -6661,7 +6760,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   }
   const parsed = sendMessageSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return c.json({ error: z35.prettifyError(parsed.error) }, 400);
+    return c.json({ error: z36.prettifyError(parsed.error) }, 400);
   }
   const userContent = parsed.data.content;
   const smallTalk = isSimpleSmallTalk(userContent);
@@ -6823,7 +6922,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
 
 // server/routes/mission-control.ts
 import { Hono as Hono27 } from "hono";
-import { z as z36 } from "zod";
+import { z as z37 } from "zod";
 
 // server/mission-control.ts
 init_neon_storage();
@@ -7506,7 +7605,7 @@ function createMissionLoader(deps = missionDependencies) {
 var loadMission = createMissionLoader();
 
 // server/mission-report.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 function missionBriefing(snapshot) {
   const analysis = analyzeMission(snapshot);
   const day2 = new Intl.DateTimeFormat("en-CA", {
@@ -7519,7 +7618,7 @@ function missionBriefing(snapshot) {
     checkedAt: snapshot.fetchedAt,
     day: day2,
     timeZone: "Europe/Berlin",
-    digest: createHash3("sha256").update(JSON.stringify(analysis.facts)).digest("hex"),
+    digest: createHash4("sha256").update(JSON.stringify(analysis.facts)).digest("hex"),
     previousVisitAt: null,
     storageReady: false,
     preferenceVersion: 1,
@@ -7580,10 +7679,10 @@ function createMissionReport(select = callBriefingAI) {
 var generateMissionReport = createMissionReport();
 
 // server/routes/mission-control.ts
-var visitInput = z36.object({ visitId: z36.uuid() }).strict();
-var monitorInput2 = z36.object({
-  monitorIds: z36.array(z36.uuid()).max(30).refine((v) => new Set(v).size === v.length),
-  version: z36.number().int().min(0)
+var visitInput = z37.object({ visitId: z37.uuid() }).strict();
+var monitorInput2 = z37.object({
+  monitorIds: z37.array(z37.uuid()).max(30).refine((v) => new Set(v).size === v.length),
+  version: z37.number().int().min(0)
 }).strict();
 var missionRouteDependencies = {
   loadMission,
@@ -7610,7 +7709,7 @@ function createMissionRoute(deps = missionRouteDependencies) {
   );
   route.use("/:projectId/*", async (c, next) => {
     const id = c.req.param("projectId");
-    if (!z36.uuid().safeParse(id).success)
+    if (!z37.uuid().safeParse(id).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     await next();
   });
@@ -7700,10 +7799,10 @@ var missionRoute = createMissionRoute();
 // server/routes/browser-desk.ts
 import { Hono as Hono28 } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { z as z38 } from "zod";
+import { z as z39 } from "zod";
 
 // server/browser-policy.ts
-import { z as z37 } from "zod";
+import { z as z38 } from "zod";
 
 // src/lib/browser-url.ts
 function browserSourceUrl(value) {
@@ -7769,10 +7868,10 @@ var BrowserDeskError = class extends Error {
     this.status = status;
   }
 };
-var browserItemInput = z37.object({
-  id: z37.uuid(),
-  title: z37.string().trim().min(1).max(300),
-  url: z37.string().max(4096).transform((value, ctx) => {
+var browserItemInput = z38.object({
+  id: z38.uuid(),
+  title: z38.string().trim().min(1).max(300),
+  url: z38.string().max(4096).transform((value, ctx) => {
     try {
       return browserSourceUrl(value);
     } catch {
@@ -7780,34 +7879,34 @@ var browserItemInput = z37.object({
         code: "custom",
         message: "Ung\xFCltige oder nicht unterst\xFCtzte Seitenadresse."
       });
-      return z37.NEVER;
+      return z38.NEVER;
     }
   }),
-  selection: z37.string().max(1e4),
-  annotation: z37.string().max(2e4),
-  projectId: z37.uuid().nullable()
+  selection: z38.string().max(1e4),
+  annotation: z38.string().max(2e4),
+  projectId: z38.uuid().nullable()
 }).strict().refine(
   (v) => Boolean(v.selection.trim() || v.annotation.trim()),
   "Eine Textauswahl oder Anmerkung fehlt."
 );
-var browserUpdateInput = z37.object({
-  title: z37.string().trim().min(1).max(300),
-  selection: z37.string().max(1e4),
-  annotation: z37.string().max(2e4),
-  projectId: z37.uuid().nullable(),
-  version: z37.number().int().positive()
+var browserUpdateInput = z38.object({
+  title: z38.string().trim().min(1).max(300),
+  selection: z38.string().max(1e4),
+  annotation: z38.string().max(2e4),
+  projectId: z38.uuid().nullable(),
+  version: z38.number().int().positive()
 }).strict().refine((v) => Boolean(v.selection.trim() || v.annotation.trim()));
-var browserPairInput = z37.object({ challenge: z37.string().regex(/^[a-f0-9]{64}$/) }).strict();
-var browserExchangeInput = z37.object({
-  code: z37.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  verifier: z37.string().regex(/^[A-Za-z0-9_-]{43}$/)
+var browserPairInput = z38.object({ challenge: z38.string().regex(/^[a-f0-9]{64}$/) }).strict();
+var browserExchangeInput = z38.object({
+  code: z38.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  verifier: z38.string().regex(/^[A-Za-z0-9_-]{43}$/)
 }).strict();
-var browserPanelInput = z37.object({
-  entries: z37.array(
-    z37.object({
-      id: z37.uuid(),
-      kind: z37.enum(["module", "link"]),
-      target: z37.string().min(1).max(512)
+var browserPanelInput = z38.object({
+  entries: z38.array(
+    z38.object({
+      id: z38.uuid(),
+      kind: z38.enum(["module", "link"]),
+      target: z38.string().min(1).max(512)
     }).strict()
   ).max(MAX_BROWSER_PANEL_ENTRIES).superRefine((entries, ctx) => {
     const seen = /* @__PURE__ */ new Set();
@@ -7818,7 +7917,7 @@ var browserPanelInput = z37.object({
           message: "Ein Schnellzugriff ist doppelt enthalten."
         });
       seen.add(entry.id);
-      const valid = entry.kind === "module" ? Boolean(browserPanelModule(entry.target)) : z37.uuid().safeParse(entry.target).success;
+      const valid = entry.kind === "module" ? Boolean(browserPanelModule(entry.target)) : z38.uuid().safeParse(entry.target).success;
       if (!valid)
         ctx.addIssue({
           code: "custom",
@@ -7826,17 +7925,17 @@ var browserPanelInput = z37.object({
         });
     }
   }),
-  showCommands: z37.boolean(),
-  commandCategory: z37.string().trim().min(1).max(100).nullable(),
-  version: z37.number().int().positive()
+  showCommands: z38.boolean(),
+  commandCategory: z38.string().trim().min(1).max(100).nullable(),
+  version: z38.number().int().positive()
 }).strict();
-var browserCaptureInput = z37.object({
-  id: z37.uuid(),
-  kind: z37.enum(["note", "task", "projectTask"]),
-  title: z37.string().trim().min(1).max(300),
-  text: z37.string().max(2e4),
-  source: z37.object({
-    url: z37.string().max(4096).transform((value, ctx) => {
+var browserCaptureInput = z38.object({
+  id: z38.uuid(),
+  kind: z38.enum(["note", "task", "projectTask"]),
+  title: z38.string().trim().min(1).max(300),
+  text: z38.string().max(2e4),
+  source: z38.object({
+    url: z38.string().max(4096).transform((value, ctx) => {
       try {
         return browserSourceUrl(value);
       } catch {
@@ -7844,12 +7943,12 @@ var browserCaptureInput = z37.object({
           code: "custom",
           message: "Ung\xFCltige oder nicht unterst\xFCtzte Seitenadresse."
         });
-        return z37.NEVER;
+        return z38.NEVER;
       }
     }),
-    title: z37.string().trim().max(300)
+    title: z38.string().trim().max(300)
   }).strict().nullable(),
-  projectId: z37.uuid().nullable()
+  projectId: z38.uuid().nullable()
 }).strict().refine(
   (value) => value.kind !== "projectTask" || Boolean(value.projectId),
   "F\xFCr eine Projektaufgabe fehlt das Projekt."
@@ -7860,8 +7959,8 @@ var browserCaptureInput = z37.object({
 
 // server/browser-storage.ts
 init_neon_storage();
-import { createHash as createHash4, randomBytes as randomBytes2, randomUUID as randomUUID6 } from "node:crypto";
-var browserHash = (value) => createHash4("sha256").update(value).digest("hex");
+import { createHash as createHash5, randomBytes as randomBytes3, randomUUID as randomUUID6 } from "node:crypto";
+var browserHash = (value) => createHash5("sha256").update(value).digest("hex");
 var browserDdl = [
   `CREATE TABLE IF NOT EXISTS v2_browser_items(id uuid PRIMARY KEY,user_id text NOT NULL,url text NOT NULL,title text NOT NULL,selection text NOT NULL,annotation text NOT NULL,project_id uuid REFERENCES projects(id) ON DELETE SET NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS v2_browser_items_owner_url ON v2_browser_items(user_id,url,updated_at DESC)`,
@@ -7947,7 +8046,7 @@ async function deleteBrowserItem(userId, id, version) {
 }
 async function createBrowserPairing(userId, challenge) {
   await initializeBrowserStorage();
-  const sql10 = monitoringSql(), code = randomBytes2(32).toString("base64url");
+  const sql10 = monitoringSql(), code = randomBytes3(32).toString("base64url");
   const [, rows] = await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`browser-pair:${userId}`},0))`,
     sql10`INSERT INTO v2_browser_pairings(code_hash,user_id,challenge,expires_at)
@@ -7964,7 +8063,7 @@ async function createBrowserPairing(userId, challenge) {
   return { code };
 }
 async function exchangeBrowserPairing(code, verifier) {
-  const sql10 = monitoringSql(), token = "omni_ext_" + randomBytes2(32).toString("base64url"), deviceId = randomUUID6();
+  const sql10 = monitoringSql(), token = "omni_ext_" + randomBytes3(32).toString("base64url"), deviceId = randomUUID6();
   try {
     const [row] = await sql10`WITH consumed AS(UPDATE v2_browser_pairings SET consumed_at=now() WHERE code_hash=${browserHash(code)} AND challenge=${browserHash(verifier)} AND expires_at>now() AND consumed_at IS NULL RETURNING user_id)
       INSERT INTO v2_browser_devices(id,user_id,name,token_hash,expires_at) SELECT ${deviceId},user_id,'Browser-Kommandoebene',${browserHash(token)},now()+interval '30 days' FROM consumed RETURNING id,expires_at AS "expiresAt"`;
@@ -8188,7 +8287,7 @@ async function captureBrowserEntry(userId, input) {
 }
 
 // server/routes/browser-desk.ts
-var versionInput = z38.object({ version: z38.number().int().positive() }).strict();
+var versionInput = z39.object({ version: z39.number().int().positive() }).strict();
 var browserDataDependencies = {
   captureBrowserEntry,
   browserPanelView,
@@ -8252,7 +8351,7 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
   });
   route.get("/items", async (c) => {
     const projectId = c.req.query("projectId"), rawUrl = c.req.query("url");
-    if (projectId && !z38.uuid().safeParse(projectId).success)
+    if (projectId && !z39.uuid().safeParse(projectId).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     let url2;
     if (rawUrl) {
@@ -8282,7 +8381,7 @@ function createBrowserDataRoute(deps = browserDataDependencies) {
     return c.json(await deps.saveBrowserItem(c.get("userId"), input.data), 201);
   });
   route.use("/items/:id", async (c, next) => {
-    if (!z38.uuid().safeParse(c.req.param("id")).success)
+    if (!z39.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Eintragskennung." }, 400);
     await next();
   });
@@ -8354,7 +8453,7 @@ function createBrowserWebRoute(deps = browserWebDependencies) {
     async (c) => c.json(await deps.listBrowserDevices(c.get("userId")))
   );
   route.delete("/devices/:id", async (c) => {
-    if (!z38.uuid().safeParse(c.req.param("id")).success)
+    if (!z39.uuid().safeParse(c.req.param("id")).success)
       return c.json({ error: "Ung\xFCltige Verbindungskennung." }, 400);
     await deps.revokeBrowserDevice(c.get("userId"), c.req.param("id"));
     return c.json({ ok: true });
@@ -8410,10 +8509,10 @@ var browserExtensionRoute = createBrowserExtensionRoute();
 // server/routes/shared-rooms.ts
 import { Hono as Hono29 } from "hono";
 import { bodyLimit as bodyLimit2 } from "hono/body-limit";
-import { z as z40 } from "zod";
+import { z as z41 } from "zod";
 
 // server/rooms-policy.ts
-import { z as z39 } from "zod";
+import { z as z40 } from "zod";
 var RoomError = class extends Error {
   status;
   constructor(message, status = 409) {
@@ -8421,34 +8520,34 @@ var RoomError = class extends Error {
     this.status = status;
   }
 };
-var roomRole = z39.enum(["reader", "editor"]);
-var roomExpiry = z39.iso.datetime({ offset: true }).refine((value) => {
+var roomRole = z40.enum(["reader", "editor"]);
+var roomExpiry = z40.iso.datetime({ offset: true }).refine((value) => {
   const delta = Date.parse(value) - Date.now();
   return delta > 0 && delta <= 366 * 864e5;
 }, "Ablauf muss in der Zukunft und innerhalb eines Jahres liegen.");
-var roomText = z39.string().trim().min(1).max(5e3);
-var roomCreate = z39.object({
-  id: z39.uuid(),
-  title: z39.string().trim().min(1).max(120),
-  description: z39.string().trim().max(5e3),
+var roomText = z40.string().trim().min(1).max(5e3);
+var roomCreate = z40.object({
+  id: z40.uuid(),
+  title: z40.string().trim().min(1).max(120),
+  description: z40.string().trim().max(5e3),
   expiresAt: roomExpiry,
-  initialItems: z39.array(
-    z39.object({ kind: z39.enum(["list", "pin"]), text: roomText }).strict()
+  initialItems: z40.array(
+    z40.object({ kind: z40.enum(["list", "pin"]), text: roomText }).strict()
   ).max(100)
 }).strict();
-var roomVersion = z39.object({ version: z39.number().int().positive() }).strict();
-var roomItemCreate = z39.object({ id: z39.uuid(), kind: z39.enum(["list", "pin"]), text: roomText }).strict();
-var roomItemUpdate = z39.object({
+var roomVersion = z40.object({ version: z40.number().int().positive() }).strict();
+var roomItemCreate = z40.object({ id: z40.uuid(), kind: z40.enum(["list", "pin"]), text: roomText }).strict();
+var roomItemUpdate = z40.object({
   text: roomText,
-  done: z39.boolean(),
-  version: z39.number().int().positive()
+  done: z40.boolean(),
+  version: z40.number().int().positive()
 }).strict();
-var roomToken = z39.string().regex(/^[A-Za-z0-9_-]{43}$/);
-var roomJoin = z39.object({ token: roomToken, name: z39.string().trim().min(1).max(60) }).strict();
+var roomToken = z40.string().regex(/^[A-Za-z0-9_-]{43}$/);
+var roomJoin = z40.object({ token: roomToken, name: z40.string().trim().min(1).max(60) }).strict();
 
 // server/rooms-storage.ts
 init_neon_storage();
-import { createHash as createHash5, randomBytes as randomBytes3, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash6, randomBytes as randomBytes4, randomUUID as randomUUID7 } from "node:crypto";
 var roomDdl = [
   `CREATE TABLE IF NOT EXISTS v2_shared_rooms(id uuid PRIMARY KEY,owner_id text NOT NULL,creation_hash text NOT NULL,title text NOT NULL,description text NOT NULL,expires_at timestamptz NOT NULL,closed boolean NOT NULL DEFAULT false,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS v2_shared_rooms_owner ON v2_shared_rooms(owner_id)`,
@@ -8458,7 +8557,7 @@ var roomDdl = [
   `CREATE TABLE IF NOT EXISTS v2_room_items(id uuid PRIMARY KEY,room_id uuid NOT NULL REFERENCES v2_shared_rooms(id) ON DELETE CASCADE,kind text NOT NULL CHECK(kind IN ('list','pin')),text text NOT NULL,done boolean NOT NULL DEFAULT false,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS v2_room_items_room ON v2_room_items(room_id)`
 ];
-var hash = (s) => createHash5("sha256").update(s).digest("hex");
+var hash = (s) => createHash6("sha256").update(s).digest("hex");
 async function initializeRooms() {
   const sql10 = monitoringSql();
   const [state2] = await sql10`SELECT to_regclass('v2_shared_rooms_owner') IS NOT NULL AND to_regclass('v2_room_members_user') IS NOT NULL AND to_regclass('v2_room_invites') IS NOT NULL AND to_regclass('v2_room_items_room') IS NOT NULL AS ready`;
@@ -8570,7 +8669,7 @@ async function deleteRoom(userId, id, version) {
   );
 }
 async function inviteToRoom(userId, id, role, expiresAt) {
-  const sql10 = monitoringSql(), token = randomBytes3(32).toString("base64url"), inviteId = randomUUID7();
+  const sql10 = monitoringSql(), token = randomBytes4(32).toString("base64url"), inviteId = randomUUID7();
   await mutate(
     id,
     sql10`INSERT INTO v2_room_invites(id,room_id,token_hash,role,expires_at)
@@ -8698,7 +8797,7 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json(await deps.createRoom(c.get("userId"), input.data), 201);
   });
   route.post("/invitation/preview", async (c) => {
-    const input = z40.object({ token: roomToken }).strict().safeParse(await c.req.json().catch(() => null));
+    const input = z41.object({ token: roomToken }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success) return c.json({ error: "Ung\xFCltige Einladung." }, 400);
     return c.json(await deps.previewRoomInvite(input.data.token));
   });
@@ -8712,16 +8811,16 @@ function createRoomsRoute(deps = roomDependencies) {
   });
   route.get("/source/:projectId", async (c) => {
     const id = c.req.param("projectId");
-    if (!z40.uuid().safeParse(id).success)
+    if (!z41.uuid().safeParse(id).success)
       return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     return c.json(await deps.roomSource(c.get("userId"), id));
   });
   route.use("/:roomId/*", async (c, next) => {
-    if (!z40.uuid().safeParse(c.req.param("roomId")).success)
+    if (!z41.uuid().safeParse(c.req.param("roomId")).success)
       return c.json({ error: "Ung\xFCltige Raumkennung." }, 400);
     for (const key of ["itemId", "memberId", "inviteId"]) {
       const id = c.req.param(key);
-      if (id && !z40.uuid().safeParse(id).success)
+      if (id && !z41.uuid().safeParse(id).success)
         return c.json({ error: "Ung\xFCltige Kennung." }, 400);
     }
     await next();
@@ -8767,7 +8866,7 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json({ ok: true });
   });
   route.post("/:roomId/invites", async (c) => {
-    const input = z40.object({ role: roomRole, expiresAt: roomExpiry }).strict().safeParse(await c.req.json().catch(() => null));
+    const input = z41.object({ role: roomRole, expiresAt: roomExpiry }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Rolle und Ablaufdatum pr\xFCfen." }, 400);
     return c.json(
@@ -8789,10 +8888,10 @@ function createRoomsRoute(deps = roomDependencies) {
     return c.json({ ok: true });
   });
   route.put("/:roomId/members/:memberId", async (c) => {
-    const input = z40.object({
+    const input = z41.object({
       role: roomRole,
-      revoked: z40.boolean(),
-      version: z40.number().int().positive()
+      revoked: z41.boolean(),
+      version: z41.number().int().positive()
     }).strict().safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Rolle und Versionsstand pr\xFCfen." }, 400);
@@ -8871,7 +8970,7 @@ function createApp() {
     const secret = process.env.CRON_SECRET;
     if (!secret || c.req.header("Authorization") !== `Bearer ${secret}`) return c.json({ error: "Scheduler nicht autorisiert." }, 401);
     const projectId = c.req.query("projectId");
-    if (projectId && !z41.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
+    if (projectId && !z42.uuid().safeParse(projectId).success) return c.json({ error: "Ung\xFCltige Projektkennung." }, 400);
     try {
       const { runNeonScheduler: runNeonScheduler2 } = await Promise.resolve().then(() => (init_neon_runner(), neon_runner_exports));
       return c.json({ ok: true, ...await runNeonScheduler2(projectId) });

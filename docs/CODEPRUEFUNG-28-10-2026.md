@@ -92,19 +92,38 @@ Die Anweisung an das Modell sprach weiterhin von „OmniDesk“. Angeglichen.
 `AI_API_KEYS`, `APP_URL` und `API_PORT` werden verwendet, standen aber nicht in `.env.example`.
 Ergänzt.
 
-## Offen – zur Entscheidung
-
-### A · Google-Anmeldung bindet den State nicht an die Sitzung
+### 10 · Google-Anmeldung band den State nicht an die Sitzung · behoben am 28.10.2026
 
 Der Microsoft-Weg macht es vorbildlich: Der OAuth-State ist an ein verschlüsseltes HttpOnly-Cookie
 gebunden, ausdrücklich damit über den State kein anderer OMNIDESK-Benutzer gewählt werden kann.
-Der Google-Weg stammt aus der Zeit davor und legt die Benutzerkennung unsigniert als Base64 in den
-State; der Callback vertraut ihr. Wer eine gültige Google-Autorisierung und eine fremde
-Benutzerkennung besitzt, könnte ein Google-Konto an ein fremdes OMNIDESK-Konto hängen.
+Der Google-Weg stammte aus der Zeit davor und legte die Benutzerkennung unsigniert als Base64 in
+den State; der Callback vertraute ihr. Wer eine gültige Google-Autorisierung und eine fremde
+Benutzerkennung besaß, konnte ein Google-Konto an ein fremdes OMNIDESK-Konto hängen.
 
-In einer Anwendung mit genau einem Benutzer ist das Risiko gering, der Mangel bleibt aber echt.
-Empfehlung: den Microsoft-Weg auf Google übertragen. Nicht eigenmächtig umgesetzt, weil es den
-Anmeldeablauf ändert und eine Live-Prüfung der Google-Drive-Verbindung erfordert.
+Der Nutzer hat die Umstellung freigegeben. Google läuft jetzt denselben Weg: verschlüsseltes
+HttpOnly-Cookie je Browser, zehn Minuten gültig, nur für `/api/integrations/google`, zusätzlich
+PKCE mit S256. Im State steht nur eine Zufallszahl, die Benutzerkennung verlässt den Server nicht
+mehr, der Callback liest sie ausschließlich aus dem Cookie und löscht es danach. Rückleitungsziel
+nur `/settings` oder `/cloud-monitor`. Der Startpunkt prüft, dass die App auf der in
+`GOOGLE_REDIRECT_URI` konfigurierten Adresse läuft.
+
+Mit behoben: Der Code-Austausch übernahm bei einem Fehler den Antworttext von Google in die
+Fehlermeldung, und der Callback schrieb diese Meldung in die Rückleitungsadresse – damit konnten
+Anbieterinhalte in der Adresszeile landen. Jetzt nur noch HTTP-Status intern und ein fester Text
+nach außen, dazu ein Zeitlimit von 15 Sekunden sowie `Cache-Control: no-store` und
+`Referrer-Policy: no-referrer` am Callback.
+
+Neuer Test `tests/google-oauth.test.ts`; die Gegenprobe ohne Bindung schlägt fehl. **Noch nicht
+live geprüft:** Das Verbinden eines Google-Kontos in der angemeldeten produktiven Sitzung.
+
+## Offen – zur Entscheidung
+
+### A · Google-Tokens liegen im Klartext in der Datenbank
+
+Microsoft verschlüsselt Access- und Refresh-Token vor dem Speichern (`sealMicrosoftValue`), Google
+speichert sie unverändert. Wer Leserecht auf die Tabelle `connected_accounts` hat, kann damit auf
+Google Drive zugreifen. Die Umstellung ist machbar, betrifft aber bereits gespeicherte Zeilen und
+braucht eine Live-Prüfung der Drive-Synchronisation; deshalb nicht nebenbei erledigt.
 
 ### B · Öffentliche Buchungsseite ohne Begrenzung
 
@@ -141,6 +160,12 @@ Fehler: Von der Vercel-Umgebung aus sind damit auch Verbindungsversuche zu nicht
 Adressen möglich.
 
 ## Ausdrücklich nicht angefasst
+
+Die Microsoft-/OneDrive-Anbindung bleibt im Code. Sie gehört ausschließlich zum Cloud-Monitor und
+ist ohne `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` und `MICROSOFT_REDIRECT_URI` vollständig
+untätig; keine dieser Variablen ist gesetzt. Die Planungsentscheidung gegen OneDrive ist kein
+Auftrag zum Löschen vorhandenen Integrationscodes, und dieser Code war die Vorlage für die sichere
+Google-Umstellung. Ob die Schaltfläche im Cloud-Monitor ausgeblendet wird, entscheidet der Nutzer.
 
 Die API-Dateistruktur und die Rewrites in `vercel.json` blieben unberührt. Die Zuordnung
 „`/api/(.*)` → `/api/index.js`“ bei einem Bundle unter `api/[[...route]].js` sieht widersprüchlich

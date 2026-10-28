@@ -7,7 +7,14 @@ import { publicAccount } from '../public-account'
 import { z } from 'zod'
 import { db } from '../../src/db/client'
 import { connectedAccounts } from '../../src/db/schema/index'
-import { getGoogleOAuthUrl, getValidGoogleAccessToken } from '../google-auth'
+import {
+  GOOGLE_COOKIE,
+  GOOGLE_COOKIE_PATH,
+  GOOGLE_OAUTH_MAX_AGE,
+  getValidGoogleAccessToken,
+  googleConfig,
+  startGoogleAuthorization,
+} from '../google-auth'
 import { connectMegaAccount, syncMegaAccount } from '../mega-auth'
 
 const createAccountInput = z.object({
@@ -46,15 +53,32 @@ integrationsRoute.get('/microsoft/auth-url', (c) => {
   }
 })
 
-/** Google OAuth2 Autorisierungs-URL anfordern */
+/** Angemeldeter Start; der Callback ist öffentlich, aber an Browser und Nutzer gebunden. */
 integrationsRoute.get('/google/auth-url', (c) => {
-  const returnTo = c.req.query('returnTo') || '/settings'
+  c.header('Cache-Control', 'no-store')
   try {
-    const url = getGoogleOAuthUrl(c.get('userId'), returnTo)
-    return c.json({ url })
+    const config = googleConfig()
+    // Lokal läuft die Oberfläche auf einem anderen Port als die API und der
+    // Vite-Proxy behält den Host der Oberfläche; Cookies gelten ohnehin je
+    // Host, nicht je Port. Produktiv (HTTPS) bleibt die Prüfung streng.
+    if (config.secure && new URL(c.req.url).origin !== config.origin) {
+      return c.json(
+        { error: 'Bitte Google auf der in GOOGLE_REDIRECT_URI konfigurierten App-Adresse verbinden.' },
+        400,
+      )
+    }
+    const authorization = startGoogleAuthorization(c.get('userId'), c.req.query('returnTo'))
+    setCookie(c, GOOGLE_COOKIE, authorization.cookie, {
+      path: GOOGLE_COOKIE_PATH,
+      httpOnly: true,
+      secure: config.secure,
+      sameSite: 'Lax',
+      maxAge: GOOGLE_OAUTH_MAX_AGE,
+    })
+    return c.json({ url: authorization.url })
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : 'Google OAuth URL konnte nicht generiert werden.' },
+      { error: err instanceof Error ? err.message : 'Google-Anmeldung konnte nicht gestartet werden.' },
       400,
     )
   }

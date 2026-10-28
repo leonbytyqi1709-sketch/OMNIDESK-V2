@@ -513,3 +513,19 @@ Behoben: Die Uptime-Übersicht lud die Messungen sämtlicher Monitore statt nur 
 
 Offen zur Entscheidung: Der Google-OAuth-State ist nicht an die Sitzung gebunden, während der Microsoft-Weg genau das vorbildlich löst; die öffentliche Buchungsseite kennt keine Begrenzung je Zeitraum und hat ein kleines Zeitfenster zwischen Prüfung und Einfügen; der Uptime-Monitor liest Zertifikatslaufzeiten ohne Gültigkeitsprüfung; mehrere Routen prüfen ihre Kennung nicht auf UUID-Form und antworten deshalb mit 500 statt 404. API-Dateistruktur und Vercel-Rewrites blieben ausdrücklich unberührt. Einzelheiten und Prüfgrenzen: docs/CODEPRUEFUNG-28-10-2026.md.
 
+
+### Google-Anmeldung an die Sitzung gebunden · 28.10.2026
+
+Der Nutzer entscheidet: umstellen. Die Google-Autorisierung läuft jetzt denselben Weg wie Microsoft. Die laufende Anmeldung liegt verschlüsselt in einem HttpOnly-Cookie dieses Browsers (`omnidesk-google-oauth`, nur für `/api/integrations/google`, zehn Minuten gültig), zusätzlich mit PKCE (S256). Im State steht nur noch eine Zufallszahl; die Benutzerkennung verlässt den Server nicht mehr. Der Callback nimmt die Kennung ausschließlich aus dem entschlüsselten Cookie, löscht es danach und leitet nur noch auf `/settings` oder `/cloud-monitor` zurück. Produktiv prüft der Start, dass die App auf der in `GOOGLE_REDIRECT_URI` konfigurierten Adresse läuft; lokal entfällt diese Prüfung, weil Oberfläche und API auf verschiedenen Ports laufen und Cookies je Host gelten. `GOOGLE_REDIRECT_URI` muss auf den Google-Callback dieser App zeigen.
+
+Zusätzlich behoben: Der Code-Austausch übernahm bei einem Fehler den Antworttext von Google in die Fehlermeldung, und der Callback schrieb diese Meldung in die Rückleitungsadresse. Jetzt wird nur der HTTP-Status erwähnt und die Rückleitung enthält einen festen Text. Der Austausch hat ein Zeitlimit von 15 Sekunden, der Callback setzt `Cache-Control: no-store` und `Referrer-Policy: no-referrer`.
+
+Neuer Test `tests/google-oauth.test.ts` mit fünf Prüfungen: kein Benutzer im State, PKCE-Prüfwert passend zum Verifier, geklammertes Rückleitungsziel, Ablehnung von fremdem Browser, verändertem Cookie, falschem State und abgelaufener Anmeldung, geschützte Cookie-Merkmale am Startpunkt samt Abweisung einer fremden Adresse, und ein Callback ohne passendes Cookie, der Google gar nicht erst anspricht. Gegenprobe gelaufen: ohne die Bindung schlägt der Test fehl. 177 Tests bestanden.
+
+**Nicht umgesetzt:** Google-Tokens liegen weiterhin im Klartext in der Datenbank, während Microsoft sie verschlüsselt ablegt. Das betrifft bestehende Zeilen und erfordert eine Live-Prüfung der Google-Drive-Verbindung; als eigener Punkt festgehalten, nicht nebenbei geändert.
+
+**Live-Prüfung steht aus:** Die Google-Verbindung wurde nicht in der angemeldeten produktiven Sitzung neu durchlaufen. Beim nächsten Verbinden eines Google-Kontos ist zu prüfen, dass die Rückleitung in den Einstellungen bzw. im Cloud-Monitor ankommt.
+
+### OneDrive bleibt eingebaut, aber ungenutzt · 28.10.2026
+
+Nutzerfrage: Die Microsoft-Anmeldung stammt aus der OneDrive-Anbindung, die er eigentlich weglassen wollte. Befund: Sie gehört ausschließlich zum Modul Cloud-Monitor und ist ohne `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` und `MICROSOFT_REDIRECT_URI` vollständig untätig; keine dieser Variablen ist gesetzt, weder lokal noch produktiv. Der Code wird nicht entfernt, weil die Planungsentscheidung gegen OneDrive kein Auftrag zum Löschen vorhandenen Integrationscodes ist und er die Vorlage für die sichere Google-Umstellung war. Ob die Schaltfläche im Cloud-Monitor ausgeblendet wird, entscheidet der Nutzer.
