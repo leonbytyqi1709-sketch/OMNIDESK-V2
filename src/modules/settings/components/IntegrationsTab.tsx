@@ -14,6 +14,7 @@ import {
 import { AccountCard } from '@/modules/cloud-monitor/components/AccountCard'
 import { AddAccountDialog } from '@/modules/cloud-monitor/components/AddAccountDialog'
 import { useCloudOverview, useDeleteAccount, useGoogleAuthUrl, useMicrosoftAuthUrl, useSyncAccount } from '@/modules/cloud-monitor/api'
+import { ONEDRIVE_OFFERED, cloudProviderLabel, showOneDrive } from '@/lib/cloud-providers'
 import { cn } from '@/lib/utils'
 
 function formatBytes(bytesStr: string): string {
@@ -90,13 +91,13 @@ export function IntegrationsTab() {
             OAuth2 & Cloud-Schnittstellen (Phase 4)
           </CardTitle>
           <CardDescription>
-            Verwalte deine Live-Verbindungen für Google Drive, OneDrive und MEGA Cloud.
+            Verwalte deine Live-Verbindungen für {cloudProviderLabel}.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
             <p className="max-w-xl">
-              Verknüpfe echte Konten per sicherem Google-/Microsoft-OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
+              Verknüpfe echte Konten per sicherem Google-OAuth2 oder Live-MEGA-Sitzung. Die Daten fließen automatisch in das Cloud-Monitoring ein. (Tipp bei Fehler 403: Im Google-Testmodus müssen weitere Konten in der Cloud Console als Testnutzer eingetragen sein).
             </p>
             <Button
               size="sm"
@@ -302,20 +303,25 @@ export function IntegrationsTab() {
         </CardContent>
       </Card>
 
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><CardTitle className="text-base">Microsoft OneDrive</CardTitle><CardDescription>Private Konten sowie Geschäfts- und Schulkonten.</CardDescription></div>
-            <Button size="sm" variant="outline" disabled={microsoftAuthMutation.isPending} onClick={async () => {
-              try { const { url } = await microsoftAuthMutation.mutateAsync('/settings'); window.location.href = url }
-              catch (error) { toast.error(error instanceof Error ? error.message : 'Microsoft-Anmeldung fehlgeschlagen') }
-            }}>{microsoftAuthMutation.isPending ? 'Verbinde…' : 'Mit Microsoft verbinden'}</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? <p className="text-xs text-muted-foreground">Konten werden geladen…</p> : microsoftAccounts.length === 0 ? <p className="text-xs text-muted-foreground">Noch kein OneDrive-Konto verknüpft.</p> : <div className="grid gap-3 sm:grid-cols-2">{microsoftAccounts.map((account) => <AccountCard key={account.id} account={account} />)}</div>}
-        </CardContent>
-      </Card>
+      {/* OneDrive wird nicht mehr angeboten; vorhandene Konten bleiben sichtbar und trennbar. */}
+      {showOneDrive(microsoftAccounts.length) && (
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><CardTitle className="text-base">Microsoft OneDrive</CardTitle><CardDescription>Private Konten sowie Geschäfts- und Schulkonten.</CardDescription></div>
+              {ONEDRIVE_OFFERED && (
+                <Button size="sm" variant="outline" disabled={microsoftAuthMutation.isPending} onClick={async () => {
+                  try { const { url } = await microsoftAuthMutation.mutateAsync('/settings'); window.location.href = url }
+                  catch (error) { toast.error(error instanceof Error ? error.message : 'Microsoft-Anmeldung fehlgeschlagen') }
+                }}>{microsoftAuthMutation.isPending ? 'Verbinde…' : 'Mit Microsoft verbinden'}</Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <p className="text-xs text-muted-foreground">Konten werden geladen…</p> : microsoftAccounts.length === 0 ? <p className="text-xs text-muted-foreground">Noch kein OneDrive-Konto verknüpft.</p> : <div className="grid gap-3 sm:grid-cols-2">{microsoftAccounts.map((account) => <AccountCard key={account.id} account={account} />)}</div>}
+          </CardContent>
+        </Card>
+      )}
 
       <AddAccountDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
     </div>

@@ -529,3 +529,11 @@ Neuer Test `tests/google-oauth.test.ts` mit fünf Prüfungen: kein Benutzer im S
 ### OneDrive bleibt eingebaut, aber ungenutzt · 28.10.2026
 
 Nutzerfrage: Die Microsoft-Anmeldung stammt aus der OneDrive-Anbindung, die er eigentlich weglassen wollte. Befund: Sie gehört ausschließlich zum Modul Cloud-Monitor und ist ohne `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` und `MICROSOFT_REDIRECT_URI` vollständig untätig; keine dieser Variablen ist gesetzt, weder lokal noch produktiv. Der Code wird nicht entfernt, weil die Planungsentscheidung gegen OneDrive kein Auftrag zum Löschen vorhandenen Integrationscodes ist und er die Vorlage für die sichere Google-Umstellung war. Ob die Schaltfläche im Cloud-Monitor ausgeblendet wird, entscheidet der Nutzer.
+
+### OneDrive in der Oberfläche ausgeblendet · 28.10.2026
+
+Der Nutzer entscheidet: ausblenden. Ein Schalter in `src/lib/cloud-providers.ts` (`ONEDRIVE_OFFERED = false`) steuert alle Stellen zentral; auf `true` gesetzt kommt das Angebot vollständig zurück. Nicht mehr sichtbar sind: der Anbieter „Microsoft OneDrive“ in der Auswahl des Verknüpfen-Dialogs samt dazugehörigem Abschnitt, die OneDrive-Karte in den Einstellungen mit der Schaltfläche „Mit Microsoft verbinden“, die OneDrive-Kachel und der OneDrive-Filterreiter im Cloud-Monitor sowie die OneDrive-Zeile im Dashboard-Widget. Die Texte nennen nur noch Google Drive und MEGA.
+
+Vorhandene Konten bleiben sichtbar: `showOneDrive(anzahl)` zeigt Kachel, Reiter, Karte und Widget-Zeile weiterhin an, solange ein OneDrive-Konto verknüpft ist, dann ohne Verbinden-Schaltfläche, damit es trennbar bleibt. Verknüpft ist derzeit keines. Serverseitig wurde nichts entfernt: Route, Callback, Synchronisation und Tests der Microsoft-Anbindung bleiben unverändert und untätig, weil keine Microsoft-Variable gesetzt ist.
+
+177 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen, Build erfolgreich. **Nicht geprüft:** die Ansicht in der angemeldeten Sitzung; Cloud-Monitor und Einstellungen liegen hinter der Anmeldung. Der Nutzer sieht das Ergebnis nach dem Deployment in der Live-App.

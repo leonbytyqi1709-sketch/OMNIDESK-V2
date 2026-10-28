@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cloudProviderLabel, showOneDrive } from '@/lib/cloud-providers'
+import { cn } from '@/lib/utils'
 import { useCloudOverview } from './api'
 import { AccountCard } from './components/AccountCard'
 import { AddAccountDialog } from './components/AddAccountDialog'
@@ -95,7 +97,7 @@ export default function CloudMonitorPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live-Überwachung von Speicherkapazitäten über Google Drive, OneDrive und MEGA.
+            Live-Überwachung von Speicherkapazitäten über {cloudProviderLabel}.
           </p>
         </div>
 
@@ -199,7 +201,7 @@ export default function CloudMonitorPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          {showOneDrive(summary.microsoftCount) && <Card className="border-border bg-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">OneDrive</CardTitle>
               <Cloud className="size-4 text-sky-400" />
@@ -209,7 +211,7 @@ export default function CloudMonitorPage() {
               <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{summary.microsoftCount} Accounts konfiguriert</span><span>{getUsagePercent(summary.microsoftUsedBytes, summary.microsoftCapacityBytes)}%</span></div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-sky-500" style={{ width: `${getUsagePercent(summary.microsoftUsedBytes, summary.microsoftCapacityBytes)}%` }} /></div>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* MEGA Cloud Konten */}
           <Card className="border-border bg-card">
@@ -249,16 +251,25 @@ export default function CloudMonitorPage() {
             onValueChange={(val) => setProviderFilter(val as 'all' | 'google' | 'mega' | 'microsoft')}
             className="w-full sm:w-auto"
           >
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 sm:w-auto">
+            <TabsList
+              className={cn(
+                'grid w-full grid-cols-2 sm:w-auto',
+                showOneDrive(accounts.filter((a) => a.provider === 'microsoft').length)
+                  ? 'sm:grid-cols-4'
+                  : 'sm:grid-cols-3',
+              )}
+            >
               <TabsTrigger value="all">
                 Alle ({accounts.length})
               </TabsTrigger>
               <TabsTrigger value="google">
                 Google Drive ({accounts.filter((a) => a.provider === 'google').length})
               </TabsTrigger>
-              <TabsTrigger value="microsoft">
-                OneDrive ({accounts.filter((a) => a.provider === 'microsoft').length})
-              </TabsTrigger>
+              {showOneDrive(accounts.filter((a) => a.provider === 'microsoft').length) && (
+                <TabsTrigger value="microsoft">
+                  OneDrive ({accounts.filter((a) => a.provider === 'microsoft').length})
+                </TabsTrigger>
+              )}
               <TabsTrigger value="mega">
                 MEGA ({accounts.filter((a) => a.provider === 'mega').length})
               </TabsTrigger>
@@ -288,7 +299,7 @@ export default function CloudMonitorPage() {
               Keine Konten in dieser Ansicht
             </h3>
             <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-              Verknüpfe neue Konten für Google Drive, OneDrive oder MEGA, um deinen Cloud-Speicherplatz hier in Echtzeit zu überwachen.
+              Verknüpfe neue Konten für {cloudProviderLabel}, um deinen Cloud-Speicherplatz hier in Echtzeit zu überwachen.
             </p>
             <Button
               variant="outline"

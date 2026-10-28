@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ONEDRIVE_OFFERED } from '@/lib/cloud-providers'
 import { useConnectAccount, useGoogleAuthUrl, useMicrosoftAuthUrl } from '../api'
 
 interface AddAccountDialogProps {
@@ -104,7 +105,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
             Cloud-Konto verknüpfen
           </DialogTitle>
           <DialogDescription>
-            Füge ein Google Drive-, OneDrive- oder MEGA-Konto für das Speicherkapazitäts-Monitoring hinzu.
+            Füge ein Google Drive- oder MEGA-Konto für das Speicherkapazitäts-Monitoring hinzu.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +134,9 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="google">Google Drive (OAuth2)</SelectItem>
-                <SelectItem value="microsoft">Microsoft OneDrive (privat / geschäftlich)</SelectItem>
+                {ONEDRIVE_OFFERED && (
+                  <SelectItem value="microsoft">Microsoft OneDrive (privat / geschäftlich)</SelectItem>
+                )}
                 <SelectItem value="mega">MEGA Cloud (20 GB Live & Demo)</SelectItem>
               </SelectContent>
             </Select>
@@ -178,7 +181,7 @@ export function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) 
             </div>
           )}
 
-          {provider === 'microsoft' && (
+          {ONEDRIVE_OFFERED && provider === 'microsoft' && (
             <div className="space-y-3 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3.5 text-xs">
               <p className="font-semibold">Microsoft OneDrive verbinden</p>
               <p className="text-muted-foreground">Für private Microsoft-Konten sowie Geschäfts- und Schulkonten. Die Anmeldung erfolgt bei Microsoft. OMNIDESK erhält lesenden Zugriff auf Profil und Speicherwerte, keinen Schreibzugriff auf Dateien.</p>
