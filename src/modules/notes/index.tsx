@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { useAuth } from '@clerk/clerk-react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -254,13 +255,21 @@ function Notes() {
       </aside>
       <section className="min-h-[60vh] min-w-0 flex-1">
         {saveError && (
+          /* Der Hinweis muss als Warnung erkennbar sein: Ohne Farbe und Symbol
+             wirkte er wie normaler Fließtext und wurde übersehen, während im
+             Hintergrund nichts mehr gespeichert wurde. */
           <div
             role="alert"
-            className="space-y-2 border-b border-destructive/30 p-3 text-sm"
+            className="space-y-2 border-b-2 border-destructive bg-destructive/10 p-3 text-sm"
           >
-            <p>
-              {saveError} Dein Entwurf bleibt im Editor. Er wird nicht
-              automatisch überschrieben.
+            <p className="flex items-start gap-2 font-medium text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>Nicht gespeichert: {saveError}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Dein Entwurf bleibt im Editor und wird nicht automatisch
+              überschrieben. Weitere Änderungen werden erst wieder gespeichert,
+              wenn du den Konflikt auflöst.
             </p>
             <Button
               variant="outline"

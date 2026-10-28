@@ -313,6 +313,9 @@ chatRoute.post('/sessions/:id/messages', async (c) => {
       try {
         const response = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
+          // Ohne Zeitlimit blieb eine hängende Anbieterantwort bis zum
+          // Funktionslimit stehen und der Chat wirkte eingefroren.
+          signal: AbortSignal.timeout(45_000),
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,

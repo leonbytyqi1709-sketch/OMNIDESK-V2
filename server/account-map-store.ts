@@ -21,7 +21,7 @@ export async function initializeAccountMap() {
   const sql = monitoringSql()
   const [exists] = await sql`SELECT to_regclass('v2_account_relations') IS NOT NULL AND to_regclass('v2_account_relations_pair') IS NOT NULL AND to_regclass('v2_account_relations_user') IS NOT NULL AS ready`
   if (exists?.ready) return
-  await sql.transaction([sql`SELECT pg_advisory_xact_lock(184730023)`, ...accountMapDdl.map((ddl) => sql.query(ddl))])
+  await sql.transaction([sql`SELECT pg_advisory_xact_lock(184730032)`, ...accountMapDdl.map((ddl) => sql.query(ddl))])
 }
 const iso = (value: string | Date) => new Date(value).toISOString()
 export async function readAccountMap(userId: string): Promise<AccountMapOverview> {

@@ -495,3 +495,21 @@ Der Gerätezugang der Erweiterung darf damit erstmals schreiben, eng begrenzt au
 
 170 Tests bestanden. Die Erweiterung selbst wurde nicht in einem Browser ausgeführt; Bestätigung durch den Nutzer anhand TESTANLEITUNG-CLAUDE-CODE.txt steht aus. Einzelheiten: docs/BROWSER-KOMMANDOEBENE.md.
 
+
+### Nutzerabnahme des Gesamttests · 28.10.2026
+
+Der Nutzer hat die produktive V2-Umgebung zu Hause sorgfältig geprüft und bestätigt ausdrücklich: Es funktioniert alles, die Umsetzung ist aus seiner Sicht vollständig. Damit ist der seit Oktober verbindlich geführte Gesamttest abgeschlossen und die vereinbarten Änderungen sind abgenommen. Eingeschlossen sind die Schreibweise OMNIDESK, das auf das Dashboard begrenzte Omni-Briefing, die Terminliste im Kalender, die behobenen Ladezeiten, die Widgets für Gemeinsame Räume und Mission Control sowie die Browser-Kommandoebene mit Erfassung in Notizen, Aufgaben und Projektaufgaben einschließlich Textfeld für Projektaufgaben.
+
+Dies ist eine Nutzerabnahme auf Grundlage eigener Prüfung, kein protokollierter Einzelnachweis jedes technischen Sonderfalls. Weitere Erinnerungen an den Gesamttest entfallen; er ist erledigt und wird nicht erneut angestoßen.
+
+Offen bleiben als eigenständige Punkte: der fehlende sichtbare Konflikthinweis beim parallelen Bearbeiten einer Notiz (docs/GESAMTTEST-AUFFAELLIGKEITEN.md, Punkt 1), die fehlende Bearbeitbarkeit des Textes einer Projektaufgabe, das weiterhin nicht eingerichtete Neon-Monitoring ohne externen Scheduler und der Anwendungsname in der Clerk-Instanz, der die Anmeldemaske weiterhin „OmniDesk“ schreiben lässt.
+
+
+### Code- und Systemprüfung · 28.10.2026
+
+Nach der Abnahme gibt der Nutzer eine vollständige Prüfung von Anwendung, Code und Anbindungen frei. Vollständig gelesen wurden Routenverdrahtung und Auth-Grenze, sämtliche kleineren Servermodule sowie die sicherheitsrelevanten Speicher- und Routendateien; Frontend-Module stichprobenartig mit Schwerpunkt Notizen. Gesamteindruck: sauber gebaut, Besitzprüfungen durchgängig in SQL und innerhalb der Schreibtransaktion wiederholt, externe Abrufe mit Zeitlimit und Größengrenze, keine Preisgabe von Anbieterinhalten in Fehlermeldungen.
+
+Behoben: Die Uptime-Übersicht lud die Messungen sämtlicher Monitore statt nur der eigenen; die Trigger-Prüfung des entfernten Arbeitsgedächtnisses lief bei jedem Notiz-, Aufgaben- und Projektzugriff mit; der Chat rief den KI-Anbieter ohne Zeitlimit auf; der Uptime-Check gab den Antwortkörper nicht frei; der Konflikthinweis in den Notizen war nicht als Warnung erkennbar; drei Einrichtungsvorgänge teilten sich eine Advisory-Lock-Nummer; die Rückleitung nach der Google-Anmeldung zeigte ohne gesetzte Variable auf localhost; Produktname in der Systemanweisung und fehlende Einträge in .env.example.
+
+Offen zur Entscheidung: Der Google-OAuth-State ist nicht an die Sitzung gebunden, während der Microsoft-Weg genau das vorbildlich löst; die öffentliche Buchungsseite kennt keine Begrenzung je Zeitraum und hat ein kleines Zeitfenster zwischen Prüfung und Einfügen; der Uptime-Monitor liest Zertifikatslaufzeiten ohne Gültigkeitsprüfung; mehrere Routen prüfen ihre Kennung nicht auf UUID-Form und antworten deshalb mit 500 statt 404. API-Dateistruktur und Vercel-Rewrites blieben ausdrücklich unberührt. Einzelheiten und Prüfgrenzen: docs/CODEPRUEFUNG-28-10-2026.md.
+

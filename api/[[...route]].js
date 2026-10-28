@@ -1390,6 +1390,8 @@ async function checkHttp(url2, expectedStatus = 200, timeoutMs = 1e4) {
     clearTimeout(timeoutId);
     const duration = Math.round(performance.now() - start);
     statusCode = res.status;
+    await res.body?.cancel().catch(() => {
+    });
     if (res.status === expectedStatus) {
       return {
         status: "up",
@@ -1636,14 +1638,14 @@ __export(neon_runner_exports, {
   runNeonCheck: () => runNeonCheck,
   runNeonScheduler: () => runNeonScheduler
 });
-import { and as and17, eq as eq19, inArray } from "drizzle-orm";
+import { and as and17, eq as eq19, inArray as inArray2 } from "drizzle-orm";
 async function ownsProject(link) {
   const [project2] = await db.select({ id: projects.id }).from(projects).where(and17(eq19(projects.id, link.projectId), eq19(projects.userId, link.userId)));
   return Boolean(project2);
 }
 async function refreshLinkedMonitors(link, ids) {
   if (!ids.length) return { unavailable: false, down: false };
-  const monitors = await db.select().from(uptimeMonitors).where(and17(eq19(uptimeMonitors.userId, link.userId), inArray(uptimeMonitors.id, ids)));
+  const monitors = await db.select().from(uptimeMonitors).where(and17(eq19(uptimeMonitors.userId, link.userId), inArray2(uptimeMonitors.id, ids)));
   const results = await Promise.allSettled(monitors.filter((monitor) => monitor.active).map((monitor) => checkSingleMonitor({ ...monitor, timeoutMs: Math.min(monitor.timeoutMs, 8e3) })));
   const unavailable = monitors.length !== ids.length || results.some((result) => result.status === "rejected");
   return { unavailable, down: results.some((result) => result.status === "fulfilled" && result.value.status === "down") ? true : unavailable || monitors.some((monitor) => !monitor.active) ? null : false };
@@ -1831,17 +1833,23 @@ var retiredHistoryTriggers = [
 var retireHistoryDdl = retiredHistoryTriggers.map(
   ([table, trigger]) => `DO $retire$ BEGIN IF to_regclass('public.${table}') IS NOT NULL THEN DROP TRIGGER IF EXISTS ${trigger} ON public.${table}; END IF; END $retire$`
 );
+var retired = false;
 async function retireWorkingHistory() {
+  if (retired) return;
   const sql10 = monitoringSql();
   const rows = await sql10`SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND (
     (t.tgname='v2_history_notes' AND t.tgrelid=to_regclass('public.notes')) OR
     (t.tgname='v2_history_tasks' AND t.tgrelid=to_regclass('public.tasks')) OR
     (t.tgname='v2_history_project_tasks' AND t.tgrelid=to_regclass('public.project_tasks'))) LIMIT 1`;
-  if (!rows.length) return;
+  if (!rows.length) {
+    retired = true;
+    return;
+  }
   await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(184730024)`,
     ...retireHistoryDdl.map((statement) => sql10.query(statement))
   ]);
+  retired = true;
 }
 
 // server/edit-version.ts
@@ -2168,7 +2176,7 @@ function ensureProjectTaskDescription() {
       const [state2] = await sql10`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='project_tasks' AND column_name='description') AS ready`;
       if (state2?.ready) return;
       await sql10.transaction([
-        sql10`SELECT pg_advisory_xact_lock(184730023)`,
+        sql10`SELECT pg_advisory_xact_lock(184730031)`,
         sql10.query(
           `ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`
         )
@@ -2751,7 +2759,13 @@ googleCallbackRoute.get("/callback", async (c) => {
   const code = c.req.query("code");
   const stateRaw = c.req.query("state");
   const errorParam = c.req.query("error");
-  const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:5173";
+  const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || (() => {
+    try {
+      return new URL(c.req.url).origin;
+    } catch {
+      return "http://localhost:5173";
+    }
+  })();
   if (errorParam) {
     return c.redirect(
       `${frontendUrl}/settings?error=${encodeURIComponent(`Google-Anmeldung abgebrochen: ${errorParam}`)}`
@@ -3582,7 +3596,7 @@ cloudMonitorRoute.get("/account/:id", async (c) => {
 init_client();
 init_schema();
 init_uptime_check();
-import { and as and16, desc as desc8, eq as eq18, gte as gte2 } from "drizzle-orm";
+import { and as and16, desc as desc8, eq as eq18, gte as gte2, inArray } from "drizzle-orm";
 import { Hono as Hono15 } from "hono";
 import { z as z16 } from "zod";
 var monitorInput = z16.object({
@@ -3603,7 +3617,14 @@ uptimeRoute.get("/", async (c) => {
   }
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1e3);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
-  const allChecks = await db.select().from(uptimeChecks).where(gte2(uptimeChecks.checkedAt, thirtyDaysAgo)).orderBy(desc8(uptimeChecks.checkedAt));
+  const monitorIds = monitors.map((m) => m.id);
+  const loadChecks = () => db.select().from(uptimeChecks).where(
+    and16(
+      inArray(uptimeChecks.monitorId, monitorIds),
+      gte2(uptimeChecks.checkedAt, thirtyDaysAgo)
+    )
+  ).orderBy(desc8(uptimeChecks.checkedAt));
+  const allChecks = await loadChecks();
   const checksByMonitor = /* @__PURE__ */ new Map();
   for (const chk of allChecks) {
     const list = checksByMonitor.get(chk.monitorId) || [];
@@ -3626,7 +3647,7 @@ uptimeRoute.get("/", async (c) => {
   }
   if (needRefresh) {
     await refreshAllMonitors(userId);
-    const refreshedChecks = await db.select().from(uptimeChecks).where(gte2(uptimeChecks.checkedAt, thirtyDaysAgo)).orderBy(desc8(uptimeChecks.checkedAt));
+    const refreshedChecks = await loadChecks();
     checksByMonitor.clear();
     for (const chk of refreshedChecks) {
       const list = checksByMonitor.get(chk.monitorId) || [];
@@ -3746,7 +3767,7 @@ init_neon_policy();
 init_neon_sql();
 init_neon_storage();
 init_neon_runner();
-import { and as and18, eq as eq20, inArray as inArray2 } from "drizzle-orm";
+import { and as and18, eq as eq20, inArray as inArray3 } from "drizzle-orm";
 import { Hono as Hono16 } from "hono";
 import { z as z18 } from "zod";
 async function ownsProject2(link) {
@@ -3755,7 +3776,7 @@ async function ownsProject2(link) {
 }
 async function ownsMonitors(link, ids) {
   if (!ids.length) return true;
-  const rows = await db.select({ id: uptimeMonitors.id }).from(uptimeMonitors).where(and18(eq20(uptimeMonitors.userId, link.userId), inArray2(uptimeMonitors.id, ids)));
+  const rows = await db.select({ id: uptimeMonitors.id }).from(uptimeMonitors).where(and18(eq20(uptimeMonitors.userId, link.userId), inArray3(uptimeMonitors.id, ids)));
   return rows.length === ids.length;
 }
 function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, ownsMonitors, initializeNeonStorage, saveNeonSettings, readNeonMonitoring, acknowledgeNeonAlert, runNeonCheck }) {
@@ -4509,7 +4530,7 @@ async function initializeAccountMap() {
   const sql10 = monitoringSql();
   const [exists] = await sql10`SELECT to_regclass('v2_account_relations') IS NOT NULL AND to_regclass('v2_account_relations_pair') IS NOT NULL AND to_regclass('v2_account_relations_user') IS NOT NULL AS ready`;
   if (exists?.ready) return;
-  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730023)`, ...accountMapDdl.map((ddl) => sql10.query(ddl))]);
+  await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730032)`, ...accountMapDdl.map((ddl) => sql10.query(ddl))]);
 }
 var iso3 = (value) => new Date(value).toISOString();
 async function readAccountMap(userId) {
@@ -6382,7 +6403,7 @@ function isSimpleSmallTalk(content) {
     text25
   );
 }
-var omniChatSystemPrompt = `Du bist Omni, ein freundlicher, nat\xFCrlicher Gespr\xE4chspartner und hilfreicher Assistent in OmniDesk. Sprich Deutsch und duze den Nutzer, sofern er nichts anderes w\xFCnscht.
+var omniChatSystemPrompt = `Du bist Omni, ein freundlicher, nat\xFCrlicher Gespr\xE4chspartner und hilfreicher Assistent in OMNIDESK. Sprich Deutsch und duze den Nutzer, sofern er nichts anderes w\xFCnscht.
 
 Antwortstil \u2013 besonders wichtig:
 - Antworte standardm\xE4\xDFig kurz und direkt: meist 1\u20133 kurze S\xE4tze. Beantworte genau die aktuelle Frage und h\xF6re dann auf.
@@ -6706,6 +6727,9 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
       try {
         const response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
+          // Ohne Zeitlimit blieb eine hängende Anbieterantwort bis zum
+          // Funktionslimit stehen und der Chat wirkte eingefroren.
+          signal: AbortSignal.timeout(45e3),
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`
@@ -7168,7 +7192,7 @@ async function initializeMissionStorage() {
   const [existing] = await sql10`SELECT to_regclass('v2_mission_settings') IS NOT NULL AND to_regclass('v2_mission_visits') IS NOT NULL AND to_regclass('v2_mission_ai_limits') IS NOT NULL AS ready`;
   if (existing?.ready) return;
   await sql10.transaction([
-    sql10`SELECT pg_advisory_xact_lock(184730021)`,
+    sql10`SELECT pg_advisory_xact_lock(184730033)`,
     ...missionDdl.map((s) => sql10.query(s))
   ]);
 }

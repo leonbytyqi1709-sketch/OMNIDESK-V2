@@ -18,7 +18,7 @@ export function ensureProjectTaskDescription() {
         await sql`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='project_tasks' AND column_name='description') AS ready`
       if (state?.ready) return
       await sql.transaction([
-        sql`SELECT pg_advisory_xact_lock(184730023)`,
+        sql`SELECT pg_advisory_xact_lock(184730031)`,
         sql.query(
           `ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''`,
         ),

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../../src/db/client'
@@ -41,12 +41,23 @@ uptimeRoute.get('/', async (c) => {
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-  // Hole alle Checks der letzten 30 Tage für die Monitore dieses Nutzers
-  const allChecks = await db
-    .select()
-    .from(uptimeChecks)
-    .where(gte(uptimeChecks.checkedAt, thirtyDaysAgo))
-    .orderBy(desc(uptimeChecks.checkedAt))
+  // Nur die Messungen der EIGENEN Monitore laden. Ohne diese Einschränkung
+  // las die Übersicht sämtliche Messungen aller Monitore der Datenbank und
+  // verwarf den Großteil anschließend wieder.
+  const monitorIds = monitors.map((m) => m.id)
+  const loadChecks = () =>
+    db
+      .select()
+      .from(uptimeChecks)
+      .where(
+        and(
+          inArray(uptimeChecks.monitorId, monitorIds),
+          gte(uptimeChecks.checkedAt, thirtyDaysAgo),
+        ),
+      )
+      .orderBy(desc(uptimeChecks.checkedAt))
+
+  const allChecks = await loadChecks()
 
   // Gruppiere Checks nach Monitor-ID
   const checksByMonitor = new Map<string, typeof allChecks>()
@@ -75,11 +86,7 @@ uptimeRoute.get('/', async (c) => {
   if (needRefresh) {
     await refreshAllMonitors(userId)
     // Lade Checks neu nach Refresh
-    const refreshedChecks = await db
-      .select()
-      .from(uptimeChecks)
-      .where(gte(uptimeChecks.checkedAt, thirtyDaysAgo))
-      .orderBy(desc(uptimeChecks.checkedAt))
+    const refreshedChecks = await loadChecks()
 
     checksByMonitor.clear()
     for (const chk of refreshedChecks) {

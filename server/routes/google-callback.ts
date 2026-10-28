@@ -11,8 +11,19 @@ googleCallbackRoute.get('/callback', async (c) => {
   const stateRaw = c.req.query('state')
   const errorParam = c.req.query('error')
 
+  // Ursprung der tatsächlichen Anfrage als Grundlage: Ohne gesetzte Variable
+  // führte die Rückleitung nach der Google-Anmeldung sonst auf localhost,
+  // auch wenn die Anmeldung auf der produktiven Adresse lief.
   const frontendUrl =
-    process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173'
+    process.env.APP_URL ||
+    process.env.FRONTEND_URL ||
+    (() => {
+      try {
+        return new URL(c.req.url).origin
+      } catch {
+        return 'http://localhost:5173'
+      }
+    })()
 
   if (errorParam) {
     return c.redirect(

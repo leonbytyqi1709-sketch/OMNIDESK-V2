@@ -31,7 +31,7 @@ export async function initializeMissionStorage() {
     await sql`SELECT to_regclass('v2_mission_settings') IS NOT NULL AND to_regclass('v2_mission_visits') IS NOT NULL AND to_regclass('v2_mission_ai_limits') IS NOT NULL AS ready`
   if (existing?.ready) return
   await sql.transaction([
-    sql`SELECT pg_advisory_xact_lock(184730021)`,
+    sql`SELECT pg_advisory_xact_lock(184730033)`,
     ...missionDdl.map((s) => sql.query(s)),
   ])
 }

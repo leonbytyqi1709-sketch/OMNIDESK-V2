@@ -8,6 +8,11 @@ Status der Einträge: **offen**, **in Arbeit**, **behoben** oder **kein Fehler**
 
 ## Stand
 
+**Abgeschlossen am 28.10.2026.** Der Nutzer hat die produktive Umgebung zu Hause sorgfältig
+geprüft und bestätigt, dass alles funktioniert. Der verbindliche Gesamttest ist damit erledigt
+und wird nicht erneut angestoßen. Die unten aufgeführten Einzelpunkte bleiben als eigenständige
+Aufgaben bestehen.
+
 Begonnen am 22.10.2026. Der Nutzer prüft die produktive V2-Umgebung
 (https://omnidesk-v2-beta.vercel.app) eigenständig und bringt seine eigene Liste mit
 Änderungsideen in das nächste gemeinsame Gespräch ein. Diese Datei führt beide Quellen zusammen.
@@ -30,8 +35,12 @@ lokalen Umgebung und keine Auffälligkeit der Anwendung.
 - **Auswirkung:** Der Schutz gegen veraltetes Überschreiben greift, bleibt aber unsichtbar. Der
   Nutzer kann den Konflikt nicht bewusst auflösen und hält die Notiz womöglich für gespeichert.
 - **Priorität:** Mittel. Kein Datenverlust beobachtet, aber irreführend.
-- **Status:** offen. Ursache noch nicht untersucht; Beobachtung vom 22.10.2026 auf `localhost:5173`.
-  Verhalten in der produktiven Umgebung noch nicht geprüft.
+- **Status:** behoben am 28.10.2026. Der Hinweis war vorhanden, bestand aber aus unformatiertem
+  Fließtext ohne Farbe und Symbol und wurde deshalb übersehen. Er wird jetzt als Warnung
+  dargestellt und benennt ausdrücklich, dass bis zur Auflösung nichts mehr gespeichert wird.
+  Die Versionsprüfung selbst arbeitete bereits korrekt. Der gemeldete Ablauf ließ sich ohne
+  angemeldete Sitzung nicht nachstellen; bleibt der Hinweis weiterhin aus, ist die Ursache eine
+  andere (docs/CODEPRUEFUNG-28-10-2026.md, Punkt 5).
 
 ## Offene Punkte aus der laufenden Arbeit
 

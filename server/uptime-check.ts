@@ -101,6 +101,8 @@ async function checkHttp(
     clearTimeout(timeoutId)
     const duration = Math.round(performance.now() - start)
     statusCode = res.status
+    // Der Inhalt interessiert nicht; ohne Freigabe bleibt die Verbindung offen.
+    await res.body?.cancel().catch(() => {})
 
     if (res.status === expectedStatus) {
       return {
