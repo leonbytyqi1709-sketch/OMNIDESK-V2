@@ -563,3 +563,15 @@ Der Nutzer hat nacheinander die produktive Callback-Adresse in der Cloud Console
 Damit ist die am 28.10.2026 eingeführte Cookie-Bindung erstmals produktiv durchlaufen: Start, Rückkehr und Speichern des Kontos liefen vollständig auf einer Adresse. Die Browser-Kommandoebene hat der Nutzer zuvor auf Version 1.4.0 aktualisiert und als erledigt gemeldet; eine eigene Funktionsprüfung dazu hat er nicht geschildert.
 
 Offen bleiben: die verschlüsselte Ablage der Google-Tokens (docs/CODEPRUEFUNG-28-10-2026.md, Punkt A), die Prüfung der erlaubten Ursprünge in Clerk und ein möglicher Uptime-Monitor auf die alte Adresse.
+
+## Ausbaustufe 1 von 6: Verknüpfungen zwischen Modulen · 29.10.2026
+
+Der Nutzer hat alle sechs Vorschläge aus der Einschätzung beauftragt. Diese Stufe ist der Unterbau: Bisher standen die Module nebeneinander, nur Projekte waren ein Knotenpunkt. Jetzt lassen sich **Notizen, Aufgaben, Termine, Kontakte und Projekte** beliebig miteinander verbinden.
+
+**Modell.** Eine Verknüpfung ist ungerichtet: „Notiz hängt an Projekt“ ist dasselbe wie „Projekt hängt an Notiz“. Die Tabelle `v2_connections` speichert die beiden Enden deshalb in fester Reihenfolge (`src/lib/connections.ts`, `orderEnds`), sodass dieselbe Verbindung nicht zweimal entstehen kann; ein eindeutiger Index sichert das zusätzlich ab. Fremdschlüssel sind nicht möglich, weil ein Ende auf fünf Tabellen zeigen kann. Stattdessen prüft jede Schreiboperation den Besitz **in derselben Anweisung** (`INSERT … SELECT … WHERE EXISTS`), und beim Lesen fallen Zeilen heraus, deren Gegenstück gelöscht wurde — sie werden dabei gleich entfernt. Die Tabelle entsteht additiv zur Laufzeit wie die übrigen V2-Tabellen.
+
+**Oberfläche.** `ConnectionsPanel` zeigt „Verknüpft“ mit Art, Titel und Zusatzzeile; ein Klick springt in das jeweilige Modul und öffnet den Eintrag. Eingebaut im Notiz-Editor, in den Dialogen für Aufgabe, Termin und Kontakt sowie in der Projektansicht neben den Meilensteinen. Der Verknüpfen-Dialog durchsucht alle fünf Arten gleichzeitig — auch Inhalt und Beschreibung, nicht nur Titel — und markiert bereits Verknüpftes. Für Kontakte gab es noch keinen Direktlink; `?contact=<id>` ist ergänzt, analog zu Aufgaben und Terminen.
+
+**Geprüft.** Neun neue Tests (`tests/connections.test.ts`): beide Blickrichtungen, keine Doppelung bei vertauschten Enden, Abweisung fremder Objekte und Selbstverknüpfungen, verborgene Fremdlisten, alle fünf Arten, Aufräumen verwaister Zeilen, geschütztes Lösen und eine Suche, die nur Eigenes findet und Platzhalterzeichen nicht als Muster wirken lässt. 186 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** die Ansicht in der angemeldeten Sitzung. Die fünf Module liegen hinter der Anmeldung.

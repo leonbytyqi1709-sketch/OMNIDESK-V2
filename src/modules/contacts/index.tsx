@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router'
 import { Contact, Mail, MoreVertical, Pencil, Phone, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -35,6 +36,22 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editContact, setEditContact] = useState<ContactDto | null>(null)
+
+  // Aufruf aus einer Verknüpfung: ?contact=<id> öffnet den Eintrag direkt.
+  const [params] = useSearchParams(),
+    location = useLocation(),
+    handledLink = useRef('')
+  useEffect(() => {
+    const id = params.get('contact'),
+      request = `${location.key}:${id}`
+    if (!id || !contacts || handledLink.current === request) return
+    handledLink.current = request
+    const contact = contacts.find((entry) => entry.id === id)
+    if (contact) {
+      setEditContact(contact)
+      setDialogOpen(true)
+    } else toast.info('Dieser Kontakt ist nicht mehr verfügbar.')
+  }, [params, location.key, contacts])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { MilestonePanel } from './components/MilestonePanel'
 import { ProjectBoard } from './components/ProjectBoard'
 import { ProjectFormDialog } from './components/ProjectFormDialog'
@@ -115,7 +116,13 @@ function ProjectDetailView({
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_18rem]">
         <ProjectBoard projectId={projectId} tasks={data.tasks} />
-        <MilestonePanel projectId={projectId} milestones={data.milestones} />
+        <div className="space-y-4">
+          <MilestonePanel projectId={projectId} milestones={data.milestones} />
+          <ConnectionsPanel
+            end={{ kind: 'project', id: projectId }}
+            className="rounded-xl border border-border bg-card p-4"
+          />
+        </div>
       </div>
       <div className="mt-6 space-y-6"><div id="mission-neon" className="scroll-mt-6"><NeonPanel projectId={projectId} /></div><div id="mission-deployment" className="scroll-mt-6"><DeploymentPanel projectId={projectId} /></div><div id="mission-github" className="scroll-mt-6"><GitHubPanel key={projectId} projectId={projectId} /></div></div>
     </div>

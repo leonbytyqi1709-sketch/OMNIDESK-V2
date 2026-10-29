@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { format } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -222,6 +223,11 @@ export function AppointmentFormDialog({
               maxLength={10_000}
             />
           </div>
+          <ConnectionsPanel
+            end={editAppointment ? { kind: 'appointment', id: editAppointment.id } : null}
+            compact
+            className="border-t pt-3"
+          />
           <DialogFooter className="justify-between sm:justify-between">
             {editAppointment ? (
               <Button

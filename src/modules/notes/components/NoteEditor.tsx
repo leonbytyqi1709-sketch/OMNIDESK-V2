@@ -3,6 +3,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Loader2, NotebookPen, Paperclip, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openNoteAttachment, useNoteAttachments } from '../attachments'
@@ -161,6 +162,13 @@ export function NoteEditor({
           )}
         </div>
       )}
+
+      {/* Verknüpfungen zu Aufgaben, Terminen, Kontakten und Projekten */}
+      <ConnectionsPanel
+        end={noteId ? { kind: 'note', id: noteId } : null}
+        compact
+        className="border-t px-6 py-2"
+      />
 
       {/* Anhänge (Drag & Drop) – bleiben lokal in IndexedDB */}
       <div className="flex flex-wrap items-center gap-2 border-t px-6 py-2">

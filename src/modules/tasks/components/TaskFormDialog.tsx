@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ListChecks, Plus, Tag, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -342,6 +343,11 @@ export function TaskFormDialog({
             )}
           </div>
 
+          <ConnectionsPanel
+            end={editTask ? { kind: 'task', id: editTask.id } : null}
+            compact
+            className="border-t pt-3"
+          />
           <DialogFooter className="pt-2">
             <Button
               type="button"
