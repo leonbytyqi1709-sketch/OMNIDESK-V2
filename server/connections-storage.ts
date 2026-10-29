@@ -1,4 +1,4 @@
-import { and, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { db } from '../src/db/client'
 import {
   appointments,
@@ -15,6 +15,7 @@ import {
   orderEnds,
 } from '../src/lib/connections'
 import { missingNeonStorage, monitoringSql } from './neon-storage'
+import { searchModules } from './search-storage'
 
 /**
  * Speicher für modulübergreifende Verknüpfungen.
@@ -267,102 +268,23 @@ export async function disconnect(userId: string, connectionId: string) {
   )
 }
 
-export interface SearchHit {
-  kind: ConnectionKind
-  id: string
-  title: string
-  detail: string
-}
-
 /**
- * Objekte zum Verknüpfen suchen. Ohne Suchbegriff kommen die zuletzt
- * geänderten Einträge, damit die Auswahl nicht leer startet.
+ * Objekte zum Verknüpfen suchen – dieselbe Suche wie in der Befehlspalette,
+ * begrenzt auf die fünf verknüpfbaren Arten. Ohne Suchbegriff kommen die
+ * zuletzt geänderten Einträge, damit die Auswahl nicht leer startet.
  */
-export async function searchEntities(
-  userId: string,
-  term: string,
-  perKind = 5,
-): Promise<SearchHit[]> {
-  const needle = `%${term.trim().replace(/[%_\\]/g, (c) => `\\${c}`)}%`
-  type Searchable = Parameters<typeof ilike>[0]
-  const filter = (owner: SQL, ...columns: Searchable[]) =>
-    term.trim() ? and(owner, or(...columns.map((column) => ilike(column, needle)))) : owner
-
-  const [noteRows, taskRows, appointmentRows, contactRows, projectRows] = await Promise.all([
-    db
-      .select({ id: notes.id, title: notes.title, updatedAt: notes.updatedAt })
-      .from(notes)
-      .where(filter(eq(notes.userId, userId), notes.title, notes.content))
-      .orderBy(notes.updatedAt)
-      .limit(perKind),
-    db
-      .select({ id: tasks.id, title: tasks.title, status: tasks.status })
-      .from(tasks)
-      .where(filter(eq(tasks.userId, userId), tasks.title, tasks.description))
-      .limit(perKind),
-    db
-      .select({ id: appointments.id, title: appointments.title, startsAt: appointments.startsAt })
-      .from(appointments)
-      .where(filter(eq(appointments.userId, userId), appointments.title, appointments.location))
-      .limit(perKind),
-    db
-      .select({
-        id: contacts.id,
-        firstName: contacts.firstName,
-        lastName: contacts.lastName,
-        company: contacts.company,
-        email: contacts.email,
-      })
-      .from(contacts)
-      .where(
-        filter(
-          eq(contacts.userId, userId),
-          contacts.firstName,
-          contacts.lastName,
-          contacts.company,
-          contacts.email,
-        ),
-      )
-      .limit(perKind),
-    db
-      .select({ id: projects.id, name: projects.name, status: projects.status })
-      .from(projects)
-      .where(filter(eq(projects.userId, userId), projects.name, projects.description))
-      .limit(perKind),
-  ])
-
-  return [
-    ...noteRows.map((row) => ({
-      kind: 'note' as const,
-      id: row.id,
-      title: row.title.trim() || 'Unbenannte Notiz',
-      detail: `Zuletzt geändert ${row.updatedAt.toLocaleDateString('de-DE')}`,
-    })),
-    ...taskRows.map((row) => ({
-      kind: 'task' as const,
-      id: row.id,
-      title: row.title,
-      detail: row.status === 'done' ? 'Erledigt' : 'Offen',
-    })),
-    ...appointmentRows.map((row) => ({
-      kind: 'appointment' as const,
-      id: row.id,
-      title: row.title,
-      detail: row.startsAt.toLocaleDateString('de-DE'),
-    })),
-    ...contactRows.map((row) => ({
-      kind: 'contact' as const,
-      id: row.id,
-      title: `${row.firstName} ${row.lastName}`.trim() || row.email || 'Ohne Namen',
-      detail: row.company || row.email,
-    })),
-    ...projectRows.map((row) => ({
-      kind: 'project' as const,
-      id: row.id,
-      title: row.name,
-      detail: `Status: ${row.status}`,
-    })),
-  ]
+export async function searchEntities(userId: string, term: string, perKind = 5) {
+  const hits = await searchModules(userId, term, {
+    kinds: CONNECTION_KINDS,
+    perKind,
+    recentWhenEmpty: true,
+  })
+  return hits.map((hit) => ({
+    kind: hit.kind as ConnectionKind,
+    id: hit.id,
+    title: hit.title,
+    detail: hit.detail,
+  }))
 }
 
 /** Prüft, ob ein Objekt dem Benutzer gehört – für die Route vor dem Lesen. */
@@ -375,4 +297,3 @@ export async function ownsEntity(userId: string, end: ConnectionEnd) {
   return rows.length > 0
 }
 
-export const CONNECTION_SOURCE_TABLES = CONNECTION_KINDS.map((kind) => SOURCES[kind].table)

@@ -575,3 +575,17 @@ Der Nutzer hat alle sechs Vorschläge aus der Einschätzung beauftragt. Diese St
 **Geprüft.** Neun neue Tests (`tests/connections.test.ts`): beide Blickrichtungen, keine Doppelung bei vertauschten Enden, Abweisung fremder Objekte und Selbstverknüpfungen, verborgene Fremdlisten, alle fünf Arten, Aufräumen verwaister Zeilen, geschütztes Lösen und eine Suche, die nur Eigenes findet und Platzhalterzeichen nicht als Muster wirken lässt. 186 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** die Ansicht in der angemeldeten Sitzung. Die fünf Module liegen hinter der Anmeldung.
+
+## Ausbaustufe 2 von 6: Suche über alle Module · 29.10.2026
+
+Die Befehlspalette durchsuchte bisher **ausschließlich Notizen**, und zwar im Browser über die bereits geladene Notizliste. Aufgaben, Projekte, Projektaufgaben, Kontakte, Termine, Links und Befehle waren darin unsichtbar.
+
+Gesucht wird jetzt auf dem Server über **acht Arten**: Notiz, Aufgabe, Termin, Kontakt, Projekt, Projektaufgabe, Link und Befehl — je Art höchstens fünf Treffer, nach Modulen gruppiert. Durchsucht werden nicht nur Titel, sondern auch Inhalt, Beschreibung, Ort, Firma, Adresse und Befehlstext. Jeder Treffer trägt seine Zieladresse bereits bei sich und öffnet den Eintrag direkt; die Palette zeigt nur noch an.
+
+**Umsetzung.** `server/search-storage.ts` ist die gemeinsame Grundlage, `src/lib/search.ts` enthält Arten, Beschriftungen und den Textausschnitt. Der Verknüpfen-Dialog aus Stufe 1 nutzt dieselbe Suche, begrenzt auf seine fünf Arten — die Suchlogik existiert also nur einmal. Begriffe unter zwei Zeichen lösen bewusst keine Anfrage aus, Eingaben werden 200 ms abgewartet, und Platzhalterzeichen wirken nicht als Muster. Titeltreffer stehen vor Inhaltstreffern.
+
+Gesucht wird mit `ILIKE`, nicht mit `tsvector`. Volltextindizes wären schneller, bräuchten aber Indizes auf Tabellen, die nicht zu den additiv angelegten V2-Tabellen gehören; bei diesen Mengen genügt `ILIKE`, und die Trefferzahl je Art ist ohnehin begrenzt. Falls die Suche später spürbar langsam wird, ist das die Stelle zum Nachrüsten.
+
+**Geprüft.** Sieben neue Tests (`tests/search.test.ts`): alle acht Arten, Reihenfolge der Treffer, korrekte Zieladresse je Art, Textausschnitt am Fundort, strikte Trennung zwischen Benutzern und das Abweisen zu kurzer Begriffe und reiner Platzhalter. 193 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** die Palette in der angemeldeten Sitzung.

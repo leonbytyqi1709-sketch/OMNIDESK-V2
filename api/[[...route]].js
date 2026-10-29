@@ -1734,7 +1734,7 @@ var init_neon_runner = __esm({
 import { handle } from "hono/vercel";
 
 // server/app.ts
-import { Hono as Hono31 } from "hono";
+import { Hono as Hono32 } from "hono";
 import { z as z43 } from "zod";
 
 // server/auth.ts
@@ -1831,8 +1831,217 @@ var sameEnd = (one, other) => one.kind === other.kind && one.id === other.id;
 // server/connections-storage.ts
 init_client();
 init_schema();
-import { and as and2, eq as eq2, ilike, inArray, or } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 init_neon_storage();
+
+// server/search-storage.ts
+init_client();
+init_schema();
+import { and as and2, desc as desc2, eq as eq2, ilike, or } from "drizzle-orm";
+
+// src/lib/search.ts
+var SEARCH_MIN_LENGTH = 2;
+var SEARCH_PER_KIND = 5;
+function snippetAround(content, term, width = 70) {
+  const text25 = content.replace(/\s+/g, " ").trim();
+  if (!text25) return "";
+  const at = term ? text25.toLowerCase().indexOf(term.toLowerCase()) : -1;
+  if (at === -1) return text25.slice(0, width) + (text25.length > width ? "\u2026" : "");
+  const start = Math.max(0, at - 20), end = Math.min(text25.length, at + term.length + width - 20);
+  return (start > 0 ? "\u2026" : "") + text25.slice(start, end).trim() + (end < text25.length ? "\u2026" : "");
+}
+
+// server/search-storage.ts
+function likePattern(term) {
+  return `%${term.trim().replace(/[%_\\]/g, (character) => `\\${character}`)}%`;
+}
+async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND, recentWhenEmpty = false } = {}) {
+  const term = rawTerm.trim();
+  if (!term && !recentWhenEmpty) return [];
+  const needle = likePattern(term);
+  const wanted = (kind) => !kinds || kinds.includes(kind);
+  const where = (owner, ...columns) => term ? and2(owner, or(...columns.map((column) => ilike(column, needle)))) : owner;
+  const hits = [];
+  const jobs = [];
+  if (wanted("note"))
+    jobs.push(
+      db.select({ id: notes.id, title: notes.title, content: notes.content, updatedAt: notes.updatedAt }).from(notes).where(where(eq2(notes.userId, userId), notes.title, notes.content)).orderBy(desc2(notes.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "note",
+            id: row.id,
+            title: row.title.trim() || "Unbenannte Notiz",
+            detail: `Zuletzt ge\xE4ndert ${row.updatedAt.toLocaleDateString("de-DE")}`,
+            snippet: snippetAround(row.content, term),
+            path: `/notes?note=${row.id}`
+          });
+      })
+    );
+  if (wanted("task"))
+    jobs.push(
+      db.select({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        dueDate: tasks.dueDate
+      }).from(tasks).where(where(eq2(tasks.userId, userId), tasks.title, tasks.description)).orderBy(desc2(tasks.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "task",
+            id: row.id,
+            title: row.title,
+            detail: row.dueDate ? `F\xE4llig ${row.dueDate.toLocaleDateString("de-DE")}` : row.status === "done" ? "Erledigt" : "Offen",
+            snippet: snippetAround(row.description, term),
+            path: `/tasks?task=${row.id}`
+          });
+      })
+    );
+  if (wanted("appointment"))
+    jobs.push(
+      db.select({
+        id: appointments.id,
+        title: appointments.title,
+        description: appointments.description,
+        location: appointments.location,
+        startsAt: appointments.startsAt
+      }).from(appointments).where(
+        where(
+          eq2(appointments.userId, userId),
+          appointments.title,
+          appointments.description,
+          appointments.location
+        )
+      ).orderBy(desc2(appointments.startsAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "appointment",
+            id: row.id,
+            title: row.title,
+            detail: row.startsAt.toLocaleString("de-DE", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit"
+            }),
+            snippet: snippetAround(row.location || row.description, term),
+            path: `/calendar?appointment=${row.id}`
+          });
+      })
+    );
+  if (wanted("contact"))
+    jobs.push(
+      db.select({
+        id: contacts.id,
+        firstName: contacts.firstName,
+        lastName: contacts.lastName,
+        company: contacts.company,
+        email: contacts.email,
+        notes: contacts.notes
+      }).from(contacts).where(
+        where(
+          eq2(contacts.userId, userId),
+          contacts.firstName,
+          contacts.lastName,
+          contacts.company,
+          contacts.email,
+          contacts.notes
+        )
+      ).orderBy(desc2(contacts.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "contact",
+            id: row.id,
+            title: `${row.firstName} ${row.lastName}`.trim() || row.email || "Ohne Namen",
+            detail: row.company || row.email,
+            snippet: snippetAround(row.notes, term),
+            path: `/contacts?contact=${row.id}`
+          });
+      })
+    );
+  if (wanted("project"))
+    jobs.push(
+      db.select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        status: projects.status
+      }).from(projects).where(where(eq2(projects.userId, userId), projects.name, projects.description)).orderBy(desc2(projects.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "project",
+            id: row.id,
+            title: row.name,
+            detail: `Status: ${row.status}`,
+            snippet: snippetAround(row.description, term),
+            path: `/projects?project=${row.id}`
+          });
+      })
+    );
+  if (wanted("projectTask"))
+    jobs.push(
+      db.select({
+        id: projectTasks.id,
+        title: projectTasks.title,
+        description: projectTasks.description,
+        status: projectTasks.status,
+        projectId: projectTasks.projectId,
+        projectName: projects.name
+      }).from(projectTasks).innerJoin(projects, eq2(projects.id, projectTasks.projectId)).where(
+        where(eq2(projectTasks.userId, userId), projectTasks.title, projectTasks.description)
+      ).orderBy(desc2(projectTasks.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "projectTask",
+            id: row.id,
+            title: row.title,
+            detail: `${row.projectName} \xB7 ${row.status}`,
+            snippet: snippetAround(row.description, term),
+            path: `/projects?project=${row.projectId}`
+          });
+      })
+    );
+  if (wanted("link"))
+    jobs.push(
+      db.select({ id: links.id, title: links.title, url: links.url, category: links.category }).from(links).where(where(eq2(links.userId, userId), links.title, links.url, links.category)).orderBy(desc2(links.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "link",
+            id: row.id,
+            title: row.title,
+            detail: row.category ?? "",
+            snippet: row.url,
+            path: "/links"
+          });
+      })
+    );
+  if (wanted("command"))
+    jobs.push(
+      db.select({
+        id: commands.id,
+        title: commands.title,
+        command: commands.command,
+        category: commands.category
+      }).from(commands).where(where(eq2(commands.userId, userId), commands.title, commands.command, commands.category)).orderBy(desc2(commands.updatedAt)).limit(perKind).then((rows) => {
+        for (const row of rows)
+          hits.push({
+            kind: "command",
+            id: row.id,
+            title: row.title,
+            detail: row.category,
+            snippet: row.command,
+            path: "/commands"
+          });
+      })
+    );
+  await Promise.all(jobs);
+  const lowered = term.toLowerCase();
+  return term ? hits.sort((one, other) => rank(one, lowered) - rank(other, lowered)) : hits;
+}
+var rank = (hit, term) => hit.title.toLowerCase().includes(term) ? 0 : 1;
+
+// server/connections-storage.ts
 var connectionsDdl = [
   `CREATE TABLE IF NOT EXISTS v2_connections (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2007,61 +2216,17 @@ async function disconnect(userId, connectionId) {
   );
 }
 async function searchEntities(userId, term, perKind = 5) {
-  const needle = `%${term.trim().replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-  const filter = (owner, ...columns) => term.trim() ? and2(owner, or(...columns.map((column) => ilike(column, needle)))) : owner;
-  const [noteRows, taskRows, appointmentRows, contactRows, projectRows] = await Promise.all([
-    db.select({ id: notes.id, title: notes.title, updatedAt: notes.updatedAt }).from(notes).where(filter(eq2(notes.userId, userId), notes.title, notes.content)).orderBy(notes.updatedAt).limit(perKind),
-    db.select({ id: tasks.id, title: tasks.title, status: tasks.status }).from(tasks).where(filter(eq2(tasks.userId, userId), tasks.title, tasks.description)).limit(perKind),
-    db.select({ id: appointments.id, title: appointments.title, startsAt: appointments.startsAt }).from(appointments).where(filter(eq2(appointments.userId, userId), appointments.title, appointments.location)).limit(perKind),
-    db.select({
-      id: contacts.id,
-      firstName: contacts.firstName,
-      lastName: contacts.lastName,
-      company: contacts.company,
-      email: contacts.email
-    }).from(contacts).where(
-      filter(
-        eq2(contacts.userId, userId),
-        contacts.firstName,
-        contacts.lastName,
-        contacts.company,
-        contacts.email
-      )
-    ).limit(perKind),
-    db.select({ id: projects.id, name: projects.name, status: projects.status }).from(projects).where(filter(eq2(projects.userId, userId), projects.name, projects.description)).limit(perKind)
-  ]);
-  return [
-    ...noteRows.map((row) => ({
-      kind: "note",
-      id: row.id,
-      title: row.title.trim() || "Unbenannte Notiz",
-      detail: `Zuletzt ge\xE4ndert ${row.updatedAt.toLocaleDateString("de-DE")}`
-    })),
-    ...taskRows.map((row) => ({
-      kind: "task",
-      id: row.id,
-      title: row.title,
-      detail: row.status === "done" ? "Erledigt" : "Offen"
-    })),
-    ...appointmentRows.map((row) => ({
-      kind: "appointment",
-      id: row.id,
-      title: row.title,
-      detail: row.startsAt.toLocaleDateString("de-DE")
-    })),
-    ...contactRows.map((row) => ({
-      kind: "contact",
-      id: row.id,
-      title: `${row.firstName} ${row.lastName}`.trim() || row.email || "Ohne Namen",
-      detail: row.company || row.email
-    })),
-    ...projectRows.map((row) => ({
-      kind: "project",
-      id: row.id,
-      title: row.name,
-      detail: `Status: ${row.status}`
-    }))
-  ];
+  const hits = await searchModules(userId, term, {
+    kinds: CONNECTION_KINDS,
+    perKind,
+    recentWhenEmpty: true
+  });
+  return hits.map((hit) => ({
+    kind: hit.kind,
+    id: hit.id,
+    title: hit.title,
+    detail: hit.detail
+  }));
 }
 async function ownsEntity(userId, end) {
   const sql10 = monitoringSql();
@@ -2071,7 +2236,6 @@ async function ownsEntity(userId, end) {
   );
   return rows.length > 0;
 }
-var CONNECTION_SOURCE_TABLES = CONNECTION_KINDS.map((kind) => SOURCES[kind].table);
 
 // server/routes/connections.ts
 var endInput = z4.object({
@@ -2108,11 +2272,20 @@ connectionsRoute.delete("/:connectionId", async (c) => {
   return c.json({ ok: true });
 });
 
+// server/routes/search.ts
+import { Hono as Hono3 } from "hono";
+var searchRoute = new Hono3();
+searchRoute.get("/", async (c) => {
+  const term = (c.req.query("q") ?? "").trim().slice(0, 100);
+  if (term.length < SEARCH_MIN_LENGTH) return c.json([]);
+  return c.json(await searchModules(c.get("userId"), term, { perKind: SEARCH_PER_KIND }));
+});
+
 // server/routes/notes.ts
 init_client();
 init_schema();
-import { and as and3, desc as desc2, eq as eq3, getTableColumns, sql as sql7 } from "drizzle-orm";
-import { Hono as Hono3 } from "hono";
+import { and as and3, desc as desc3, eq as eq3, getTableColumns, sql as sql7 } from "drizzle-orm";
+import { Hono as Hono4 } from "hono";
 import { z as z6 } from "zod";
 
 // server/retire-working-history.ts
@@ -2157,14 +2330,14 @@ var noteInput = z6.object({
   title: z6.string().trim().min(1, "Titel fehlt").max(300),
   content: z6.string().max(1e5)
 });
-var notesRoute = new Hono3();
+var notesRoute = new Hono4();
 notesRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
   await retireWorkingHistory();
   await next();
 });
 notesRoute.get("/", async (c) => {
-  const rows = await db.select(rowFields).from(notes).where(eq3(notes.userId, c.get("userId"))).orderBy(desc2(notes.updatedAt));
+  const rows = await db.select(rowFields).from(notes).where(eq3(notes.userId, c.get("userId"))).orderBy(desc3(notes.updatedAt));
   return c.json(rows);
 });
 notesRoute.post("/", async (c) => {
@@ -2207,8 +2380,8 @@ notesRoute.delete("/:id", async (c) => {
 // server/routes/tasks.ts
 init_client();
 init_schema();
-import { and as and4, desc as desc3, eq as eq4, getTableColumns as getTableColumns2, sql as sql8 } from "drizzle-orm";
-import { Hono as Hono4 } from "hono";
+import { and as and4, desc as desc4, eq as eq4, getTableColumns as getTableColumns2, sql as sql8 } from "drizzle-orm";
+import { Hono as Hono5 } from "hono";
 import { z as z7 } from "zod";
 var rowFields2 = {
   ...getTableColumns2(tasks),
@@ -2229,14 +2402,14 @@ var taskInput = z7.object({
   tags: z7.array(z7.string().trim().max(50)).optional(),
   subtasks: z7.array(subtaskInput).optional()
 });
-var tasksRoute = new Hono4();
+var tasksRoute = new Hono5();
 tasksRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
   await retireWorkingHistory();
   await next();
 });
 tasksRoute.get("/", async (c) => {
-  const rows = await db.select(rowFields2).from(tasks).where(eq4(tasks.userId, c.get("userId"))).orderBy(desc3(tasks.createdAt));
+  const rows = await db.select(rowFields2).from(tasks).where(eq4(tasks.userId, c.get("userId"))).orderBy(desc4(tasks.createdAt));
   return c.json(rows);
 });
 tasksRoute.post("/", async (c) => {
@@ -2290,7 +2463,7 @@ tasksRoute.delete("/:id", async (c) => {
 init_client();
 init_schema();
 import { and as and5, asc, eq as eq5 } from "drizzle-orm";
-import { Hono as Hono5 } from "hono";
+import { Hono as Hono6 } from "hono";
 import { z as z8 } from "zod";
 var contactInput = z8.object({
   firstName: z8.string().trim().min(1, "Vorname fehlt").max(100),
@@ -2300,7 +2473,7 @@ var contactInput = z8.object({
   company: z8.string().trim().max(200).default(""),
   notes: z8.string().max(1e4).default("")
 });
-var contactsRoute = new Hono5();
+var contactsRoute = new Hono6();
 contactsRoute.get("/", async (c) => {
   const rows = await db.select().from(contacts).where(eq5(contacts.userId, c.get("userId"))).orderBy(asc(contacts.firstName), asc(contacts.lastName));
   return c.json(rows);
@@ -2336,7 +2509,7 @@ contactsRoute.delete("/:id", async (c) => {
 init_client();
 init_schema();
 import { and as and6, asc as asc2, eq as eq6 } from "drizzle-orm";
-import { Hono as Hono6 } from "hono";
+import { Hono as Hono7 } from "hono";
 import { z as z9 } from "zod";
 var appointmentInput = z9.object({
   title: z9.string().trim().min(1, "Titel fehlt").max(300),
@@ -2349,7 +2522,7 @@ var appointmentInput = z9.object({
   message: "Ende muss nach dem Beginn liegen",
   path: ["endsAt"]
 });
-var appointmentsRoute = new Hono6();
+var appointmentsRoute = new Hono7();
 appointmentsRoute.get("/", async (c) => {
   const rows = await db.select().from(appointments).where(eq6(appointments.userId, c.get("userId"))).orderBy(asc2(appointments.startsAt));
   return c.json(rows);
@@ -2403,14 +2576,14 @@ appointmentsRoute.delete("/:id", async (c) => {
 init_client();
 init_schema();
 import { and as and7, asc as asc3, eq as eq7 } from "drizzle-orm";
-import { Hono as Hono7 } from "hono";
+import { Hono as Hono8 } from "hono";
 import { z as z10 } from "zod";
 var commandInput = z10.object({
   title: z10.string().trim().min(1, "Beschreibung fehlt").max(300),
   command: z10.string().trim().min(1, "Befehl fehlt").max(5e3),
   category: z10.string().trim().min(1).max(100)
 });
-var commandsRoute = new Hono7();
+var commandsRoute = new Hono8();
 commandsRoute.get("/", async (c) => {
   const rows = await db.select().from(commands).where(eq7(commands.userId, c.get("userId"))).orderBy(asc3(commands.category), asc3(commands.title));
   return c.json(rows);
@@ -2454,8 +2627,8 @@ commandsRoute.delete("/:id", async (c) => {
 // server/routes/projects.ts
 init_client();
 init_schema();
-import { and as and8, asc as asc4, desc as desc4, eq as eq8, getTableColumns as getTableColumns3, sql as sql9 } from "drizzle-orm";
-import { Hono as Hono8 } from "hono";
+import { and as and8, asc as asc4, desc as desc5, eq as eq8, getTableColumns as getTableColumns3, sql as sql9 } from "drizzle-orm";
+import { Hono as Hono9 } from "hono";
 import { z as z11 } from "zod";
 
 // server/project-task-description.ts
@@ -2506,14 +2679,14 @@ var milestoneInput = z11.object({
   dueDate: z11.iso.datetime({ offset: true }).nullable(),
   done: z11.boolean()
 });
-var projectsRoute = new Hono8();
+var projectsRoute = new Hono9();
 projectsRoute.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
   await Promise.all([retireWorkingHistory(), ensureProjectTaskDescription()]);
   await next();
 });
 projectsRoute.get("/", async (c) => {
-  const rows = await db.select().from(projects).where(eq8(projects.userId, c.get("userId"))).orderBy(desc4(projects.createdAt));
+  const rows = await db.select().from(projects).where(eq8(projects.userId, c.get("userId"))).orderBy(desc5(projects.createdAt));
   return c.json(rows);
 });
 projectsRoute.get("/:id", async (c) => {
@@ -2660,8 +2833,8 @@ projectsRoute.delete("/milestones/:milestoneId", async (c) => {
 // server/routes/vault.ts
 init_client();
 init_schema();
-import { and as and9, desc as desc5, eq as eq9 } from "drizzle-orm";
-import { Hono as Hono9 } from "hono";
+import { and as and9, desc as desc6, eq as eq9 } from "drizzle-orm";
+import { Hono as Hono10 } from "hono";
 import { z as z12 } from "zod";
 var base64 = z12.string().min(1).max(1e5).regex(/^[A-Za-z0-9+/=]+$/, "Kein g\xFCltiges Base64");
 var metaInput = z12.object({
@@ -2673,7 +2846,7 @@ var entryInput = z12.object({
   ciphertext: base64,
   iv: base64
 });
-var vaultRoute = new Hono9();
+var vaultRoute = new Hono10();
 vaultRoute.get("/meta", async (c) => {
   const [row] = await db.select().from(vaults).where(eq9(vaults.userId, c.get("userId")));
   return c.json(row ?? null);
@@ -2692,7 +2865,7 @@ vaultRoute.post("/meta", async (c) => {
   return c.json(row, 201);
 });
 vaultRoute.get("/entries", async (c) => {
-  const rows = await db.select().from(vaultEntries).where(eq9(vaultEntries.userId, c.get("userId"))).orderBy(desc5(vaultEntries.updatedAt));
+  const rows = await db.select().from(vaultEntries).where(eq9(vaultEntries.userId, c.get("userId"))).orderBy(desc6(vaultEntries.updatedAt));
   return c.json(rows);
 });
 vaultRoute.post("/entries", async (c) => {
@@ -2732,7 +2905,7 @@ vaultRoute.delete("/entries/:id", async (c) => {
 init_client();
 init_schema();
 import { eq as eq10 } from "drizzle-orm";
-import { Hono as Hono10 } from "hono";
+import { Hono as Hono11 } from "hono";
 import { z as z13 } from "zod";
 var timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 var dayAvailability = z13.object({
@@ -2754,7 +2927,7 @@ var settingsInput = z13.object({
     sun: dayAvailability
   })
 });
-var bookingRoute = new Hono10();
+var bookingRoute = new Hono11();
 bookingRoute.get("/settings", async (c) => {
   const [row] = await db.select().from(bookingSettings).where(eq10(bookingSettings.userId, c.get("userId")));
   return c.json(row ?? null);
@@ -2780,7 +2953,7 @@ bookingRoute.put("/settings", async (c) => {
 init_client();
 init_schema();
 import { and as and10, eq as eq11, gte, lt } from "drizzle-orm";
-import { Hono as Hono11 } from "hono";
+import { Hono as Hono12 } from "hono";
 import { z as z14 } from "zod";
 
 // server/timezone.ts
@@ -2859,7 +3032,7 @@ function daySlots(availability, slotMinutes, dateStr) {
 function minutesToTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
-var publicBookingRoute = new Hono11();
+var publicBookingRoute = new Hono12();
 publicBookingRoute.get("/:slug", async (c) => {
   const settings2 = await activeSettingsBySlug(c.req.param("slug"));
   if (!settings2) return c.json({ error: "Buchungsseite nicht gefunden" }, 404);
@@ -2953,7 +3126,7 @@ Anliegen: ${topic}` : ""}`,
 init_client();
 init_schema();
 import { and as and11, eq as eq13 } from "drizzle-orm";
-import { Hono as Hono12 } from "hono";
+import { Hono as Hono13 } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 
 // server/google-auth.ts
@@ -3134,7 +3307,7 @@ async function getValidGoogleAccessToken(account) {
 }
 
 // server/routes/google-callback.ts
-var googleCallbackRoute = new Hono12();
+var googleCallbackRoute = new Hono13();
 googleCallbackRoute.get("/callback", async (c) => {
   c.header("Cache-Control", "no-store");
   c.header("Referrer-Policy", "no-referrer");
@@ -3246,8 +3419,8 @@ googleCallbackRoute.get("/callback", async (c) => {
 });
 
 // server/routes/integrations.ts
-import { and as and13, desc as desc6, eq as eq15 } from "drizzle-orm";
-import { Hono as Hono13 } from "hono";
+import { and as and13, desc as desc7, eq as eq15 } from "drizzle-orm";
+import { Hono as Hono14 } from "hono";
 import { setCookie } from "hono/cookie";
 
 // server/microsoft-auth.ts
@@ -3520,7 +3693,7 @@ var updateAccountInput = z17.object({
   label: z17.string().trim().max(100).optional(),
   metadata: z17.record(z17.string(), z17.unknown()).optional()
 });
-var integrationsRoute = new Hono13();
+var integrationsRoute = new Hono14();
 integrationsRoute.get("/microsoft/auth-url", (c) => {
   c.header("Cache-Control", "no-store");
   try {
@@ -3581,7 +3754,7 @@ integrationsRoute.get("/accounts", async (c) => {
     hasRefreshToken: connectedAccounts.refreshToken,
     createdAt: connectedAccounts.createdAt,
     updatedAt: connectedAccounts.updatedAt
-  }).from(connectedAccounts).where(eq15(connectedAccounts.userId, c.get("userId"))).orderBy(desc6(connectedAccounts.createdAt));
+  }).from(connectedAccounts).where(eq15(connectedAccounts.userId, c.get("userId"))).orderBy(desc7(connectedAccounts.createdAt));
   const sanitized = rows.map((r) => ({
     ...r,
     hasRefreshToken: Boolean(r.hasRefreshToken)
@@ -3768,7 +3941,7 @@ integrationsRoute.post("/accounts/:id/sync", async (c) => {
 init_client();
 init_integrations();
 import { and as and14, eq as eq16 } from "drizzle-orm";
-import { Hono as Hono14 } from "hono";
+import { Hono as Hono15 } from "hono";
 import { deleteCookie as deleteCookie2, getCookie as getCookie2 } from "hono/cookie";
 async function persistMicrosoftConnection(connection) {
   const accounts = await db.select().from(connectedAccounts).where(and14(
@@ -3787,7 +3960,7 @@ async function persistMicrosoftConnection(connection) {
   }
 }
 function createMicrosoftCallbackRoute(persist = persistMicrosoftConnection) {
-  const route = new Hono14();
+  const route = new Hono15();
   route.get("/callback", async (c) => {
     c.header("Cache-Control", "no-store");
     c.header("Referrer-Policy", "no-referrer");
@@ -3834,11 +4007,11 @@ function createMicrosoftCallbackRoute(persist = persistMicrosoftConnection) {
 var microsoftCallbackRoute = createMicrosoftCallbackRoute();
 
 // server/routes/cloud-monitor.ts
-import { and as and15, desc as desc7, eq as eq17 } from "drizzle-orm";
-import { Hono as Hono15 } from "hono";
+import { and as and15, desc as desc8, eq as eq17 } from "drizzle-orm";
+import { Hono as Hono16 } from "hono";
 init_client();
 init_schema();
-var cloudMonitorRoute = new Hono15();
+var cloudMonitorRoute = new Hono16();
 var defaultDemoAccounts = [
   {
     provider: "google",
@@ -3904,7 +4077,7 @@ cloudMonitorRoute.get("/overview", async (c) => {
     metadata: connectedAccounts.metadata,
     createdAt: connectedAccounts.createdAt,
     updatedAt: connectedAccounts.updatedAt
-  }).from(connectedAccounts).where(eq17(connectedAccounts.userId, userId)).orderBy(desc7(connectedAccounts.createdAt));
+  }).from(connectedAccounts).where(eq17(connectedAccounts.userId, userId)).orderBy(desc8(connectedAccounts.createdAt));
   if (accounts.length === 0) {
     const inserted = await db.insert(connectedAccounts).values(
       defaultDemoAccounts.map((acc) => ({
@@ -3987,8 +4160,8 @@ cloudMonitorRoute.get("/account/:id", async (c) => {
 init_client();
 init_schema();
 init_uptime_check();
-import { and as and17, desc as desc8, eq as eq19, gte as gte2, inArray as inArray2 } from "drizzle-orm";
-import { Hono as Hono16 } from "hono";
+import { and as and17, desc as desc9, eq as eq19, gte as gte2, inArray as inArray2 } from "drizzle-orm";
+import { Hono as Hono17 } from "hono";
 import { z as z18 } from "zod";
 var monitorInput = z18.object({
   name: z18.string().trim().min(1, "Name ist erforderlich").max(100),
@@ -3999,10 +4172,10 @@ var monitorInput = z18.object({
   timeoutMs: z18.number().int().min(1e3).max(3e4).default(1e4),
   active: z18.boolean().default(true)
 });
-var uptimeRoute = new Hono16();
+var uptimeRoute = new Hono17();
 uptimeRoute.get("/", async (c) => {
   const userId = c.get("userId");
-  const monitors = await db.select().from(uptimeMonitors).where(eq19(uptimeMonitors.userId, userId)).orderBy(desc8(uptimeMonitors.createdAt));
+  const monitors = await db.select().from(uptimeMonitors).where(eq19(uptimeMonitors.userId, userId)).orderBy(desc9(uptimeMonitors.createdAt));
   if (monitors.length === 0) {
     return c.json([]);
   }
@@ -4014,7 +4187,7 @@ uptimeRoute.get("/", async (c) => {
       inArray2(uptimeChecks.monitorId, monitorIds),
       gte2(uptimeChecks.checkedAt, thirtyDaysAgo)
     )
-  ).orderBy(desc8(uptimeChecks.checkedAt));
+  ).orderBy(desc9(uptimeChecks.checkedAt));
   const allChecks = await loadChecks();
   const checksByMonitor = /* @__PURE__ */ new Map();
   for (const chk of allChecks) {
@@ -4146,7 +4319,7 @@ uptimeRoute.get("/:id/checks", async (c) => {
   if (!monitor) {
     return c.json({ error: "Monitor nicht gefunden" }, 404);
   }
-  const checks = await db.select().from(uptimeChecks).where(eq19(uptimeChecks.monitorId, id)).orderBy(desc8(uptimeChecks.checkedAt)).limit(20);
+  const checks = await db.select().from(uptimeChecks).where(eq19(uptimeChecks.monitorId, id)).orderBy(desc9(uptimeChecks.checkedAt)).limit(20);
   return c.json(checks);
 });
 
@@ -4159,7 +4332,7 @@ init_neon_sql();
 init_neon_storage();
 init_neon_runner();
 import { and as and19, eq as eq21, inArray as inArray4 } from "drizzle-orm";
-import { Hono as Hono17 } from "hono";
+import { Hono as Hono18 } from "hono";
 import { z as z20 } from "zod";
 async function ownsProject2(link) {
   const [row] = await db.select({ id: projects.id }).from(projects).where(and19(eq21(projects.id, link.projectId), eq21(projects.userId, link.userId)));
@@ -4171,7 +4344,7 @@ async function ownsMonitors(link, ids) {
   return rows.length === ids.length;
 }
 function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, ownsMonitors, initializeNeonStorage, saveNeonSettings, readNeonMonitoring, acknowledgeNeonAlert, runNeonCheck }) {
-  const route = new Hono17();
+  const route = new Hono18();
   route.onError(() => new Response(JSON.stringify({ error: "Neon-Monitoring-Speicher nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }));
   route.use("/:projectId/*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -4220,7 +4393,7 @@ init_client();
 init_projects();
 init_neon_monitor();
 import { and as and20, eq as eq22 } from "drizzle-orm";
-import { Hono as Hono18 } from "hono";
+import { Hono as Hono19 } from "hono";
 async function listOwnedProjects(userId) {
   return db.select({ id: projects.id, name: projects.name }).from(projects).where(eq22(projects.userId, userId));
 }
@@ -4232,7 +4405,7 @@ async function ownsProject3(userId, projectId) {
   return Boolean(project2);
 }
 function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject: ownsProject3, fetchNeonSnapshot }) {
-  const route = new Hono18();
+  const route = new Hono19();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -4283,7 +4456,7 @@ function createNeonMonitorRoute(dependencies = { listOwnedProjects, ownsProject:
 var neonMonitorRoute = createNeonMonitorRoute();
 
 // server/routes/briefing.ts
-import { Hono as Hono19 } from "hono";
+import { Hono as Hono20 } from "hono";
 import { z as z24 } from "zod";
 
 // server/briefing-data.ts
@@ -4851,7 +5024,7 @@ var generateBriefingMessage = createBriefingMessageService();
 
 // server/routes/briefing.ts
 function createBriefingRoute(dependencies = { collectBriefing, generateBriefingMessage, recordBriefingVisit, saveBriefingPreferences }) {
-  const route = new Hono19();
+  const route = new Hono20();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Omni-Briefing konnte nicht vollst\xE4ndig geladen werden. Bitte erneut versuchen." }, error instanceof SecurityAccountError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -4885,7 +5058,7 @@ function createBriefingRoute(dependencies = { collectBriefing, generateBriefingM
 var briefingRoute = createBriefingRoute();
 
 // server/routes/account-map.ts
-import { Hono as Hono20 } from "hono";
+import { Hono as Hono21 } from "hono";
 import { z as z26 } from "zod";
 
 // server/account-map-policy.ts
@@ -4996,7 +5169,7 @@ async function deleteAccountRelation(userId, id, version) {
 
 // server/routes/account-map.ts
 function createAccountMapRoute(dependencies = { createAccountRelation, deleteAccountRelation, initializeAccountMap, readAccountMap, updateAccountRelation }) {
-  const route = new Hono20();
+  const route = new Hono21();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Kontenkarte nicht verf\xFCgbar. Einrichtung und Datenbankrechte pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -5029,10 +5202,10 @@ function createAccountMapRoute(dependencies = { createAccountRelation, deleteAcc
 var accountMapRoute = createAccountMapRoute();
 
 // server/routes/account-security.ts
-import { Hono as Hono21 } from "hono";
+import { Hono as Hono22 } from "hono";
 import { z as z27 } from "zod";
 function createAccountSecurityRoute(dependencies = { createSecurityAccount, deleteSecurityAccount, initializeSecurityStorage, readSecurityOverview, reviewSecurityAccount, updateSecurityAccount }) {
-  const route = new Hono21();
+  const route = new Hono22();
   route.onError((error, c) => c.json({ error: error instanceof SecurityAccountError ? error.message : "Sicherheits\xFCbersicht nicht verf\xFCgbar. Datenbankrechte und Einrichtung pr\xFCfen." }, error instanceof SecurityAccountError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -5075,7 +5248,7 @@ function createAccountSecurityRoute(dependencies = { createSecurityAccount, dele
 var accountSecurityRoute = createAccountSecurityRoute();
 
 // server/routes/github.ts
-import { Hono as Hono22 } from "hono";
+import { Hono as Hono23 } from "hono";
 import { z as z29 } from "zod";
 
 // server/github-monitor.ts
@@ -5226,7 +5399,7 @@ async function deleteGitHubLink(userId, projectId) {
 
 // server/routes/github.ts
 function createGitHubRoute(dependencies = { fetchGitHubSnapshot, listGitHubRepositories, githubProjects, ownsGitHubProject, listGitHubLinks, saveGitHubLink, deleteGitHubLink }) {
-  const route = new Hono22();
+  const route = new Hono23();
   route.onError((error, c) => c.json({ error: error instanceof GitHubError ? error.message : "GitHub-Daten konnten nicht geladen werden. Einrichtung und Datenbankrechte pr\xFCfen." }, error instanceof GitHubError ? error.status : 503));
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -5274,7 +5447,7 @@ var githubRoute = createGitHubRoute();
 init_client();
 init_projects();
 import { and as and22, eq as eq24 } from "drizzle-orm";
-import { Hono as Hono23 } from "hono";
+import { Hono as Hono24 } from "hono";
 
 // server/vercel-monitor.ts
 import { z as z30 } from "zod";
@@ -5518,7 +5691,7 @@ async function ownsProject4(userId, projectId) {
   return Boolean(project2);
 }
 function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedProjects2, ownsProject: ownsProject4, fetchVercelSnapshot, fetchVercelLogs }) {
-  const route = new Hono23();
+  const route = new Hono24();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -5605,7 +5778,7 @@ function createDeploymentsRoute(dependencies = { listOwnedProjects: listOwnedPro
 var deploymentsRoute = createDeploymentsRoute();
 
 // server/routes/omni-memory-auto.ts
-import { Hono as Hono24 } from "hono";
+import { Hono as Hono25 } from "hono";
 import { z as z32 } from "zod";
 
 // server/omni-memory-auto-storage.ts
@@ -5851,7 +6024,7 @@ async function readAutoMemoryStates(userId, sessionId) {
 
 // server/routes/omni-memory-auto.ts
 function createAutoMemoryRoute(dependencies = { applyAutoMemoryEvent, dismissAutoMemoryEvent }) {
-  const route = new Hono24();
+  const route = new Hono25();
   route.onError(
     (error, c) => c.json(
       {
@@ -5878,7 +6051,7 @@ function createAutoMemoryRoute(dependencies = { applyAutoMemoryEvent, dismissAut
 var autoMemoryRoute = createAutoMemoryRoute();
 
 // server/routes/omni-memory.ts
-import { Hono as Hono25 } from "hono";
+import { Hono as Hono26 } from "hono";
 import { z as z33 } from "zod";
 function createOmniMemoryRoute(dependencies = {
   readOmniMemories,
@@ -5887,7 +6060,7 @@ function createOmniMemoryRoute(dependencies = {
   deleteOmniMemory,
   readMemoryVersions
 }) {
-  const route = new Hono25();
+  const route = new Hono26();
   route.onError(
     (error, c) => c.json(
       {
@@ -5963,7 +6136,7 @@ function createOmniMemoryRoute(dependencies = {
 var omniMemoryRoute = createOmniMemoryRoute();
 
 // server/routes/omni-actions.ts
-import { Hono as Hono26 } from "hono";
+import { Hono as Hono27 } from "hono";
 import { z as z35 } from "zod";
 
 // server/omni-actions-context.ts
@@ -6533,7 +6706,7 @@ function createOmniActionsRoute(dependencies = {
   executeOmniPlan,
   cancelOmniPlan
 }) {
-  const route = new Hono26();
+  const route = new Hono27();
   route.onError(
     (error, c) => c.json(
       {
@@ -6959,10 +7132,10 @@ async function readMemoryReceipts(userId, sessionId) {
 // server/routes/chat.ts
 init_client();
 init_schema();
-import { and as and23, asc as asc5, desc as desc9, eq as eq25 } from "drizzle-orm";
-import { Hono as Hono27 } from "hono";
+import { and as and23, asc as asc5, desc as desc10, eq as eq25 } from "drizzle-orm";
+import { Hono as Hono28 } from "hono";
 import { z as z37 } from "zod";
-var chatRoute = new Hono27();
+var chatRoute = new Hono28();
 var preferredKeyIndex = 0;
 function getApiKeys() {
   const keys = [
@@ -6986,7 +7159,7 @@ var sendMessageSchema = z37.object({
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq25(chatSessions.userId, userId)).orderBy(desc9(chatSessions.updatedAt));
+  const rows = await db.select().from(chatSessions).where(eq25(chatSessions.userId, userId)).orderBy(desc10(chatSessions.updatedAt));
   return c.json(rows);
 });
 chatRoute.post("/sessions", async (c) => {
@@ -7086,7 +7259,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
   } else {
     await db.update(chatSessions).set({ updatedAt: /* @__PURE__ */ new Date() }).where(eq25(chatSessions.id, sessionId));
   }
-  const history = await db.select().from(chatMessages).where(eq25(chatMessages.sessionId, sessionId)).orderBy(desc9(chatMessages.createdAt), desc9(chatMessages.id)).limit(20);
+  const history = await db.select().from(chatMessages).where(eq25(chatMessages.sessionId, sessionId)).orderBy(desc10(chatMessages.createdAt), desc10(chatMessages.id)).limit(20);
   const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.AI_MODEL || "gpt-4o-mini";
   let assistantContent = "";
@@ -7213,7 +7386,7 @@ chatRoute.post("/sessions/:id/messages", async (c) => {
 });
 
 // server/routes/mission-control.ts
-import { Hono as Hono28 } from "hono";
+import { Hono as Hono29 } from "hono";
 import { z as z38 } from "zod";
 
 // server/mission-control.ts
@@ -7986,7 +8159,7 @@ var missionRouteDependencies = {
   saveMissionMonitors
 };
 function createMissionRoute(deps = missionRouteDependencies) {
-  const route = new Hono28();
+  const route = new Hono29();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -8089,7 +8262,7 @@ function createMissionRoute(deps = missionRouteDependencies) {
 var missionRoute = createMissionRoute();
 
 // server/routes/browser-desk.ts
-import { Hono as Hono29 } from "hono";
+import { Hono as Hono30 } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z as z40 } from "zod";
 
@@ -8591,7 +8764,7 @@ var browserDataDependencies = {
   deleteBrowserItem
 };
 function baseRoute() {
-  const route = new Hono29();
+  const route = new Hono30();
   route.use(
     "*",
     bodyLimit({
@@ -8799,7 +8972,7 @@ var browserWebRoute = createBrowserWebRoute();
 var browserExtensionRoute = createBrowserExtensionRoute();
 
 // server/routes/shared-rooms.ts
-import { Hono as Hono30 } from "hono";
+import { Hono as Hono31 } from "hono";
 import { bodyLimit as bodyLimit2 } from "hono/body-limit";
 import { z as z42 } from "zod";
 
@@ -9056,7 +9229,7 @@ var roomDependencies = {
   roomSource
 };
 function createRoomsRoute(deps = roomDependencies) {
-  const route = new Hono30();
+  const route = new Hono31();
   route.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     await next();
@@ -9227,7 +9400,7 @@ var sharedRoomsRoute = createRoomsRoute();
 
 // server/app.ts
 function createApp() {
-  const app = new Hono31().basePath("/api");
+  const app = new Hono32().basePath("/api");
   app.onError((err, c) => {
     console.error(`[API] Fehler in ${c.req.method} ${c.req.path}:`, err);
     const msg = err instanceof Error ? err.message : String(err);
@@ -9277,6 +9450,7 @@ function createApp() {
   app.route("/tasks", tasksRoute);
   app.route("/contacts", contactsRoute);
   app.route("/connections", connectionsRoute);
+  app.route("/search", searchRoute);
   app.route("/appointments", appointmentsRoute);
   app.route("/commands", commandsRoute);
   app.route("/projects", projectsRoute);

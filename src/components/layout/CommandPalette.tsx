@@ -36,7 +36,8 @@ import {
 } from '@/components/ui/command'
 import { moduleRegistry } from '@/config/modules'
 import { useCommands, type CommandDto } from '@/modules/commands/api'
-import { useNotes } from '@/modules/notes/api'
+import { SEARCH_LABEL, type SearchHit, type SearchKind } from '@/lib/search'
+import { useDebounced, useGlobalSearch } from '@/modules/search/api'
 import {
   CommandParamDialog,
   extractPlaceholders,
@@ -47,20 +48,27 @@ import { usePomodoroStore } from '@/stores/pomodoro'
 import { useSettingsStore } from '@/stores/settings'
 import { setQuickAction } from '@/lib/quick-action'
 
-/** Erzeugt einen Kontext-Snippet rund um den ersten Suchtreffer im Notizinhalt. */
-function buildNoteSnippet(content: string, query: string): string {
-  const trimmed = content.trim()
-  const idx = trimmed.toLowerCase().indexOf(query.toLowerCase())
-  if (idx === -1) {
-    return trimmed.slice(0, 80) + (trimmed.length > 80 ? '…' : '')
-  }
-  const start = Math.max(0, idx - 20)
-  const end = Math.min(trimmed.length, idx + query.length + 50)
-  const snippet = trimmed
-    .slice(start, end)
-    .replace(/\s+/g, ' ')
-    .trim()
-  return (start > 0 ? '…' : '') + snippet + (end < trimmed.length ? '…' : '')
+/** Symbol und Farbe je Trefferart der modulweiten Suche. */
+const HIT_ICON: Record<SearchKind, typeof NotebookPen> = {
+  note: NotebookPen,
+  task: ListTodo,
+  appointment: CalendarDays,
+  contact: Contact,
+  project: FolderPlus,
+  projectTask: ListTodo,
+  link: Link2,
+  command: Laptop,
+}
+
+const HIT_TINT: Record<SearchKind, string> = {
+  note: 'text-amber-400',
+  task: 'text-emerald-400',
+  appointment: 'text-sky-400',
+  contact: 'text-violet-400',
+  project: 'text-primary',
+  projectTask: 'text-primary',
+  link: 'text-blue-400',
+  command: 'text-muted-foreground',
 }
 
 function getCategoryIcon(cat: string) {
@@ -90,8 +98,11 @@ export function CommandPalette() {
   // lief auf jeder Seite der Anwendung ein zusätzlicher Abruf mit, obwohl die
   // Daten nur hier gebraucht werden.
   const { data: userCommands } = useCommands(isOpen)
-  const { data: notes } = useNotes(isOpen)
   const [search, setSearch] = useState('')
+  // Gesucht wird auf dem Server über alle Module; früher lag nur die
+  // Notizliste im Browser und nur sie war durchsuchbar.
+  const debounced = useDebounced(search)
+  const { data: hits, isFetching: searching } = useGlobalSearch(debounced, isOpen)
   const [paramCmd, setParamCmd] = useState<CommandDto | null>(null)
   const [paramOpen, setParamOpen] = useState(false)
 
@@ -100,21 +111,13 @@ export function CommandPalette() {
     if (!isOpen) setSearch('')
   }, [isOpen])
 
-  // Modulübergreifende Volltextsuche: Treffer in Notiz-Titel & -Inhalt
-  const noteHits = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    if (!notes || query.length === 0) return []
-    return notes
-      .map((n) => {
-        const inTitle = n.title.toLowerCase().includes(query)
-        const inContent = n.content.toLowerCase().includes(query)
-        return { note: n, rank: inTitle ? 0 : inContent ? 1 : 2 }
-      })
-      .filter((h) => h.rank < 2)
-      .sort((a, b) => a.rank - b.rank)
-      .slice(0, 5)
-      .map((h) => h.note)
-  }, [notes, search])
+  // Treffer nach Art gruppieren, Reihenfolge wie in SEARCH_LABEL
+  const groupedHits = useMemo(() => {
+    const groups = new Map<SearchKind, SearchHit[]>()
+    for (const hit of hits ?? [])
+      (groups.get(hit.kind) ?? groups.set(hit.kind, []).get(hit.kind)!).push(hit)
+    return [...groups.entries()]
+  }, [hits])
 
   // Alle Befehle (Nutzer + Starter) zusammenführen
   const allCommands = useMemo<CommandDto[]>(() => {
@@ -180,7 +183,7 @@ export function CommandPalette() {
           placeholder="Befehl tippen oder Aktion suchen (z. B. 'Notiz', 'Port', 'Dark', 'Pomodoro')..."
         />
       <CommandList>
-        <CommandEmpty>Keine passenden Befehle gefunden.</CommandEmpty>
+        <CommandEmpty>Nichts gefunden – weder in den Modulen noch in den Befehlen.</CommandEmpty>
 
         {/* 1. Modul-Navigation */}
         <CommandGroup heading="Navigation zu Modulen">
@@ -407,33 +410,44 @@ export function CommandPalette() {
 
         <CommandSeparator />
 
-        {/* Volltextsuche: Notiz-Treffer (Titel & Inhalt) */}
-        {noteHits.length > 0 && (
+        {/* Suche über alle Module – Treffer kommen vom Server */}
+        {searching && groupedHits.length === 0 && search.trim().length >= 2 && (
           <>
-            <CommandGroup heading={`Notizen – Volltextsuche (${noteHits.length} Treffer)`}>
-              {noteHits.map((n) => (
-                <CommandItem
-                  key={n.id}
-                  value={`Notiz: ${n.title} ${n.content}`}
-                  onSelect={() => {
-                    setQuickAction('open-note', n.id)
-                    runCommand(() => navigate('/notes'))
-                  }}
-                >
-                  <NotebookPen className="size-4 shrink-0 text-emerald-400" />
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="truncate">{n.title || 'Unbenannte Notiz'}</span>
-                    <span className="truncate text-[11px] text-muted-foreground">
-                      {buildNoteSnippet(n.content, search.trim())}
-                    </span>
-                  </div>
-                  <CommandShortcut>Notiz öffnen</CommandShortcut>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            <div className="px-3 py-2 text-xs text-muted-foreground">Wird gesucht…</div>
             <CommandSeparator />
           </>
         )}
+        {groupedHits.map(([kind, found]) => {
+          const Icon = HIT_ICON[kind]
+          return (
+            <div key={kind}>
+              <CommandGroup heading={`${SEARCH_LABEL[kind]} (${found.length})`}>
+                {found.map((hit) => (
+                  <CommandItem
+                    key={`${hit.kind}:${hit.id}`}
+                    // Der Server hat bereits gefiltert; der Suchbegriff steht
+                    // im Wert, damit die Palette den Treffer nicht erneut
+                    // wegfiltert.
+                    value={`${SEARCH_LABEL[kind]} ${hit.title} ${hit.detail} ${hit.snippet} ${search}`}
+                    onSelect={() => runCommand(() => navigate(hit.path))}
+                  >
+                    <Icon className={`size-4 shrink-0 ${HIT_TINT[kind]}`} />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{hit.title}</span>
+                      {(hit.snippet || hit.detail) && (
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {hit.snippet || hit.detail}
+                        </span>
+                      )}
+                    </div>
+                    <CommandShortcut>Öffnen</CommandShortcut>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+            </div>
+          )
+        })}
 
         {/* 4. Terminal- & IT-Befehle (Direktkopie & Parameter-Dialog) */}
         <CommandGroup heading={`CLI-Befehle & Cheat-Sheet (${allCommands.length} Befehle)`}>
