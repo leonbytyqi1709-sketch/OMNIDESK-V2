@@ -159,8 +159,11 @@ bewusst offen und kein übersehener Fall.
 ## Adressänderung · 29.10.2026
 
 Das Vercel-Projekt heißt jetzt `omnidesk-work`, die App ist unter
-`https://omnidesk-work.vercel.app` erreichbar. Die alte Adresse ist ersatzlos
-weg; Vercel leitet nicht weiter.
+`https://omnidesk-work.vercel.app` erreichbar. Entgegen der ersten Annahme
+beantwortet Vercel die alte Adresse weiterhin mit einer Weiterleitung (307) auf
+die neue; im Browser merkt man davon nichts. Für die Erweiterung hilft das
+nicht: Sie spricht ausschließlich den fest eingetragenen Ursprung an und folgt
+keinen Weiterleitungen.
 
 Die Erweiterung hält diesen Ursprung bewusst fest verdrahtet: in
 `host_permissions`, in `externally_connectable`, in der Inhaltssicherheits-
