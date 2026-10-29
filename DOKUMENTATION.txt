@@ -1,4 +1,9 @@
 =====================================================================
+ HISTORISCH - Stand September 2026, ueberholt.
+ Aktueller Stand: PROJEKTDOKUMENTATION.md
+=====================================================================
+
+=====================================================================
  OMNIDESK – ENTWICKLUNGSDOKUMENTATION
  Stand: Ende der Entwicklungs-Session vom 07.08.2026
  (Abschnitt 0 = neuester Stand; Abschnitte 1-7 vom 17.07.2026,

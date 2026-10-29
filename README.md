@@ -1,4 +1,7 @@
-# OmniDesk
+# OMNIDESK
+
+> Vollständige und aktuelle Beschreibung der Anwendung und ihrer Technik:
+> [PROJEKTDOKUMENTATION.md](PROJEKTDOKUMENTATION.md)
 
 Modulare All-in-One-Produktivitäts-Webapp für IT-Profis (FiSi/Power-User):
 Dashboard, Notizen, Aufgaben, Kalender mit öffentlichem Booking, Pomodoro,

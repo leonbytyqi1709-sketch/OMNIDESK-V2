@@ -1,3 +1,6 @@
+> **Historisch.** Dieses Dokument beschreibt einen Stand von September 2026 und ist überholt.
+> Der aktuelle Stand steht in [PROJEKTDOKUMENTATION.md](PROJEKTDOKUMENTATION.md).
+
 # OmniDesk – Anwendungsdokumentation
 
 > Vollständige, strukturierte Übersicht der Web-Anwendung OmniDesk.

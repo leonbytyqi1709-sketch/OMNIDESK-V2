@@ -1,4 +1,9 @@
 =====================================================================
+ HISTORISCH - Stand September 2026, ueberholt.
+ Aktueller Stand: PROJEKTDOKUMENTATION.md
+=====================================================================
+
+=====================================================================
  OMNIDESK – OFFENE / UNTERBROCHENE ARBEITEN
  Uebergabe an die naechste Claude-Session (anderer Account)
  Stand: 18.09.2026 (neuestes Update oben)

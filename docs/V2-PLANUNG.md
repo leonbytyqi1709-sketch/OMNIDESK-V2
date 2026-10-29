@@ -722,3 +722,13 @@ Der Inhalt wird mit Anmeldetoken geholt — ein einfacher Link ginge nicht — u
 **Geprüft.** Vier neue Tests für die Zuordnung der Arten und die Entschärfung der Dateinamen. 258 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen. **Nicht geprüft:** die Anzeige in der angemeldeten Sitzung.
 
 **Offen zur Vorschau:** Beim Nutzer öffnete sich die Vorschau nicht, die Datei wurde weiterhin nur heruntergeladen. Nachgewiesen ist: Der Anhang liegt als `text/plain` in der Datenbank (ein Typ mit Vorschau), und die ausgelieferte Fassung der Live-App enthält den neuen Code. Der Browser des Nutzers lief weiter auf der alten Kopie, weil sein Service Worker nicht ausgetauscht wurde — die Aktualisierungs-Erkennung vom selben Tag greift erst nach einmaligem Austausch. Das Abmelden des Workers über die Entwicklertools wurde nicht mehr versucht; der Nutzer hat den Punkt vertagt. **Die Vorschau ist damit in der angemeldeten Sitzung weiterhin unbestätigt.**
+
+## Projektdokumentation · 29.10.2026
+
+Vier Dokumente beschrieben bisher dieselbe Anwendung, drei davon veraltet: `ANWENDUNGSERKLAERUNG.md` (September, zeigt auf die alte V1-Adresse), `DOKUMENTATION.txt` (Juli/August) und `OFFENE_ARBEITEN.txt` (Übergabe an eine frühere Sitzung). `docs/V2-PLANUNG.md` ist zwar aktuell, aber ein chronologisches Tagebuch — es erzählt, was wann geschah, nicht was die Anwendung heute ist.
+
+Neu: **`PROJEKTDOKUMENTATION.md`** im Projektstamm, das aktuelle Hauptdokument. Teil A beschreibt die Anwendung — alle 21 Module nach Bereichen, die fünf modulübergreifenden Funktionen (Verknüpfungen, Suche, Anhänge, Fokuszeiten, Omni) und was Omni an den KI-Anbieter sendet. Teil B beschreibt die Technik: Aufbau, die sechs Sicherheitsprinzipien, die beiden Tabellengenerationen samt additiver DDL, die externen Dienste mit ihren Variablen, Bauen und Bereitstellen einschließlich des eingecheckten Backend-Bündels, Tests und die Betriebsgrenzen. Zum Schluss die offenen Punkte und die Liste der Entscheidungen, die nicht zurückkommen.
+
+Die drei veralteten Dokumente tragen jetzt oben einen Hinweis „historisch“ mit Verweis auf das neue; gelöscht wurde nichts. `README.md` verweist ebenfalls darauf.
+
+Alle Zahlen im Dokument sind gegen den Code geprüft: 21 Module, 258 Tests in 31 Dateien, Advisory-Lock-Nummern bis 184730037, zwei Cron-Läufe um 06:00 und 06:05.
