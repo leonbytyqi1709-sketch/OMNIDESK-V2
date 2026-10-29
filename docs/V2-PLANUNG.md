@@ -553,3 +553,13 @@ Der Nutzer hat das verwaiste V1-Projekt auf Vercel gelöscht und das verbliebene
 Im Code war der Ursprung nur an einer Art Stelle fest verdrahtet, nämlich in der Browser-Erweiterung, dort aber sechsfach: `host_permissions`, `externally_connectable`, Inhaltssicherheitsrichtlinie, `background.js`, `panel.js` und `panel.html`. Alle umgestellt, Erweiterungsversion 1.4.0, Paket neu erzeugt. Nachgezogen wurden außerdem die drei Testdateien mit festem Ursprung, `.env.example`, docs/ONEDRIVE-SETUP.md, docs/NEON-MONITORING.md, docs/GESAMTTEST-AUFFAELLIGKEITEN.md, docs/BROWSER-KOMMANDOEBENE.md, TESTANLEITUNG-CLAUDE-CODE.txt und GOOGLE-ANMELDUNG-UMSTELLEN.txt. Die Anwendung selbst bildet Rückleitungen aus dem Ursprung der jeweiligen Anfrage; dort war nichts zu ändern.
 
 177 Tests bestanden, Typprüfung sauber, Build erfolgreich. **Offen beim Nutzer:** Erweiterung neu herunterladen und in Chrome neu laden, sonst erreicht das Panel die App nicht mehr; danach die Google-Umstellung nach GOOGLE-ANMELDUNG-UMSTELLEN.txt mit der neuen Adresse; außerdem prüfen, ob Clerk die neue Domain als erlaubten Ursprung führt und ob ein Uptime-Monitor noch die alte Adresse überwacht.
+
+### Google-Anmeldung produktiv · Nutzerbestätigung 29.10.2026
+
+Die Ursache des Umwegs ist bestätigt: In der Google Cloud Console stand als einzige Weiterleitungs-URI `http://localhost:8787/api/integrations/google/callback`, und `GOOGLE_REDIRECT_URI` in Vercel zeigte ebenfalls dorthin. Deshalb musste bisher der lokale API-Server laufen.
+
+Der Nutzer hat nacheinander die produktive Callback-Adresse in der Cloud Console ergänzt (der localhost-Eintrag bleibt für die lokale Entwicklung bestehen), `GOOGLE_REDIRECT_URI` in Vercel auf `https://omnidesk-work.vercel.app/api/integrations/google/callback` gesetzt und neu bereitgestellt. Anschließend hat er ein Google-Konto direkt in der Live-App verbunden und das Ergebnis bestätigt: „funktioniert wie ich mir das vorgestellt habe“. Lokale Server waren dabei nicht nötig.
+
+Damit ist die am 28.10.2026 eingeführte Cookie-Bindung erstmals produktiv durchlaufen: Start, Rückkehr und Speichern des Kontos liefen vollständig auf einer Adresse. Die Browser-Kommandoebene hat der Nutzer zuvor auf Version 1.4.0 aktualisiert und als erledigt gemeldet; eine eigene Funktionsprüfung dazu hat er nicht geschildert.
+
+Offen bleiben: die verschlüsselte Ablage der Google-Tokens (docs/CODEPRUEFUNG-28-10-2026.md, Punkt A), die Prüfung der erlaubten Ursprünge in Clerk und ein möglicher Uptime-Monitor auf die alte Adresse.

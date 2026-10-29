@@ -1,6 +1,10 @@
 GOOGLE-KONTO OHNE LOKALE SERVER VERBINDEN
 Stand 29.10.2026
 
+ERLEDIGT AM 29.10.2026. Der Nutzer hat alle Schritte durchgefuehrt und das
+Verbinden in der Live-App ohne lokale Server bestaetigt. Diese Anleitung bleibt
+als Nachschlagewerk stehen - etwa, wenn sich die Adresse noch einmal aendert.
+
 
 WARUM DAS NOETIG IST
 
