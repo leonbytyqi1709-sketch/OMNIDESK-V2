@@ -537,3 +537,11 @@ Der Nutzer entscheidet: ausblenden. Ein Schalter in `src/lib/cloud-providers.ts`
 Vorhandene Konten bleiben sichtbar: `showOneDrive(anzahl)` zeigt Kachel, Reiter, Karte und Widget-Zeile weiterhin an, solange ein OneDrive-Konto verknüpft ist, dann ohne Verbinden-Schaltfläche, damit es trennbar bleibt. Verknüpft ist derzeit keines. Serverseitig wurde nichts entfernt: Route, Callback, Synchronisation und Tests der Microsoft-Anbindung bleiben unverändert und untätig, weil keine Microsoft-Variable gesetzt ist.
 
 177 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen, Build erfolgreich. **Nicht geprüft:** die Ansicht in der angemeldeten Sitzung; Cloud-Monitor und Einstellungen liegen hinter der Anmeldung. Der Nutzer sieht das Ergebnis nach dem Deployment in der Live-App.
+
+### Google-Rückleitung zeigt produktiv auf localhost · 29.10.2026
+
+Der Nutzer berichtet, dass er zum Verbinden eines Google-Kontos stets beide lokalen Server starten muss. Ursache: In der produktiven Umgebung steht `GOOGLE_REDIRECT_URI` weiterhin auf `http://localhost:8787/api/integrations/google/callback`. Google leitet deshalb immer dorthin zurück, unabhängig davon, wo der Vorgang beginnt; das Konto landet trotzdem in der Live-App, weil der lokale Server auf dieselbe Neon-Datenbank schreibt. Nicht direkt ausgelesen – die Vercel-CLI ließ sich nicht mehr starten –, sondern aus dem geschilderten Verhalten geschlossen.
+
+Folge der Cookie-Bindung vom 28.10.2026: Der bisherige Mischweg (Start auf der Live-Adresse, Rückkehr auf localhost) funktioniert nicht mehr, weil das Cookie nicht über zwei Adressen hinweg gilt. Bis zur Umstellung muss der Vorgang auch auf `http://localhost:5173` beginnen. Rein lokal und rein produktiv funktioniert der Ablauf unverändert.
+
+Lösung in `GOOGLE-ANMELDUNG-UMSTELLEN.txt`: erst die produktive Callback-Adresse in der Google Cloud Console eintragen, dann `GOOGLE_REDIRECT_URI` in Vercel umstellen, neu bereitstellen, testen. Der localhost-Eintrag in der Cloud Console bleibt für die lokale Entwicklung bestehen. Beide Stellen liegen beim Nutzer; Umsetzung und Live-Prüfung stehen aus.

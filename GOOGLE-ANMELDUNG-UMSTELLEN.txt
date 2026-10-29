@@ -1,0 +1,106 @@
+GOOGLE-KONTO OHNE LOKALE SERVER VERBINDEN
+Stand 29.10.2026
+
+
+WARUM DAS NOETIG IST
+
+Google schickt dich nach der Zustimmung immer an die Adresse zurueck, die in
+GOOGLE_REDIRECT_URI steht. In Vercel steht dort noch die lokale Adresse
+http://localhost:8787/... Deshalb musst du bisher erst den lokalen API-Server
+starten, bevor du ein Google-Konto verbinden kannst.
+
+Nach dieser Umstellung geht das direkt in der Live-App.
+
+Du brauchst zwei Stellen: Vercel und die Google Cloud Console. Die Reihenfolge
+ist wichtig - erst Google, dann Vercel. Sonst laeuft die Anmeldung zwischendrin
+in den Fehler "redirect_uri_mismatch".
+
+Die Zieladresse ist in beiden Faellen exakt diese, Zeichen fuer Zeichen:
+
+  https://omnidesk-v2-beta.vercel.app/api/integrations/google/callback
+
+
+SCHRITT 1 - GOOGLE CLOUD CONSOLE
+
+1. console.cloud.google.com oeffnen.
+2. Oben links das richtige Projekt waehlen (das, zu dem deine GOOGLE_CLIENT_ID
+   gehoert).
+3. Links "APIs und Dienste" -> "Anmeldedaten".
+4. Unter "OAuth 2.0-Client-IDs" den Eintrag deiner Web-Anwendung anklicken.
+5. Abschnitt "Autorisierte Weiterleitungs-URIs" -> "URI hinzufuegen".
+6. Die Zieladresse von oben einfuegen.
+7. WICHTIG: Den vorhandenen localhost-Eintrag stehen lassen. Den brauchst du
+   weiterhin, wenn du lokal entwickelst.
+8. Speichern.
+
+Google braucht manchmal ein paar Minuten, bis die neue Adresse greift.
+
+
+SCHRITT 2 - VERCEL
+
+1. vercel.com oeffnen, Projekt "omnidesk-v2".
+2. "Settings" -> "Environment Variables".
+3. Die Variable GOOGLE_REDIRECT_URI suchen.
+4. Bearbeiten und als Wert die Zieladresse von oben eintragen.
+5. Darauf achten, dass die Umgebung "Production" angehakt ist.
+6. Speichern.
+
+
+SCHRITT 3 - NEU BEREITSTELLEN
+
+Geaenderte Variablen wirken erst in einem neuen Deployment.
+
+1. In Vercel auf "Deployments".
+2. Beim obersten Eintrag das Dreipunkt-Menue -> "Redeploy".
+3. Warten, bis "Ready" steht.
+
+
+SCHRITT 4 - TESTEN
+
+1. https://omnidesk-v2-beta.vercel.app oeffnen und anmelden.
+2. Einstellungen -> Bereich "Google Drive" -> "Mit Google verbinden".
+3. Google-Konto waehlen und zustimmen.
+
+Erwartet: Du landest wieder in den Einstellungen, oben erscheint die Meldung
+"Google-Konto (deine-adresse) erfolgreich verknuepft!" und das Konto steht in
+der Liste. Die lokalen Server muessen dafuer NICHT laufen.
+
+
+WENN ETWAS SCHIEFGEHT
+
+"Fehler 400: redirect_uri_mismatch"
+  Die Adresse in der Google Cloud Console stimmt nicht genau mit der in Vercel
+  ueberein. Auf Tippfehler, fehlendes "s" in https und einen versehentlichen
+  Schraegstrich am Ende achten. Oder Google hat die Aenderung noch nicht
+  uebernommen - ein paar Minuten warten.
+
+"Bitte Google auf der in GOOGLE_REDIRECT_URI konfigurierten App-Adresse
+verbinden."
+  Du bist auf einer anderen Adresse als der konfigurierten, zum Beispiel auf
+  einer Vorschau-URL von Vercel. Die Hauptadresse omnidesk-v2-beta.vercel.app
+  benutzen.
+
+"Google konnte nicht verbunden werden. Bitte Anmeldung erneut starten..."
+  Sammelmeldung. Haeufigste Ursache: Zwischen Start und Rueckkehr sind mehr als
+  zehn Minuten vergangen, oder du hast den Vorgang in einem anderen Browser
+  oder Tab-Profil beendet als gestartet. Einfach neu starten.
+
+
+WAS SICH LOKAL AENDERT
+
+Nichts. In deiner .env.local bleibt die localhost-Adresse stehen. Lokal
+verbindest du Google weiterhin ueber http://localhost:5173, und das
+funktioniert unveraendert - vorausgesetzt, der localhost-Eintrag in der Google
+Cloud Console bleibt bestehen.
+
+
+EIN HINWEIS ZUM BISHERIGEN WEG
+
+Seit dem 28.10.2026 ist die Google-Anmeldung an ein Cookie deines Browsers
+gebunden. Der bisherige Mischweg - auf der Live-Seite starten und bei
+localhost zurueckkommen - funktioniert deshalb nicht mehr, weil das Cookie
+nicht ueber zwei verschiedene Adressen hinweg gilt.
+
+Bis du diese Umstellung gemacht hast, gilt also: Zum Verbinden eines
+Google-Kontos beide lokalen Server starten UND den Vorgang auch auf
+http://localhost:5173 beginnen, nicht auf der Live-Seite.
