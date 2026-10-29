@@ -1,0 +1,254 @@
+TESTANLEITUNG - DIE SECHS AUSBAUSTUFEN
+Stand 29.10.2026, https://omnidesk-work.vercel.app
+
+
+WORUM ES GEHT
+
+Sechs neue Ausbaustufen sind gebaut, getestet und bereitgestellt - aber keine
+davon hat jemand in einer angemeldeten Sitzung gesehen. Genau das machst du
+jetzt. Rechne mit 20 bis 30 Minuten.
+
+Die Reihenfolge unten ist kein Zufall: Jeder Schritt benutzt, was der vorige
+angelegt hat. Arbeite sie am besten der Reihe nach durch.
+
+Wenn etwas nicht stimmt, notiere bitte: In welchem Schritt, was du gemacht
+hast, was du erwartet hast, was tatsaechlich passiert ist. Bei Fehlermeldungen
+den genauen Wortlaut.
+
+
+VORBEREITUNG
+
+1. https://omnidesk-work.vercel.app oeffnen und anmelden.
+2. Einmal mit Strg+Umschalt+R neu laden, damit sicher die neue Fassung laeuft.
+
+Lokale Server brauchst du fuer nichts davon.
+
+
+SCHRITT 1 - EINE NOTIZ ALS AUSGANGSPUNKT
+
+1. Modul "Notizen" oeffnen, neue Notiz anlegen.
+2. Titel: "Testlauf Ausbaustufen"
+3. In den Text ein paar Zeilen schreiben, darunter irgendwo das Wort
+   "Zebrastreifen" (ein Wort, das sonst nirgends vorkommt - das brauchen wir
+   gleich fuer die Suche).
+
+Erwartet: Die Notiz speichert sich wie gewohnt von selbst.
+
+Unter dem Editor stehen jetzt zwei neue Bereiche: "Anhaenge" und "Verknuepft".
+
+
+SCHRITT 2 - VERKNUEPFUNGEN (STUFE 1)
+
+1. In der Notiz auf "Verknuepfen" klicken.
+2. Im Suchfeld den Namen eines deiner Projekte eintippen.
+3. Das Projekt anklicken.
+
+Erwartet: Meldung "Projekt ... verknuepft", und das Projekt erscheint in der
+Liste "Verknuepft" mit einem farbigen Schildchen.
+
+4. Auf den Projektnamen in der Liste klicken.
+
+Erwartet: Du landest im Projekt.
+
+5. Im Projekt nach unten scrollen zur Karte "Verknuepft".
+
+Erwartet: Dort steht deine Notiz. Die Verbindung gilt in beide Richtungen -
+das ist der eigentliche Punkt dieser Stufe.
+
+6. Zurueck zur Notiz und dort noch eine Aufgabe und einen Kontakt verknuepfen.
+
+Erwartet: Beides erscheint in der Liste. Was schon verknuepft ist, wird im
+Auswahldialog ausgegraut und als "bereits verknuepft" markiert.
+
+
+SCHRITT 3 - SUCHE UEBER ALLES (STUFE 2)
+
+1. Strg+K druecken (Befehlspalette).
+2. "Zebrastreifen" eintippen.
+
+Erwartet: Unter der Ueberschrift "Notiz (1)" erscheint deine Notiz, und
+darunter steht der Textausschnitt rund um das Wort.
+
+3. Enter druecken.
+
+Erwartet: Das Notizen-Modul oeffnet sich mit genau dieser Notiz.
+
+4. Strg+K nochmal, diesmal den Namen eines Projekts oder eines Kontakts
+   eintippen.
+
+Erwartet: Treffer nach Modulen gruppiert - Projekt, Aufgabe, Kontakt, Termin,
+Link, Befehl, je nachdem was passt. Frueher fand die Palette ausschliesslich
+Notizen.
+
+Hinweis: Unter zwei Zeichen sucht sie bewusst nicht.
+
+
+SCHRITT 4 - ZEIT AN AUFGABEN (STUFE 3)
+
+1. Modul "Pomodoro" oeffnen.
+2. Ueber der Uhr auf "Ziel waehlen" klicken.
+3. Eine Aufgabe oder ein Projekt suchen und anklicken.
+
+Erwartet: Der Knopf zeigt jetzt den Namen des Ziels.
+
+4. Auf "Start" klicken und den Timer MINDESTENS 70 SEKUNDEN laufen lassen.
+   (Unter einer Minute wird ein Block absichtlich verworfen.)
+5. Auf "Zuruecksetzen" klicken.
+
+Erwartet: Unter der Uhr, im Bereich "Letzte sieben Tage", erscheint die Zeit -
+in der Gesamtsumme, als Saeule beim heutigen Tag und in der Liste unter dem
+Namen deines Ziels.
+
+6. Wenn du eine Aufgabe als Ziel gewaehlt hast: Ins Aufgaben-Modul wechseln,
+   die Aufgabe oeffnen.
+
+Erwartet: Oben im Dialog steht "Fokuszeit: 1 min in 1 Block".
+
+Zusatzprobe, wenn du magst: Timer starten, 30 Sekunden warten, pausieren, eine
+Minute nichts tun, wieder starten, 40 Sekunden warten, zuruecksetzen. Erwartet
+werden rund 70 Sekunden - die Pause zaehlt nicht mit.
+
+
+SCHRITT 5 - SERIENTERMINE (STUFE 4)
+
+1. Modul "Kalender" oeffnen, auf einen Tag klicken, neuen Termin anlegen.
+2. Titel "Jour fixe", Uhrzeit setzen.
+3. Den Schalter "Wiederholen" einschalten.
+4. Rhythmus "Woechentlich", "Jeden wievielten" auf 1, Endet "Nach Anzahl",
+   Termine 4.
+5. Speichern.
+
+Erwartet: Meldung "Serie angelegt", und im Kalender stehen vier Termine im
+Wochenabstand.
+
+6. Den ZWEITEN Termin der Serie oeffnen.
+
+Erwartet: Im Dialog steht "Teil einer Serie" mit der Regel im Klartext
+("Woechentlich - 4 Termine") und der Auswahl "Nur dieser Termin" /
+"Dieser und alle folgenden".
+
+7. "Nur dieser Termin" stehen lassen, den Titel in "Verschoben" aendern,
+   speichern.
+
+Erwartet: Nur dieser eine Termin heisst jetzt anders, die drei anderen nicht.
+
+8. Den DRITTEN Termin oeffnen, "Dieser und alle folgenden" waehlen, den Titel
+   in "Neuer Rhythmus" aendern, speichern.
+
+Erwartet: Der dritte und vierte heissen jetzt anders, die ersten beiden nicht.
+Vergangene Termine werden nie rueckwirkend geaendert.
+
+9. Denselben Termin nochmal oeffnen, "Dieser und alle folgenden" waehlen.
+
+Erwartet: Der Loeschknopf heisst jetzt "Serie ab hier loeschen". Damit kannst
+du den Rest wieder aufraeumen.
+
+In der Terminliste unter dem Kalender tragen Serientermine ein kleines
+Wiederholungs-Symbol.
+
+
+SCHRITT 6 - ANHAENGE (STUFE 5)
+
+1. Zurueck zu deiner Notiz aus Schritt 1.
+2. Im Bereich "Anhaenge" auf "Datei waehlen" klicken - oder eine Datei
+   einfach in den Editor ziehen.
+3. Ein kleines Bild oder PDF auswaehlen (hoechstens 3 MB).
+
+Erwartet: Meldung "... angehaengt", die Datei erscheint mit Name und Groesse.
+
+4. Auf den Dateinamen klicken.
+
+Erwartet: Die Datei wird heruntergeladen und laesst sich oeffnen.
+
+5. Dasselbe an einer Aufgabe und an einem Projekt ausprobieren.
+
+Erwartet: Funktioniert dort genauso.
+
+6. Einstellungen -> Allgemein oeffnen.
+
+Erwartet: Karte "Speicher fuer Anhaenge" mit belegtem Platz und Balken.
+
+7. Loesche testweise eine Aufgabe, an der ein Anhang hing, und schau nochmal
+   in die Einstellungen.
+
+Erwartet: Der belegte Platz ist wieder kleiner. Anhaenge verschwinden mit
+ihrem Eintrag.
+
+Grenzen, die du absichtlich reissen kannst: Eine Datei ueber 3 MB wird
+abgelehnt (das ist Vercels Grenze, nicht unsere), ebenso der 21. Anhang an
+einem einzelnen Eintrag.
+
+
+SCHRITT 7 - OMNI DARF HANDELN (STUFE 6)
+
+1. Modul "Omni" / Assistent oeffnen, Bereich fuer Aktionen.
+2. Auftrag eingeben, zum Beispiel:
+
+   "Leg eine Notiz an mit dem Titel Wochenrueckblick und schreib hinein, dass
+   der Testlauf heute stattgefunden hat."
+
+Erwartet: Omni zeigt einen Vorschlag mit der Zeile "Notiz anlegen", Titel und
+Inhalt im Klartext. Es ist noch NICHTS geschrieben.
+
+3. Bestaetigen.
+
+Erwartet: Die Notiz existiert im Notizen-Modul.
+
+4. Zweiter Auftrag, der die neue Verknuepfungs-Faehigkeit nutzt:
+
+   "Verknuepfe die Notiz Wochenrueckblick mit dem Projekt <dein Projektname>."
+
+Erwartet: Vorschlag "Verknuepfung anlegen" mit beiden Namen und dem Hinweis,
+dass Verknuepfungen gegenseitig sind. Nach dem Bestaetigen steht die
+Verbindung in beiden Eintraegen.
+
+5. Dritter Auftrag, zum Anhaengen:
+
+   "Haeng an die Notiz Wochenrueckblick den Satz an: Alle sechs Stufen
+   geprueft."
+
+Erwartet: Die Vorschau zeigt NUR den angehaengten Satz, nicht den ganzen
+Notizinhalt. Nach dem Bestaetigen steht der Satz unten in der Notiz, der alte
+Text ist unveraendert.
+
+6. Zum Vergleich ein Auftrag, der abgelehnt werden soll:
+
+   "Loesch alle meine Aufgaben."
+
+Erwartet: Omni lehnt ab oder fragt nach. Loeschen gehoert nicht zu seinen
+erlaubten Operationen.
+
+Was Omni jetzt zusaetzlich kann: Notiz anlegen, Notiz ergaenzen, Termin
+aendern, Kontakt anlegen, Verknuepfung anlegen. Am Verfahren hat sich nichts
+geaendert - vorschlagen, zeigen, erst nach deinem Klick schreiben, alles oder
+nichts.
+
+
+WAS ICH GEPRUEFT HABE UND WAS NICHT
+
+Geprueft:
+- 246 automatische Tests, alle bestanden. Davon 75 neu fuer diese sechs
+  Stufen. Sie laufen gegen eine echte, isolierte Datenbank und pruefen unter
+  anderem: dass fremde Eintraege unerreichbar bleiben, dass nichts doppelt
+  entsteht, dass verwaiste Daten verschwinden, dass Zeitumstellungen die
+  Uhrzeit nicht verschieben und dass ein zwischenzeitlich geaenderter Eintrag
+  einen ganzen Omni-Vorschlag scheitern laesst.
+- Typpruefung, Lint und Build sauber.
+- Die neuen Server-Routen antworten live und weisen unangemeldete Zugriffe ab.
+
+Nicht geprueft:
+- Alles, was du oben siehst. Die Module liegen hinter deiner Anmeldung, dort
+  komme ich nicht hin. Deshalb diese Anleitung.
+- Wie gut das KI-Modell die neuen Omni-Operationen trifft. Das zeigt erst die
+  Nutzung.
+
+
+KLEINIGKEITEN, DIE SONST IRRITIEREN
+
+- Verknuepfungen und Anhaenge erscheinen erst, wenn ein Eintrag gespeichert
+  ist. Bei einer brandneuen Aufgabe steht dort zunaechst ein Hinweis.
+- Ein Fokusblock unter einer Minute wird verworfen - absichtlich.
+- Monatliche Serien: Der 31. faellt in Monaten ohne 31. aus, statt auf den 28.
+  zu rutschen.
+- Die alten Notiz-Anhaenge von frueher lagen nur in einem Browser. Sie sind
+  weiterhin da, unten im Editor, und jetzt entsprechend beschriftet.
