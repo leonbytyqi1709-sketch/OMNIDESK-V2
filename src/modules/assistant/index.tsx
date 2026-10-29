@@ -30,6 +30,8 @@ import {
 import type { ChatUsage } from './api'
 import { ChatMessageItem } from './components/ChatMessageItem'
 import { OmniMemory, type MemoryDraft } from './components/OmniMemory'
+import { looksLikeOmniOrder } from '@/lib/omni-intent'
+import { ChatOmniPlan } from './components/ChatOmniPlan'
 import { OmniActions } from './components/OmniActions'
 import { ChatSidebar } from './components/ChatSidebar'
 
@@ -81,6 +83,12 @@ function AssistantWorkspace({ userId }: { userId: string }) {
   }
 
   const [input, setInput] = useState('')
+  /**
+   * Die zuletzt gesendete Nachricht, die nach einem Auftrag aussah. Omni
+   * plant sie und zeigt den Vorschlag unter dem Gespräch; ausgeführt wird
+   * erst nach einem Klick.
+   */
+  const [order, setOrder] = useState<{ text: string; key: string } | null>(null)
 
   // Wenn Sessions geladen sind und keine aktiv ist, wähle die erste
   useEffect(() => {
@@ -92,6 +100,9 @@ function AssistantWorkspace({ userId }: { userId: string }) {
   const { data: messages = [], isLoading: messagesLoading } =
     useChatMessages(activeSessionId)
   const sendMutation = useSendMessage()
+  // Zeitzone des Geräts für Datumsangaben in Aufträgen.
+  const chatTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
   const projectScope = projectScopes[activeSessionId ?? 'new'] ?? ''
   useEffect(() => {
     if (sessionsLoading || !requestedSession) return
@@ -188,6 +199,14 @@ function AssistantWorkspace({ userId }: { userId: string }) {
     }
 
     if (!textToSend.trim() || sendMutation.isPending) return
+
+    // Klingt die Nachricht nach einem Auftrag, plant Omni ihn parallel zur
+    // Chat-Antwort. Die Prüfung läuft im Browser und kostet nichts.
+    setOrder(
+      looksLikeOmniOrder(textToSend)
+        ? { text: textToSend.trim(), key: crypto.randomUUID() }
+        : null,
+    )
 
     let currentId = activeSessionId
 
@@ -425,6 +444,13 @@ function AssistantWorkspace({ userId }: { userId: string }) {
                     }}
                   />
                 ))}
+                {order && (
+                  <ChatOmniPlan
+                    key={order.key}
+                    prompt={order.text}
+                    timeZone={chatTimeZone}
+                  />
+                )}
                 {sendMutation.isPending && (
                   <div className="flex items-center gap-2 py-3 text-xs text-zinc-500">
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-accent text-white shadow-sm glow-subtle animate-pulse">

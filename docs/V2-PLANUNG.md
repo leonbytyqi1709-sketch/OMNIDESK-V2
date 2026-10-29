@@ -678,3 +678,19 @@ Der Nutzer geht die Ausbaustufen Schritt für Schritt in der Live-App durch. Bes
 **Offen:**
 - *Vorschau statt Download für Anhänge* (Wunsch). Bilder und PDFs ließen sich in einem Fenster anzeigen; der Download bliebe daneben bestehen.
 - *Omni-Aktionen nicht auffindbar.* Der Nutzer findet im Assistenten keine Bestätigungsmöglichkeit. Die Aktionen liegen hinter dem Knopf „Aktionen“ neben „Gedächtnis“; der Chat selbst erzeugt keine Vorschläge. Ob der Knopf fehlt, der Dialog leer bleibt oder die Planung fehlschlägt, ist noch nicht geklärt — Rückfrage läuft.
+
+## Omni-Aufträge direkt im Chat · 29.10.2026
+
+Im Rundgang zeigte sich die eigentliche Schwäche von Stufe 6: Omni **antwortete** im Chat und **handelte** nur hinter dem Knopf „Aktionen“ — zwei Eingabefelder für dieselbe Sache. Der Nutzer will seinen Auftrag dort schreiben, wo er ohnehin schreibt.
+
+**Jetzt:** Jede Chat-Nachricht wird im Browser daraufhin geprüft, ob sie nach einem Auftrag klingt. Wenn ja, plant Omni sie parallel zur Chat-Antwort und zeigt den Vorschlag als Karte unter dem Gespräch — mit denselben Vorher-Nachher-Angaben wie im Dialog und den Knöpfen „Ausführen“ und „Verwerfen“.
+
+**Die Bestätigung bleibt.** Sie ist der Kern der ganzen Konstruktion: Eine falsch verstandene Aufgabe oder ein falsches Datum sollen nicht unbemerkt entstehen. „Direkt“ heißt hier: kein zweites Tippen, kein zweites Fenster — nicht: ohne Nachfrage.
+
+**Erkennung** (`src/lib/omni-intent.ts`): Eine Nachricht gilt als Auftrag, wenn sie ein Tätigkeitswort **und** einen Gegenstand aus OMNIDESK enthält. „Schreib mir ein Bash-Skript“ hat ein Verb, aber kein Objekt, das Omni anlegen könnte, und bleibt Gespräch. Fragewörter und ein Fragezeichen am Ende schließen einen Auftrag aus — es sei denn, die Nachricht beginnt mit „Omni,“. Die Prüfung läuft im Browser und kostet nichts; sie erkennt lieber einmal zu wenig, denn eine falsch erkannte Frage verbraucht eine KI-Anfrage und sperrt die nächste Planung 20 Sekunden.
+
+**Aufgeräumt:** Die Vorschau eines Vorschlags steckte komplett im Aktionen-Dialog. Sie ist jetzt eine eigene Komponente, die Dialog und Chat gemeinsam nutzen, und die Beschriftungen der Operationen stehen an einer Stelle statt an zweien. Der Hinweis darauf, was an den KI-Anbieter geht, war seit Stufe 6 unvollständig und nennt jetzt auch Notizen, Termine und Kontakte.
+
+**Geprüft.** Sechs neue Tests für die Erkennung: echte Aufträge, Gespräch, die Anrede „Omni,“ gegen die Fragezeichen-Regel, Längengrenzen und der Fall „Verb ohne Gegenstand“. 254 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** der Ablauf in der angemeldeten Sitzung — ob die Erkennung im Alltag gut trifft, zeigt erst die Nutzung. Der Knopf „Aktionen“ bleibt als zweiter Weg bestehen.

@@ -11,28 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
+import { OMNI_PLAN_STATUS } from '@/lib/omni-labels'
 import { useOmniActions } from '../api/actions'
-import type { OmniActionPlan } from '@/types/omni-actions'
-const kinds: Record<string, string> = {
-  create_task: 'Persönliche Aufgabe anlegen',
-  update_task: 'Persönliche Aufgabe ändern',
-  create_project_task: 'Projektaufgabe anlegen',
-  update_project_task: 'Projektaufgabe ändern',
-  create_appointment: 'Termin anlegen',
-  append_project_note: 'Projektnotiz ergänzen',
-  update_appointment: 'Termin ändern',
-  create_note: 'Notiz anlegen',
-  append_note: 'Notiz ergänzen',
-  create_contact: 'Kontakt anlegen',
-  link_objects: 'Verknüpfung anlegen',
-}
-const statuses: Record<OmniActionPlan['status'], string> = {
-  pending: 'Bestätigung ausstehend',
-  executed: 'Ausgeführt',
-  cancelled: 'Abgebrochen',
-  expired: 'Abgelaufen',
-}
+import { OmniPlanPreview } from './OmniPlanPreview'
 export function OmniActions() {
   const { userId } = useAuth()
   return userId ? <OmniActionsForUser key={userId} /> : null
@@ -178,10 +159,12 @@ function OmniActionsForUser() {
             </summary>
             <p className="mt-2 leading-relaxed">
               Dein Auftrag sowie Titel, Status, Priorität und Fälligkeiten
-              deiner letzten 200 persönlichen Aufgaben, 100 Projekte und 200
-              Projektaufgaben werden an deinen bestehenden KI-Anbieter gesendet.
-              Beschreibungen bestehender Einträge, Vault-Inhalte und
-              Zugangsdaten werden nicht übermittelt. Gib keine Passwörter in den
+              deiner letzten 200 persönlichen Aufgaben, 100 Projekte, 200
+              Projektaufgaben, 100 Notizen, 100 anstehenden Termine und 100
+              Kontakte werden an deinen bestehenden KI-Anbieter gesendet — von
+              Notizen nur der Titel, von Kontakten nur Name und Firma.
+              Inhalte und Beschreibungen bestehender Einträge, Vault-Inhalte
+              und Zugangsdaten werden nicht übermittelt. Gib keine Passwörter in den
               Auftrag ein. Projektaufgaben unterstützen bisher kein
               Fälligkeitsdatum; dafür fragt Omni nach einer Alternative.
               Projektnotizen werden an die Projektbeschreibung angehängt.
@@ -213,59 +196,7 @@ function OmniActionsForUser() {
           )}
           {active && (
             <section className="space-y-4 rounded-xl border border-primary/25 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">
-                  {active.status === 'executed'
-                    ? 'Ergebnis'
-                    : 'Dein Änderungsvorschlag'}
-                </h3>
-                <Badge variant="outline">
-                  {statuses[expired ? 'expired' : active.status]}
-                </Badge>
-              </div>
-              <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                Auftrag: {active.prompt}
-              </p>
-              {active.previews.map((preview, index) => (
-                <div
-                  key={index}
-                  className="min-w-0 space-y-3 rounded-lg border border-border p-3"
-                >
-                  <p className="text-xs text-primary">
-                    {index + 1}. {kinds[preview.kind] ?? preview.kind}
-                  </p>
-                  <p className="break-words text-sm font-semibold">
-                    {preview.target}
-                  </p>
-                  {preview.changes.map((change, i) => (
-                    <div key={i} className="min-w-0 text-xs">
-                      <p className="mb-1 text-muted-foreground">
-                        {change.label}
-                      </p>
-                      {change.before !== null && (
-                        <p className="whitespace-pre-wrap break-words text-muted-foreground">
-                          Bisher: {change.before}
-                        </p>
-                      )}
-                      <p className="whitespace-pre-wrap break-words">
-                        Neu: {change.after || '(leer)'}
-                      </p>
-                    </div>
-                  ))}
-                  {preview.warning && (
-                    <p className="text-xs text-amber-400">{preview.warning}</p>
-                  )}
-                  {preview.href && (
-                    <Link
-                      to={preview.href}
-                      onClick={close}
-                      className="text-xs underline underline-offset-4"
-                    >
-                      Bestehenden Eintrag öffnen
-                    </Link>
-                  )}
-                </div>
-              ))}
+              <OmniPlanPreview plan={active} expired={expired} onNavigate={close} />
               {pending && (
                 <>
                   <p className="text-xs text-muted-foreground">
@@ -383,7 +314,7 @@ function OmniActionsForUser() {
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
                       {
-                        statuses[
+                        OMNI_PLAN_STATUS[
                           item.status === 'pending' &&
                           Date.parse(item.expiresAt) <= now
                             ? 'expired'
