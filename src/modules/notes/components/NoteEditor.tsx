@@ -3,6 +3,8 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Loader2, NotebookPen, Paperclip, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { AttachmentsPanel } from '@/components/shared/AttachmentsPanel'
+import { useUploadAttachment } from '@/modules/attachments/api'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -47,14 +49,10 @@ export function NoteEditor({
   onDelete,
 }: NoteEditorProps) {
   const [view, setView] = useState<'edit' | 'preview'>('edit')
-  const {
-    attachments,
-    addFiles,
-    remove,
-    isDropping,
-    setIsDropping,
-    formatSize,
-  } = useNoteAttachments(noteId)
+  // Der Altbestand bleibt lesbar; neue Dateien gehen an OMNIDESK.
+  const { attachments, remove, isDropping, setIsDropping, formatSize } =
+    useNoteAttachments(noteId)
+  const upload = useUploadAttachment({ kind: 'note', id: noteId ?? '' })
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!noteId) return
@@ -68,19 +66,20 @@ export function NoteEditor({
     setIsDropping(false)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     if (!noteId) return
     e.preventDefault()
     setIsDropping(false)
-    const files = e.dataTransfer.files
+    const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
-    void addFiles(noteId, files).then(() => {
-      toast.success(
-        files.length === 1
-          ? `„${files[0].name}“ angehängt`
-          : `${files.length} Dateien angehängt`,
-      )
-    })
+    for (const file of files) {
+      try {
+        await upload.mutateAsync(file)
+        toast.success(`„${file.name}“ angehängt`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Hochladen fehlgeschlagen.')
+      }
+    }
   }
 
   if (!draft) {
@@ -99,7 +98,7 @@ export function NoteEditor({
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDrop={(event) => void handleDrop(event)}
     >
       {isDropping && (
         <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80">
@@ -163,6 +162,13 @@ export function NoteEditor({
         </div>
       )}
 
+      {/* Anhänge in OMNIDESK – auf jedem Gerät sichtbar */}
+      <AttachmentsPanel
+        owner={noteId ? { kind: 'note', id: noteId } : null}
+        compact
+        className="border-t px-6 py-2"
+      />
+
       {/* Verknüpfungen zu Aufgaben, Terminen, Kontakten und Projekten */}
       <ConnectionsPanel
         end={noteId ? { kind: 'note', id: noteId } : null}
@@ -170,12 +176,14 @@ export function NoteEditor({
         className="border-t px-6 py-2"
       />
 
-      {/* Anhänge (Drag & Drop) – bleiben lokal in IndexedDB */}
+      {/* Altbestand: frühere Anhänge liegen nur in diesem Browser (IndexedDB).
+          Sie bleiben les- und löschbar, neue entstehen hier nicht mehr. */}
       <div className="flex flex-wrap items-center gap-2 border-t px-6 py-2">
         <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
         {attachments.length === 0 ? (
           <span className="text-[11px] text-muted-foreground">
-            Dateien hierher ziehen, um sie anzuhängen (lokal gespeichert)
+            Ältere Anhänge dieser Notiz lagen nur in diesem Browser. Neue
+            Dateien gehören nach oben zu „Anhänge“ – die sind überall sichtbar.
           </span>
         ) : (
           attachments.map((a) => (

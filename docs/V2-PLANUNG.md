@@ -619,3 +619,21 @@ Der Kalender kannte nur Einzeltermine; ein wöchentlicher Jour fixe war Handarbe
 **Geprüft.** 16 neue Tests: sieben für die Regelberechnung (Anzahl, mehrere Wochentage, Intervall, übersprungene Monate, Zeitumstellung, Enddatum, Obergrenze) und neun über die API (Anlegen, Regel abfragen, einzelnen Termin verschieben ohne die anderen, Serie ab einem Termin neu aufsetzen, Löschen ab hier, Abweisungen, Einzeltermin bleibt Einzeltermin). 225 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** der Dialog in der angemeldeten Sitzung. **Nicht enthalten:** einen bestehenden Einzeltermin nachträglich in eine Serie verwandeln.
+
+## Ausbaustufe 5 von 6: Dateianhänge · 29.10.2026
+
+Bis jetzt konnte nichts in der Anwendung eine Datei halten — außer Notizen, und deren Anhänge lagen ausschließlich im jeweiligen Browser. Jetzt hängen Dateien an **Notizen, Aufgaben, Terminen, Kontakten und Projekten** und sind auf jedem Gerät sichtbar.
+
+**Entscheidung: Dateien in der eigenen Datenbank, nicht bei einem Speicherdienst.** Ein Objektspeicher wäre die sauberere Architektur, hätte aber eine zusätzliche Einrichtung, einen weiteren Schlüssel und eine weitere Abhängigkeit bedeutet — und ich hätte ihn hier nicht prüfen können. Der jetzige Weg funktioniert ohne jede Einrichtung und ist vollständig getestet. Der Preis sind enge Grenzen; reicht der Platz nicht mehr, ist der Umstieg die nächste Stufe und die Oberfläche bliebe dabei unverändert.
+
+**Grenzen:** 3 MB je Datei, 20 Anhänge je Eintrag, 50 MB insgesamt. Die 3 MB kommen nicht von uns: Vercel nimmt auf dem Hobby-Tarif rund 4,5 MB je Anfrage an. Der belegte Platz steht in den Einstellungen unter „Allgemein“.
+
+**Sicherheit.** Dateinamen werden von Pfadanteilen und Steuerzeichen befreit (`../../etc/passwd` wird zu `_.._etc_passwd`). Inhalte, die ein Browser selbst ausführen würde — HTML, SVG, XML —, werden als `application/octet-stream` gespeichert und ausgeliefert; dazu immer `Content-Disposition: attachment` und `X-Content-Type-Options: nosniff`. Eine hochgeladene HTML-Datei kann damit nicht im Ursprung der Anwendung laufen. Der Besitz des Objekts wird beim Hochladen in derselben Anweisung geprüft, und die gemeldete Dateigröße wird nicht geglaubt — gezählt wird, was ankommt.
+
+**Aufräumen.** Fremdschlüssel sind nicht möglich, weil der Besitzer auf sechs Tabellen zeigen kann. Anhänge gelöschter Objekte verschwinden deshalb beim Blick auf den belegten Platz, je Art einzeln, damit eine fehlende Tabelle nicht den ganzen Durchlauf verhindert.
+
+**Altbestand Notizen.** Die bisherigen, nur lokal gespeicherten Anhänge bleiben les- und löschbar und sind als solche beschriftet. Neue Dateien — auch per Ziehen und Fallenlassen in den Editor — gehen an OMNIDESK. Es wurde nichts migriert und nichts gelöscht.
+
+**Geprüft.** Elf neue Tests: Hochladen und unverändertes Zurückgeben, ausführbare Inhalte, entschärfte Dateinamen, fremde Objekte und Anhänge, ungültige Angaben, Größengrenze, Anzahlgrenze, belegter Platz, Aufräumen nach dem Löschen des Objekts, Löschen eines Anhangs. 236 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** das Hochladen in der angemeldeten Sitzung.

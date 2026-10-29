@@ -12,6 +12,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useApiFetch } from '@/hooks/use-api'
+import { formatBytes } from '@/lib/attachments'
+import { useAttachmentQuota } from '@/modules/attachments/api'
 
 /** Struktur der JSON-Sicherung (Backup-Strategie, Spec Abschnitt 4). */
 interface BackupFile {
@@ -26,6 +28,7 @@ interface BackupFile {
 }
 
 export function GeneralTab() {
+  const { data: quota } = useAttachmentQuota()
   const { user } = useUser()
   const { openUserProfile } = useClerk()
   const apiFetch = useApiFetch()
@@ -143,6 +146,39 @@ export function GeneralTab() {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Speicher für Anhänge</CardTitle>
+          <CardDescription>
+            Angehängte Dateien liegen in deiner eigenen Datenbank. Löschst du einen Eintrag,
+            verschwinden auch seine Anhänge und der Platz wird wieder frei.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {quota ? (
+            <>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-muted-foreground">Belegt</span>
+                <span className="font-medium">
+                  {formatBytes(quota.used)}{' '}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    von {formatBytes(quota.limit)}
+                  </span>
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full bg-gradient-accent transition-all"
+                  style={{ width: `${Math.min(100, (quota.used / quota.limit) * 100)}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">Wird geladen…</p>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Profil</CardTitle>

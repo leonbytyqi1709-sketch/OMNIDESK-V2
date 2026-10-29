@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AttachmentsPanel } from '@/components/shared/AttachmentsPanel'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { FocusTotalBadge } from '@/modules/pomodoro/components/FocusTotalBadge'
 import { MilestonePanel } from './components/MilestonePanel'
@@ -122,6 +123,10 @@ function ProjectDetailView({
           <MilestonePanel projectId={projectId} milestones={data.milestones} />
           <ConnectionsPanel
             end={{ kind: 'project', id: projectId }}
+            className="rounded-xl border border-border bg-card p-4"
+          />
+          <AttachmentsPanel
+            owner={{ kind: 'project', id: projectId }}
             className="rounded-xl border border-border bg-card p-4"
           />
         </div>

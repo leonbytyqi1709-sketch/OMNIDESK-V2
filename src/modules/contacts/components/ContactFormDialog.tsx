@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { AttachmentsPanel } from '@/components/shared/AttachmentsPanel'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import {
@@ -155,6 +156,11 @@ export function ContactFormDialog({
               maxLength={10_000}
             />
           </div>
+          <AttachmentsPanel
+            owner={editContact ? { kind: 'contact', id: editContact.id } : null}
+            compact
+            className="border-t pt-3"
+          />
           <ConnectionsPanel
             end={editContact ? { kind: 'contact', id: editContact.id } : null}
             compact

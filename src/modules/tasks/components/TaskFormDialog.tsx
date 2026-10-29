@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ListChecks, Plus, Tag, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { AttachmentsPanel } from '@/components/shared/AttachmentsPanel'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { FocusTotalBadge } from '@/modules/pomodoro/components/FocusTotalBadge'
 import { Button } from '@/components/ui/button'
@@ -349,6 +350,11 @@ export function TaskFormDialog({
               <FocusTotalBadge kind="task" id={editTask.id} />
             </div>
           )}
+          <AttachmentsPanel
+            owner={editTask ? { kind: 'task', id: editTask.id } : null}
+            compact
+            className="border-t pt-3"
+          />
           <ConnectionsPanel
             end={editTask ? { kind: 'task', id: editTask.id } : null}
             compact

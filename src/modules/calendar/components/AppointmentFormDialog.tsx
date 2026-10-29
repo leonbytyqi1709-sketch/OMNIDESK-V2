@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { format } from 'date-fns'
 import { Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { AttachmentsPanel } from '@/components/shared/AttachmentsPanel'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -458,6 +459,11 @@ export function AppointmentFormDialog({
             )}
           </div>
 
+          <AttachmentsPanel
+            owner={editAppointment ? { kind: 'appointment', id: editAppointment.id } : null}
+            compact
+            className="border-t pt-3"
+          />
           <ConnectionsPanel
             end={editAppointment ? { kind: 'appointment', id: editAppointment.id } : null}
             compact
