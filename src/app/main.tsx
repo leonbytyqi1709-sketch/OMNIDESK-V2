@@ -2,7 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AppProviders } from './providers/AppProviders'
 import App from './App'
+import { watchForAppUpdates } from '@/lib/pwa-update'
 import '@/styles/globals.css'
+
+watchForAppUpdates()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

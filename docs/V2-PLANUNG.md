@@ -694,3 +694,11 @@ Im Rundgang zeigte sich die eigentliche Schwäche von Stufe 6: Omni **antwortete
 **Geprüft.** Sechs neue Tests für die Erkennung: echte Aufträge, Gespräch, die Anrede „Omni,“ gegen die Fragezeichen-Regel, Längengrenzen und der Fall „Verb ohne Gegenstand“. 254 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** der Ablauf in der angemeldeten Sitzung — ob die Erkennung im Alltag gut trifft, zeigt erst die Nutzung. Der Knopf „Aktionen“ bleibt als zweiter Weg bestehen.
+
+### Die App bemerkt jetzt ihre eigenen Aktualisierungen · 29.10.2026
+
+Beim Test der Chat-Aufträge erschien die neue Karte nicht — im Inkognito-Fenster dagegen sofort. Ursache: OMNIDESK ist eine PWA, und ihr Service Worker registrierte sich zwar, prüfte aber **nie** auf Neuerungen. Nach einem Deployment lief im offenen Tab weiter der alte Code, auch nach „Neu laden“; erst ein zweiter Aufruf brachte die neue Fassung. Das betraf jede bisherige Änderung und erklärt rückwirkend manche Verwirrung.
+
+Jetzt registriert die App den Worker selbst (`src/lib/pwa-update.ts`), sieht beim Start, alle 30 Minuten und bei jedem Zurückwechseln in den Tab nach einer neuen Fassung und meldet sie mit einem Hinweis samt Knopf „Neu laden“. Neu geladen wird erst auf Klick — ein Neuladen mitten im Tippen wäre schlimmer als eine Minute alter Code. Die Einstellung wechselte dafür von `autoUpdate` auf `prompt`.
+
+**Hinweis für die Umstellung:** Diesen einen Übergang bringt noch der alte Worker; ab der nächsten Änderung meldet sich die App von selbst.

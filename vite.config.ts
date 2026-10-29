@@ -10,7 +10,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' statt 'autoUpdate': Die App meldet eine neue Fassung und
+      // lädt erst auf Klick neu. Registriert wird in src/lib/pwa-update.ts,
+      // deshalb kein eingefügtes Skript.
+      registerType: 'prompt',
+      injectRegister: false,
       // App-Shell + Assets werden gecacht; API-Daten bewusst nicht
       // (Free-Tier-Strategie: offline reicht die Shell).
       workbox: {
