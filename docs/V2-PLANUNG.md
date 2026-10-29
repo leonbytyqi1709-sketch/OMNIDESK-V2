@@ -710,3 +710,13 @@ Der Nutzer hat den vollständigen Weg in der angemeldeten Live-App durchlaufen: 
 Damit sind aus dem gemeinsamen Rundgang live bestätigt: Verknüpfungen in beiden Richtungen, die modulweite Suche mit Textausschnitt, Fokuszeiten am Ziel, Serientermine einschließlich beider Bearbeitungswege, Dateianhänge an der Notiz und Omni-Aufträge direkt aus dem Chat. Nicht gesondert bestätigt wurden der Wochenrückblick im Pomodoro-Modul (der Nutzer hatte das Modul bereits selbst geprüft), die Anhänge an Aufgabe und Projekt und die Speicheranzeige in den Einstellungen.
 
 Offen bleibt der Wunsch nach einer **Vorschau statt Download** für Anhänge.
+
+### Vorschau für Anhänge · 29.10.2026
+
+Wunsch des Nutzers aus dem Rundgang: beim Klick auf eine Datei den Inhalt sehen, statt sie herunterzuladen. Umgesetzt für **Bilder, PDFs und Klartext** (txt, md, csv, tsv, json) in einem Fenster mit Name, Größe, Art und einem Knopf zum Herunterladen.
+
+**Was bewusst keine Vorschau bekommt:** alles, was ein Browser selbst ausführen würde. SVG, HTML und XML sind ausgenommen — sie liegen seit Stufe 5 ohnehin als `application/octet-stream` in der Datenbank und werden nur als Download ausgeliefert. Unbekannte Arten verhalten sich wie bisher: ein Klick lädt sie herunter. Textdateien über 256 KB werden nicht als Klartext angezeigt, sondern nur angeboten.
+
+Der Inhalt wird mit Anmeldetoken geholt — ein einfacher Link ginge nicht — und als Objekt-URL angezeigt, die beim Schließen wieder freigegeben wird. Die Ladefunktion ist jetzt stabil gehalten, damit der Effekt im Vorschaufenster nicht bei jedem Zeichnen erneut lädt.
+
+**Geprüft.** Vier neue Tests für die Zuordnung der Arten und die Entschärfung der Dateinamen. 258 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen. **Nicht geprüft:** die Anzeige in der angemeldeten Sitzung.

@@ -2312,6 +2312,7 @@ function safeFileName(raw) {
   return (cleaned || "datei").slice(0, 200);
 }
 var asciiFileName = (name) => name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+var MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
 
 // server/attachment-storage.ts
 init_neon_storage();

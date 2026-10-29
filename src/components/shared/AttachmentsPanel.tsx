@@ -7,8 +7,10 @@ import {
   type AttachmentKind,
   MAX_ATTACHMENT_BYTES,
   formatBytes,
+  previewKind,
 } from '@/lib/attachments'
 import { cn } from '@/lib/utils'
+import { AttachmentPreviewDialog } from './AttachmentPreviewDialog'
 import {
   useAttachments,
   useDeleteAttachment,
@@ -33,6 +35,7 @@ export function AttachmentsPanel({ owner, compact = false, className }: Attachme
   const download = useDownloadAttachment()
   const input = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false)
+  const [preview, setPreview] = useState<AttachmentDto | null>(null)
 
   if (!owner)
     return (
@@ -58,7 +61,12 @@ export function AttachmentsPanel({ owner, compact = false, className }: Attachme
     if (input.current) input.current.value = ''
   }
 
+  /** Anzeigbare Dateien öffnen sich im Fenster, alle anderen werden geladen. */
   const open = async (attachment: AttachmentDto) => {
+    if (previewKind(attachment.mime)) {
+      setPreview(attachment)
+      return
+    }
     try {
       await download(attachment)
     } catch (err) {
@@ -137,7 +145,7 @@ export function AttachmentsPanel({ owner, compact = false, className }: Attachme
                   type="button"
                   className="min-w-0 flex-1 truncate text-left font-medium text-foreground hover:underline"
                   onClick={() => void open(file)}
-                  title="Herunterladen"
+                  title={previewKind(file.mime) ? 'Ansehen' : 'Herunterladen'}
                 >
                   {file.name}
                 </button>
@@ -149,7 +157,13 @@ export function AttachmentsPanel({ owner, compact = false, className }: Attachme
                   variant="ghost"
                   size="icon"
                   className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => void open(file)}
+                  onClick={() =>
+                    void download(file).catch((err: unknown) =>
+                      toast.error(
+                        err instanceof Error ? err.message : 'Herunterladen fehlgeschlagen.',
+                      ),
+                    )
+                  }
                   aria-label="Herunterladen"
                 >
                   <Download className="size-3.5" />
@@ -175,6 +189,8 @@ export function AttachmentsPanel({ owner, compact = false, className }: Attachme
           })}
         </ul>
       )}
+
+      <AttachmentPreviewDialog attachment={preview} onClose={() => setPreview(null)} />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@clerk/clerk-react'
 import { useApiFetch } from '@/hooks/use-api'
@@ -72,25 +73,41 @@ export function useDeleteAttachment(owner: Owner) {
 }
 
 /**
- * Lädt einen Anhang mit Anmeldetoken und reicht ihn an den Browser weiter.
- * Ein einfacher Link ginge nicht: Die Anfrage braucht den Authorization-Kopf.
+ * Holt den Inhalt eines Anhangs. Ein einfacher Link ginge nicht: Die Anfrage
+ * braucht den Authorization-Kopf.
  */
-export function useDownloadAttachment() {
+export function useAttachmentContent() {
   const { getToken } = useAuth()
-  return async (attachment: AttachmentDto) => {
-    const response = await fetch(`/api/attachments/file/${attachment.id}`, {
-      headers: { Authorization: `Bearer ${await getToken()}` },
-    })
-    if (!response.ok) throw new Error('Der Anhang konnte nicht geladen werden.')
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = attachment.name
-    document.body.append(link)
-    link.click()
-    link.remove()
-    // Erst nach dem Klick freigeben, sonst bricht der Download ab.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  }
+  // Stabil, damit ein Effekt sie in seine Abhängigkeiten nehmen kann, ohne
+  // bei jedem Zeichnen erneut zu laden.
+  return useCallback(
+    async (attachment: AttachmentDto) => {
+      const response = await fetch(`/api/attachments/file/${attachment.id}`, {
+        headers: { Authorization: `Bearer ${await getToken()}` },
+      })
+      if (!response.ok) throw new Error('Der Anhang konnte nicht geladen werden.')
+      return response.blob()
+    },
+    [getToken],
+  )
+}
+
+/** Lädt einen Anhang und übergibt ihn dem Browser zum Speichern. */
+export function useDownloadAttachment() {
+  const load = useAttachmentContent()
+  return useCallback(
+    async (attachment: AttachmentDto) => {
+      const blob = await load(attachment)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = attachment.name
+      document.body.append(link)
+      link.click()
+      link.remove()
+      // Erst nach dem Klick freigeben, sonst bricht der Download ab.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    },
+    [load],
+  )
 }
