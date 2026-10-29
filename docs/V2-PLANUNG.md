@@ -663,3 +663,18 @@ Omni konnte bisher persönliche Aufgaben, Projektaufgaben, Termine und Projektbe
 ## Die sechs Ausbaustufen · Stand 29.10.2026
 
 Alle sechs am 29.10.2026 beauftragten Stufen sind umgesetzt, dokumentiert und bereitgestellt: Verknüpfungen, Suche über alle Module, Zeit an Aufgaben, Serientermine, Dateianhänge und Omni über alle Module. 246 Tests bestanden. **Keine der sechs Stufen ist in der angemeldeten Sitzung geprüft** — das steht als Nächstes an und ist ausdrücklich Sache des Nutzers.
+
+## Befunde aus dem gemeinsamen Rundgang · 29.10.2026
+
+Der Nutzer geht die Ausbaustufen Schritt für Schritt in der Live-App durch. Bestätigt sind bisher: Verknüpfungen in beiden Richtungen, die Suche über alle Module samt Textausschnitt, Fokuszeiten am Ziel, Serientermine einschließlich „nur dieser“ und „alle folgenden“, Dateianhänge an der Notiz.
+
+**Behoben (Punkt 1 und 2):**
+
+1. *Der Timer blieb im Hintergrund-Tab stehen.* Browser drosseln Zeitgeber in nicht sichtbaren Tabs — statt jede Sekunde kommt der Takt im Minutenabstand. Die Anzeige zählte diese Takte und blieb damit stehen. Sie rechnet jetzt gegen einen absoluten Phasen-Endzeitpunkt, und sobald der Tab wieder sichtbar ist, wird sofort nachgerechnet statt auf den nächsten Takt zu warten. Eine im Hintergrund abgelaufene Phase schaltet genau einmal weiter; die neue Phase beginnt ab jetzt, nicht rückwirkend. Die erfasste Fokuszeit war davon nie betroffen — die lief schon vorher über die Wanduhr. Zwei neue Tests, in beide Richtungen geprüft.
+2. *Dialoge wurden zu hoch.* Durch die neuen Abschnitte (Wiederholung, Anhänge, Verknüpft) ragte der Termin-Dialog aus dem Fenster, ohne scrollen zu können; „Speichern“ war nur per Eingabetaste erreichbar. Behoben an der gemeinsamen Dialog-Komponente, also für alle Dialoge: Höhe auf 90 % des Fensters begrenzt, Inhalt scrollbar.
+
+**Ebenfalls umgesetzt (Wunsch des Nutzers):** Der Suchbegriff wird in Titel und Textausschnitt farbig hervorgehoben; vorher war im Ausschnitt kaum zu erkennen, warum ein Treffer ein Treffer ist.
+
+**Offen:**
+- *Vorschau statt Download für Anhänge* (Wunsch). Bilder und PDFs ließen sich in einem Fenster anzeigen; der Download bliebe daneben bestehen.
+- *Omni-Aktionen nicht auffindbar.* Der Nutzer findet im Assistenten keine Bestätigungsmöglichkeit. Die Aktionen liegen hinter dem Knopf „Aktionen“ neben „Gedächtnis“; der Chat selbst erzeugt keine Vorschläge. Ob der Knopf fehlt, der Dialog leer bleibt oder die Planung fehlschlägt, ist noch nicht geklärt — Rückfrage läuft.

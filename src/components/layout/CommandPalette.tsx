@@ -48,6 +48,34 @@ import { usePomodoroStore } from '@/stores/pomodoro'
 import { useSettingsStore } from '@/stores/settings'
 import { setQuickAction } from '@/lib/quick-action'
 
+/**
+ * Hebt den Suchbegriff im Text hervor. Ohne Markierung war im Textausschnitt
+ * kaum zu sehen, warum ein Treffer ein Treffer ist.
+ */
+function Highlight({ text, term }: { text: string; term: string }) {
+  const needle = term.trim()
+  if (!needle) return <>{text}</>
+  const parts: React.ReactNode[] = []
+  const haystack = text.toLowerCase(),
+    lowered = needle.toLowerCase()
+  let from = 0
+  for (let at = haystack.indexOf(lowered); at !== -1; at = haystack.indexOf(lowered, from)) {
+    if (at > from) parts.push(text.slice(from, at))
+    parts.push(
+      <mark
+        key={`${at}-${parts.length}`}
+        className="rounded bg-primary/30 px-0.5 text-foreground"
+      >
+        {text.slice(at, at + needle.length)}
+      </mark>,
+    )
+    from = at + needle.length
+  }
+  if (parts.length === 0) return <>{text}</>
+  if (from < text.length) parts.push(text.slice(from))
+  return <>{parts}</>
+}
+
 /** Symbol und Farbe je Trefferart der modulweiten Suche. */
 const HIT_ICON: Record<SearchKind, typeof NotebookPen> = {
   note: NotebookPen,
@@ -433,10 +461,12 @@ export function CommandPalette() {
                   >
                     <Icon className={`size-4 shrink-0 ${HIT_TINT[kind]}`} />
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{hit.title}</span>
+                      <span className="truncate">
+                        <Highlight text={hit.title} term={search} />
+                      </span>
                       {(hit.snippet || hit.detail) && (
                         <span className="truncate text-[11px] text-muted-foreground">
-                          {hit.snippet || hit.detail}
+                          <Highlight text={hit.snippet || hit.detail} term={search} />
                         </span>
                       )}
                     </div>

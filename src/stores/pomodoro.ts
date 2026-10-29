@@ -42,6 +42,16 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let segmentStart: number | null = null
 let segmentSeconds = 0
 
+/**
+ * Absoluter Zeitpunkt, an dem die laufende Phase endet.
+ *
+ * Browser drosseln Zeitgeber in Tabs, die im Hintergrund liegen – statt
+ * jede Sekunde kommt der Takt dann im Minutenabstand. Wer die Ticks zählt,
+ * bleibt stehen. Deshalb zählt auch die Anzeige nicht Ticks, sondern rechnet
+ * jedes Mal aus, wie viel bis zu diesem Zeitpunkt fehlt.
+ */
+let deadline: number | null = null
+
 // --- Persistenz: Timer überlebt Reload (inkl. weitergelaufener Zeit) ---
 const STORAGE_KEY = 'omnidesk:pomodoro'
 /** Mehr als das deutet auf eine dauerhaft fehlschlagende Übertragung hin. */
@@ -126,6 +136,7 @@ function loadPersisted(): Loaded {
   } catch {
     segmentStart = null
     segmentSeconds = 0
+    deadline = null
     return { ...FRESH, pending: [] }
   }
 }
@@ -189,6 +200,7 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
         mode === 'work' && finishedNaturally ? completedCycles + 1 : completedCycles,
     })
     if (nextMode === 'work' && get().running) segmentStart = Date.now()
+    if (get().running) deadline = Date.now() + get().remaining * 1000
     persist(get())
     if (finishedNaturally) {
       const message =
@@ -203,6 +215,31 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
       })
     }
   }
+
+  /**
+   * Ein Takt. Nach einer langen Pause im Hintergrund kann das Phasenende
+   * längst vorbei sein; dann wird genau einmal weitergeschaltet und die neue
+   * Phase beginnt ab jetzt – nicht rückwirkend.
+   */
+  const tick = () => {
+    if (!get().running || deadline === null) return
+    const left = Math.ceil((deadline - Date.now()) / 1000)
+    if (left <= 0) {
+      advancePhase(true)
+      return
+    }
+    if (left !== get().remaining) {
+      set({ remaining: left })
+      persist(get())
+    }
+  }
+
+  // Sobald der Tab wieder sichtbar ist, sofort nachrechnen, statt auf den
+  // nächsten gedrosselten Takt zu warten.
+  if (typeof document !== 'undefined')
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) tick()
+    })
 
   const initial = loadPersisted()
 
@@ -242,19 +279,13 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
       persist(get())
       // Berechtigung für Browser-Notifications beim Timer-Start anfragen (User-Geste)
       void requestNotificationPermission()
-      intervalId = setInterval(() => {
-        const { remaining } = get()
-        if (remaining <= 1) {
-          advancePhase(true)
-        } else {
-          set({ remaining: remaining - 1 })
-          persist(get())
-        }
-      }, 1000)
+      deadline = Date.now() + get().remaining * 1000
+      intervalId = setInterval(tick, 1000)
     },
 
     pause: () => {
       stopTicker()
+      deadline = null
       // Pause unterbricht nur; der Block bleibt offen und läuft nach dem
       // Fortsetzen weiter.
       closeSegment()
@@ -264,6 +295,7 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => {
 
     reset: () => {
       stopTicker()
+      deadline = null
       if (get().mode === 'work') flushSegment()
       set({ mode: 'work', remaining: WORK_SECONDS, running: false })
       persist(get())

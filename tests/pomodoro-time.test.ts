@@ -121,6 +121,35 @@ test('Fokus-Zeitrechnung', async (t) => {
       )
     })
 
+    await t.test('die Anzeige läuft auch im gedrosselten Hintergrund-Tab weiter', async () => {
+      const useStore = await emptyStore(clock)
+      const full = useStore.getState().remaining
+      useStore.getState().start()
+      // Der Tab liegt im Hintergrund: Die Uhr läuft, der Takt kommt selten.
+      clock.advance(300)
+      await new Promise((resolve) => setTimeout(resolve, 1100))
+      assert.equal(
+        useStore.getState().remaining,
+        full - 300,
+        'Die Restzeit muss aus der Uhr kommen, nicht aus gezählten Takten',
+      )
+      useStore.getState().reset()
+    })
+
+    await t.test('eine im Hintergrund abgelaufene Phase schaltet weiter', async () => {
+      const useStore = await emptyStore(clock)
+      const full = useStore.getState().remaining
+      useStore.getState().start()
+      clock.advance(full + 120)
+      await new Promise((resolve) => setTimeout(resolve, 1100))
+      assert.equal(useStore.getState().mode, 'break')
+      assert.equal(useStore.getState().completedCycles, 1)
+      assert.equal(useStore.getState().pending.length, 1, 'Der Fokusblock gehört festgehalten')
+      // Die Pause beginnt ab jetzt, nicht rückwirkend.
+      assert.ok(useStore.getState().remaining > 290)
+      useStore.getState().reset()
+    })
+
     await t.test('gesendete Blöcke verschwinden aus der Warteschlange', async () => {
       const useStore = await emptyStore(clock)
       useStore.getState().start()
