@@ -702,3 +702,11 @@ Beim Test der Chat-Aufträge erschien die neue Karte nicht — im Inkognito-Fens
 Jetzt registriert die App den Worker selbst (`src/lib/pwa-update.ts`), sieht beim Start, alle 30 Minuten und bei jedem Zurückwechseln in den Tab nach einer neuen Fassung und meldet sie mit einem Hinweis samt Knopf „Neu laden“. Neu geladen wird erst auf Klick — ein Neuladen mitten im Tippen wäre schlimmer als eine Minute alter Code. Die Einstellung wechselte dafür von `autoUpdate` auf `prompt`.
 
 **Hinweis für die Umstellung:** Diesen einen Übergang bringt noch der alte Worker; ab der nächsten Änderung meldet sich die App von selbst.
+
+### Nutzerbestätigung: Auftrag aus dem Chat bis in die Daten · 29.10.2026
+
+Der Nutzer hat den vollständigen Weg in der angemeldeten Live-App durchlaufen: Satz im Omni-Chat („Omni, lege eine Aufgabe an, dass ich die Sicherung prüfe, bis morgen den 30.10.2026“) → Vorschlagskarte im Gespräch → „Ausführen“ → Aufgabe im Aufgaben-Modul mit korrektem Datum. Bestätigt mit „Hat funktioniert“.
+
+Damit sind aus dem gemeinsamen Rundgang live bestätigt: Verknüpfungen in beiden Richtungen, die modulweite Suche mit Textausschnitt, Fokuszeiten am Ziel, Serientermine einschließlich beider Bearbeitungswege, Dateianhänge an der Notiz und Omni-Aufträge direkt aus dem Chat. Nicht gesondert bestätigt wurden der Wochenrückblick im Pomodoro-Modul (der Nutzer hatte das Modul bereits selbst geprüft), die Anhänge an Aufgabe und Projekt und die Speicheranzeige in den Einstellungen.
+
+Offen bleibt der Wunsch nach einer **Vorschau statt Download** für Anhänge.
