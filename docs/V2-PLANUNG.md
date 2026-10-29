@@ -589,3 +589,19 @@ Gesucht wird mit `ILIKE`, nicht mit `tsvector`. Volltextindizes wären schneller
 **Geprüft.** Sieben neue Tests (`tests/search.test.ts`): alle acht Arten, Reihenfolge der Treffer, korrekte Zieladresse je Art, Textausschnitt am Fundort, strikte Trennung zwischen Benutzern und das Abweisen zu kurzer Begriffe und reiner Platzhalter. 193 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** die Palette in der angemeldeten Sitzung.
+
+## Ausbaustufe 3 von 6: Zeit an Aufgaben · 29.10.2026
+
+Der Pomodoro-Timer lief frei in der Luft: Gezählt wurden nur die Blöcke der laufenden Browser-Sitzung, und die Zahl stand nirgends in Beziehung zur Arbeit. Jetzt hängt jeder Fokusblock an einer **Aufgabe, Projektaufgabe oder einem Projekt** — oder bewusst an nichts.
+
+**Zeitrechnung.** Gemessen wird mit der Wanduhr, nicht mit gezählten Sekunden-Ticks: Ein Tab im Hintergrund bekommt seltener Ticks, die Zeit vergeht trotzdem. Eine Pause zählt nicht mit, Fortsetzen schon; ein Zielwechsel schließt den laufenden Block ab, damit gearbeitete Zeit nicht am falschen Eintrag landet. Blöcke unter einer Minute werden verworfen, über vier Stunden abgewiesen. Ein Reload mitten im Block verliert die Zeit nicht.
+
+**Übertragung.** Der Timer lebt außerhalb von React und hat kein Anmeldetoken, kann also nichts senden. Fertige Blöcke legt er in eine Warteschlange, die im Browser überlebt; ein Recorder in der Oberfläche überträgt sie und räumt sie weg. Jeder Block trägt eine im Browser vergebene Kennung — ein zweiter Versuch nach einem Verbindungsabbruch legt nichts doppelt an. Bei einem eindeutigen Fehler (etwa gelöschtes Ziel) verschwindet der Eintrag mit Hinweis, bei einem Netzwerkfehler bleibt er für den nächsten Versuch liegen.
+
+**Zu sehen.** Im Pomodoro-Modul: Zielauswahl über der Uhr und darunter die letzten sieben Tage mit Gesamtzeit, Tagesverlauf und Zeit je Ziel — jeder Eintrag anklickbar. In der Aufgabe und im Projekt steht die bisher erfasste Fokuszeit, sobald es welche gibt. Die Suche aus Stufe 2 liefert die Zielauswahl, eingeschränkt auf die drei Arten; dafür nimmt `/api/search` jetzt einen `kinds`-Parameter.
+
+**Entscheidung:** Wird ein Ziel gelöscht, bleibt die Zeit bestehen — gearbeitet wurde sie schließlich — und erscheint in der Auswertung als „Gelöschtes Ziel“. Verknüpfungen verschwinden in diesem Fall, Zeiten nicht.
+
+**Geprüft.** 16 neue Tests: neun für Speicher und Route (Zuordnung, Doppelsendung, fremde Ziele, Zeitraumgrenzen, Löschen, gelöschtes Ziel) und sieben für die Zeitrechnung des Timers ohne Browser, mit ersetzter Uhr und ersetztem Speicher — darunter der Reload mitten im Block. 209 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** der Timer in der angemeldeten Sitzung.

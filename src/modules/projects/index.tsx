@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ConnectionsPanel } from '@/components/shared/ConnectionsPanel'
+import { FocusTotalBadge } from '@/modules/pomodoro/components/FocusTotalBadge'
 import { MilestonePanel } from './components/MilestonePanel'
 import { ProjectBoard } from './components/ProjectBoard'
 import { ProjectFormDialog } from './components/ProjectFormDialog'
@@ -112,6 +113,7 @@ function ProjectDetailView({
         <span className="text-xs text-muted-foreground">
           Meilensteine: {doneMilestones}/{data.milestones.length}
         </span>
+        <FocusTotalBadge kind="project" id={projectId} />
       </div>
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_18rem]">

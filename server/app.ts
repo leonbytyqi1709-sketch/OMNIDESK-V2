@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth } from './auth'
 import { linksRoute } from './routes/links'
 import { connectionsRoute } from './routes/connections'
+import { focusRoute } from './routes/focus'
 import { searchRoute } from './routes/search'
 import { notesRoute } from './routes/notes'
 import { tasksRoute } from './routes/tasks'
@@ -109,6 +110,7 @@ export function createApp() {
   app.route('/contacts', contactsRoute)
   app.route('/connections', connectionsRoute)
   app.route('/search', searchRoute)
+  app.route('/focus', focusRoute)
   app.route('/appointments', appointmentsRoute)
   app.route('/commands', commandsRoute)
   app.route('/projects', projectsRoute)

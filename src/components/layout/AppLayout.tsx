@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router'
 import { useSettingsStore } from '@/stores/settings'
+import { useFocusRecorder } from '@/modules/pomodoro/api'
 import { useOverdueTaskNotifications } from '@/modules/tasks/api'
 import { CommandPalette } from './CommandPalette'
 import { FloatingScratchpad } from './FloatingScratchpad'
@@ -14,6 +15,9 @@ const SIDEBAR_STORAGE_KEY = 'omnidesk:sidebar-collapsed'
 export function AppLayout() {
   // Überfällige Aufgaben: Browser-Notification max. 1x pro Tag (in allen Modulen aktiv)
   useOverdueTaskNotifications()
+  // Fertige Fokusblöcke übertragen – der Timer läuft modulübergreifend, also
+  // muss auch das Speichern überall greifen.
+  useFocusRecorder()
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1',

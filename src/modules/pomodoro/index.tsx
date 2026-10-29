@@ -1,24 +1,29 @@
-import { Coffee, Pause, Play, RotateCcw, SkipForward, Target } from 'lucide-react'
+import { useState } from 'react'
+import { Coffee, Crosshair, Pause, Play, RotateCcw, SkipForward, Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   BREAK_SECONDS,
   WORK_SECONDS,
   usePomodoroStore,
 } from '@/stores/pomodoro'
+import { FOCUS_LABEL } from '@/lib/focus'
 import { cn, formatTime } from '@/lib/utils'
+import { FocusReview } from './components/FocusReview'
+import { FocusTargetDialog } from './components/FocusTargetDialog'
 
 const RADIUS = 110
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 export default function PomodoroPage() {
-  const { mode, remaining, running, completedCycles, start, pause, reset, skip } =
+  const { mode, remaining, running, completedCycles, target, setTarget, start, pause, reset, skip } =
     usePomodoroStore()
+  const [targetOpen, setTargetOpen] = useState(false)
 
   const total = mode === 'work' ? WORK_SECONDS : BREAK_SECONDS
   const progress = 1 - remaining / total
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 p-8">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
       <div className="flex items-center gap-2 text-sm font-medium tracking-wider text-muted-foreground uppercase">
         {mode === 'work' ? (
           <>
@@ -30,6 +35,24 @@ export default function PomodoroPage() {
           </>
         )}
       </div>
+
+      {/* Ziel des aktuellen Blocks */}
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2 text-xs"
+        onClick={() => setTargetOpen(true)}
+      >
+        <Crosshair className="size-3.5 text-primary" />
+        {target ? (
+          <>
+            <span className="max-w-[16rem] truncate">{target.title}</span>
+            <span className="text-muted-foreground">({FOCUS_LABEL[target.kind]})</span>
+          </>
+        ) : (
+          'Ziel wählen'
+        )}
+      </Button>
 
       {/* Fortschrittsring im Akzent-Verlauf */}
       <div className={cn('relative', running && 'glow')}>
@@ -109,7 +132,19 @@ export default function PomodoroPage() {
 
       <p className="text-xs text-muted-foreground">
         25 Minuten Fokus, 5 Minuten Pause – der Timer läuft beim Modulwechsel weiter.
+        {target
+          ? ' Die Zeit wird dem gewählten Ziel gutgeschrieben.'
+          : ' Ohne Ziel wird die Zeit als „Ohne Ziel“ gezählt.'}
       </p>
+
+      <FocusReview />
+
+      <FocusTargetDialog
+        open={targetOpen}
+        onOpenChange={setTargetOpen}
+        current={target}
+        onSelect={setTarget}
+      />
     </div>
   )
 }
