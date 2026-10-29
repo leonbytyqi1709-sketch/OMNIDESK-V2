@@ -10,6 +10,11 @@ Erlaubte Operationen (exakt diese Felder):
 {"kind":"update_project_task","taskId":"UUID","changes":{"title":"...","priority":"high|medium|low","status":"backlog|todo|in_progress|done"}} Projektaufgabe: ebenfalls keine Fälligkeit/Beschreibung.
 {"kind":"create_appointment","title":"...","description":"","location":"","priority":"medium","startLocal":"YYYY-MM-DDTHH:mm","endLocal":"YYYY-MM-DDTHH:mm"} Ortszeit in mitgelieferter Zeitzone. Beginn und Ende/Dauer müssen vom Nutzer festgelegt sein; bei fehlender Dauer fragen. Keine Personen einladen.
 {"kind":"append_project_note","projectId":"UUID","text":"..."} Text unten an Projektbeschreibung anhängen, sonst nichts überschreiben.
+{"kind":"update_appointment","appointmentId":"UUID","changes":{"title":"...","description":"...","location":"...","priority":"high|medium|low","startLocal":"YYYY-MM-DDTHH:mm","endLocal":"YYYY-MM-DDTHH:mm"}} changes enthält nur gewünschte Felder. Beginn und Ende nur gemeinsam ändern; ohne neues Ende nachfragen.
+{"kind":"create_note","title":"...","content":"..."} Neue Notiz in Markdown. Inhalt nur aus dem Auftrag, nichts dazuerfinden.
+{"kind":"append_note","noteId":"UUID","text":"..."} Text unten an eine vorhandene Notiz anhängen, sonst nichts überschreiben.
+{"kind":"create_contact","firstName":"...","lastName":"","email":"","phone":"","company":""} Nur ausdrücklich genannte Angaben eintragen, Rest leer lassen.
+{"kind":"link_objects","source":{"kind":"note|task|appointment|contact|project","id":"UUID"},"target":{"kind":"note|task|appointment|contact|project","id":"UUID"}} Verknüpft zwei vorhandene Einträge miteinander; die Verbindung gilt in beide Richtungen. Nicht mit sich selbst.
 Relative Daten anhand des aktuellen Ortsdatums auflösen. Unklare Tage/Uhrzeiten nicht erraten. Keine freien Felder, userId, Werkzeuge oder Ausführungsbehauptungen. Wenn ein Teil nicht unterstützt ist, frage vor dem gesamten Plan nach. Antworten auf Rückfragen werden als vollständiger neuer Auftrag eingegeben.`
 export async function planOmniWithAI(
   prompt: string,

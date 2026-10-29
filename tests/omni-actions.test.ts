@@ -44,6 +44,9 @@ const empty: OmniContext = {
   tasks: [],
   projects: [],
   projectTasks: [],
+  notes: [],
+  appointments: [],
+  contacts: [],
   truncated: false,
 }
 
@@ -206,7 +209,8 @@ test('Omni PostgreSQL: actual atomic execution, idempotency, conflicts, cancella
  CREATE TABLE projects(id uuid PRIMARY KEY,user_id text NOT NULL,name text NOT NULL,description text NOT NULL DEFAULT '',priority text DEFAULT 'medium',status text DEFAULT 'active',updated_at timestamptz DEFAULT now());
  CREATE TABLE tasks(id uuid PRIMARY KEY,user_id text NOT NULL,title text NOT NULL,description text NOT NULL DEFAULT '',status text NOT NULL DEFAULT 'todo',priority text NOT NULL DEFAULT 'medium',due_date timestamptz,tags jsonb DEFAULT '[]',subtasks jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now());
  CREATE TABLE project_tasks(id uuid PRIMARY KEY,user_id text NOT NULL,project_id uuid REFERENCES projects(id),title text NOT NULL,status text NOT NULL DEFAULT 'backlog',priority text NOT NULL DEFAULT 'medium',updated_at timestamptz DEFAULT now());
- CREATE TABLE appointments(id uuid PRIMARY KEY,user_id text NOT NULL,title text NOT NULL,description text NOT NULL DEFAULT '',location text NOT NULL DEFAULT '',priority text NOT NULL DEFAULT 'medium',starts_at timestamptz NOT NULL,ends_at timestamptz NOT NULL);`)
+ CREATE TABLE appointments(id uuid PRIMARY KEY,user_id text NOT NULL,title text NOT NULL,description text NOT NULL DEFAULT '',location text NOT NULL DEFAULT '',priority text NOT NULL DEFAULT 'medium',starts_at timestamptz NOT NULL,ends_at timestamptz NOT NULL,updated_at timestamptz DEFAULT now());
+ CREATE TABLE contacts(id uuid PRIMARY KEY,user_id text NOT NULL,first_name text NOT NULL,last_name text NOT NULL DEFAULT '',email text NOT NULL DEFAULT '',phone text NOT NULL DEFAULT '',company text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '',updated_at timestamptz DEFAULT now());`)
     await pg.query(
       `INSERT INTO projects(id,user_id,name,description) VALUES($1,'owner','OMNIDESK V2','Vorhandene Beschreibung'),($2,'foreign','Foreign','Private foreign text')`,
       [id, foreign],

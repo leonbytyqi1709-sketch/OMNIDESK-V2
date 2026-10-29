@@ -1,14 +1,31 @@
 import { randomUUID } from 'node:crypto'
+import { connectionsDdl } from './connections-storage'
 import { monitoringSql } from './neon-storage'
 import { retireWorkingHistory } from './retire-working-history'
 import { OmniActionError } from './omni-actions-policy'
 import type { prepareOmniOperations } from './omni-actions-prepare'
 import type { OmniActionPlan } from '../src/types/omni-actions'
 export const omniActionsDdl = [
+  // Omni kann seit dem 29.10.2026 auch verknüpfen; die Tabelle dafür stammt
+  // aus der Verknüpfungs-Ebene und wird hier nur mit angelegt.
+  ...connectionsDdl,
+  // Bewusst plpgsql: Eine SQL-Funktion würde beim Anlegen sofort gegen alle
+  // genannten Tabellen geprüft und scheitern, solange eine davon fehlt.
+  `CREATE OR REPLACE FUNCTION public.omnidesk_owns_entity(p_user text,p_kind text,p_id uuid) RETURNS boolean LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public AS $owns$
+   BEGIN
+   RETURN CASE p_kind
+     WHEN 'note' THEN EXISTS(SELECT 1 FROM public.notes WHERE id=p_id AND user_id=p_user)
+     WHEN 'task' THEN EXISTS(SELECT 1 FROM public.tasks WHERE id=p_id AND user_id=p_user)
+     WHEN 'appointment' THEN EXISTS(SELECT 1 FROM public.appointments WHERE id=p_id AND user_id=p_user)
+     WHEN 'contact' THEN EXISTS(SELECT 1 FROM public.contacts WHERE id=p_id AND user_id=p_user)
+     WHEN 'project' THEN EXISTS(SELECT 1 FROM public.projects WHERE id=p_id AND user_id=p_user)
+     ELSE false END;
+   END;
+  $owns$`,
   `CREATE TABLE IF NOT EXISTS v2_omni_action_plans(id uuid PRIMARY KEY,user_id text NOT NULL,request_id uuid NOT NULL,prompt text NOT NULL,time_zone text NOT NULL,status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','executed','cancelled')),operations jsonb NOT NULL,previews jsonb NOT NULL,result_links jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL DEFAULT now()+interval '15 minutes',executed_at timestamptz,UNIQUE(user_id,request_id))`,
   `CREATE INDEX IF NOT EXISTS v2_omni_action_plans_owner_idx ON v2_omni_action_plans(user_id,created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS v2_omni_action_limits(user_id text PRIMARY KEY,next_plan_at timestamptz NOT NULL)`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_execute_actions_v2(p_user text,p_id uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public AS $omni$
+  `CREATE OR REPLACE FUNCTION public.omnidesk_execute_actions_v3(p_user text,p_id uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public AS $omni$
  DECLARE plan public.v2_omni_action_plans%ROWTYPE;op jsonb;a jsonb;target_id uuid;parent_id uuid;fingerprint text;
  BEGIN
  SELECT * INTO plan FROM public.v2_omni_action_plans WHERE id=p_id AND user_id=p_user FOR UPDATE;
@@ -48,6 +65,27 @@ export const omniActionsDdl = [
    UPDATE public.projects SET description=a->>'description',updated_at=clock_timestamp() WHERE id=parent_id AND user_id=p_user;
   WHEN 'create_appointment' THEN
    INSERT INTO public.appointments(id,user_id,title,description,location,priority,starts_at,ends_at) VALUES(target_id,p_user,a->>'title',a->>'description',a->>'location',a->>'priority',(a->>'startsAt')::timestamptz,(a->>'endsAt')::timestamptz);
+  WHEN 'update_appointment' THEN
+   SELECT md5(to_jsonb(x)::text) INTO fingerprint FROM public.appointments x WHERE x.id=target_id AND x.user_id=p_user FOR UPDATE;
+   IF NOT FOUND OR fingerprint IS DISTINCT FROM op->'before'->>'version' THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   UPDATE public.appointments x SET title=CASE WHEN a?'title' THEN a->>'title' ELSE x.title END,
+    description=CASE WHEN a?'description' THEN a->>'description' ELSE x.description END,
+    location=CASE WHEN a?'location' THEN a->>'location' ELSE x.location END,
+    priority=CASE WHEN a?'priority' THEN a->>'priority' ELSE x.priority END,
+    starts_at=CASE WHEN a?'startsAt' THEN (a->>'startsAt')::timestamptz ELSE x.starts_at END,
+    ends_at=CASE WHEN a?'endsAt' THEN (a->>'endsAt')::timestamptz ELSE x.ends_at END,updated_at=clock_timestamp()
+    WHERE x.id=target_id AND x.user_id=p_user;
+  WHEN 'create_note' THEN
+   INSERT INTO public.notes(id,user_id,title,content) VALUES(target_id,p_user,a->>'title',a->>'content');
+  WHEN 'append_note' THEN
+   SELECT md5(to_jsonb(n)::text) INTO fingerprint FROM public.notes n WHERE n.id=target_id AND n.user_id=p_user FOR UPDATE;
+   IF NOT FOUND OR fingerprint IS DISTINCT FROM op->'before'->>'version' THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   UPDATE public.notes n SET content=a->>'content',updated_at=clock_timestamp() WHERE n.id=target_id AND n.user_id=p_user;
+  WHEN 'create_contact' THEN
+   INSERT INTO public.contacts(id,user_id,first_name,last_name,email,phone,company) VALUES(target_id,p_user,a->>'firstName',a->>'lastName',a->>'email',a->>'phone',a->>'company');
+  WHEN 'link_objects' THEN
+   IF NOT public.omnidesk_owns_entity(p_user,a->>'aKind',(a->>'aId')::uuid) OR NOT public.omnidesk_owns_entity(p_user,a->>'bKind',(a->>'bId')::uuid) THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   INSERT INTO public.v2_connections(id,user_id,a_kind,a_id,b_kind,b_id) VALUES(target_id,p_user,a->>'aKind',(a->>'aId')::uuid,a->>'bKind',(a->>'bId')::uuid) ON CONFLICT DO NOTHING;
   ELSE RAISE EXCEPTION 'OMNI_INVALID';
   END CASE;
  END LOOP;
@@ -59,7 +97,7 @@ export const omniActionsDdl = [
 export async function initializeOmniActions() {
   const sql = monitoringSql()
   const [exists] =
-    await sql`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v2(text,uuid)') IS NOT NULL AS ready`
+    await sql`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regclass('public.v2_connections') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v3(text,uuid)') IS NOT NULL AS ready`
   if (exists?.ready) return
   await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(184730027)`,
@@ -121,9 +159,11 @@ export async function saveOmniPlan(
 }
 export async function executeOmniPlan(userId: string, id: string) {
   await retireWorkingHistory()
+  // Ein Vorschlag kann Verknüpfungen enthalten; die Tabellen müssen stehen.
+  await initializeOmniActions()
   const sql = monitoringSql()
   try {
-    await sql`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`
+    await sql`SELECT public.omnidesk_execute_actions_v3(${userId},${id}::uuid)`
   } catch (error) {
     const message = (error as Error).message
     if (message.includes('OMNI_NOT_FOUND'))

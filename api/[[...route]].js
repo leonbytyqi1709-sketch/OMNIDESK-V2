@@ -6923,11 +6923,16 @@ import { z as z37 } from "zod";
 init_neon_storage();
 async function loadOmniContext(userId) {
   const sql10 = monitoringSql();
-  const [tasks2, projects2, projectTasks2] = await sql10.transaction(
+  const [tasks2, projects2, projectTasks2, notes2, appointments2, contacts2] = await sql10.transaction(
     [
       sql10`SELECT t.id,t.title,t.status,t.priority,t.due_date AS "dueDate",t.description,md5(to_jsonb(t)::text) AS version FROM tasks t WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 201`,
       sql10`SELECT p.id,p.name,p.status,p.description,md5(to_jsonb(p)::text) AS version FROM projects p WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 101`,
-      sql10`SELECT t.id,t.project_id AS "projectId",t.title,t.status,t.priority,md5(to_jsonb(t)::text) AS version FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE t.user_id=${userId} ORDER BY t.updated_at DESC,t.id LIMIT 201`
+      sql10`SELECT t.id,t.project_id AS "projectId",t.title,t.status,t.priority,md5(to_jsonb(t)::text) AS version FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.user_id=t.user_id WHERE t.user_id=${userId} ORDER BY t.updated_at DESC,t.id LIMIT 201`,
+      sql10`SELECT n.id,n.title,n.content,md5(to_jsonb(n)::text) AS version FROM notes n WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 101`,
+      // Nur das aktuelle Umfeld: Termine weit in der Vergangenheit helfen
+      // beim Planen nicht und blähen den Kontext auf.
+      sql10`SELECT a.id,a.title,a.starts_at AS "startsAt",a.ends_at AS "endsAt",a.location,a.description,a.priority,md5(to_jsonb(a)::text) AS version FROM appointments a WHERE user_id=${userId} AND ends_at >= now()-interval '7 days' ORDER BY starts_at,id LIMIT 101`,
+      sql10`SELECT c.id,trim(c.first_name||' '||c.last_name) AS name,c.company,md5(to_jsonb(c)::text) AS version FROM contacts c WHERE user_id=${userId} ORDER BY updated_at DESC,id LIMIT 101`
     ],
     { isolationLevel: "RepeatableRead", readOnly: true }
   );
@@ -6938,7 +6943,16 @@ async function loadOmniContext(userId) {
     })),
     projects: projects2.slice(0, 100),
     projectTasks: projectTasks2.slice(0, 200),
-    truncated: tasks2.length > 200 || projects2.length > 100 || projectTasks2.length > 200
+    notes: notes2.slice(0, 100),
+    appointments: appointments2.slice(0, 100).map(
+      (appointment) => ({
+        ...appointment,
+        startsAt: new Date(appointment.startsAt).toISOString(),
+        endsAt: new Date(appointment.endsAt).toISOString()
+      })
+    ),
+    contacts: contacts2.slice(0, 100),
+    truncated: tasks2.length > 200 || projects2.length > 100 || projectTasks2.length > 200 || notes2.length > 100 || appointments2.length > 100 || contacts2.length > 100
   };
 }
 function publicOmniContext(context) {
@@ -6952,6 +6966,11 @@ function publicOmniContext(context) {
     projectTasks: context.projectTasks.map(
       ({ version: _version, ...task }) => task
     ),
+    notes: context.notes.map(({ id, title: title2 }) => ({ id, title: title2 })),
+    appointments: context.appointments.map(
+      ({ description: _description, version: _version, ...appointment }) => appointment
+    ),
+    contacts: context.contacts.map(({ version: _version, ...contact }) => contact),
     truncated: context.truncated
   };
 }
@@ -6986,6 +7005,20 @@ var personalFields = z36.object({
   status: z36.enum(["todo", "in_progress", "done"]).optional(),
   dueDate: day.nullable().optional()
 }).strict().refine((v) => Object.keys(v).length > 0);
+var appointmentFields = z36.object({
+  title: title.optional(),
+  description: z36.string().max(1e4).optional(),
+  location: z36.string().max(300).optional(),
+  priority: priority.optional(),
+  startLocal: localTime.optional(),
+  endLocal: localTime.optional()
+}).strict().refine((v) => Object.keys(v).length > 0).refine((v) => Boolean(v.startLocal) === Boolean(v.endLocal), {
+  message: "Beginn und Ende m\xFCssen gemeinsam ge\xE4ndert werden."
+});
+var connectionEnd = z36.object({
+  kind: z36.enum(["note", "task", "appointment", "contact", "project"]),
+  id: z36.uuid()
+}).strict();
 var projectFields = z36.object({
   title: title.optional(),
   priority: priority.optional(),
@@ -7030,6 +7063,34 @@ var omniOperationSchema = z36.discriminatedUnion("kind", [
     kind: z36.literal("append_project_note"),
     projectId: z36.uuid(),
     text: z36.string().trim().min(1).max(5e3)
+  }).strict(),
+  z36.object({
+    kind: z36.literal("update_appointment"),
+    appointmentId: z36.uuid(),
+    changes: appointmentFields
+  }).strict(),
+  z36.object({
+    kind: z36.literal("create_note"),
+    title,
+    content: z36.string().max(2e4)
+  }).strict(),
+  z36.object({
+    kind: z36.literal("append_note"),
+    noteId: z36.uuid(),
+    text: z36.string().trim().min(1).max(5e3)
+  }).strict(),
+  z36.object({
+    kind: z36.literal("create_contact"),
+    firstName: z36.string().trim().min(1).max(100),
+    lastName: z36.string().trim().max(100),
+    email: z36.string().trim().max(255),
+    phone: z36.string().trim().max(60),
+    company: z36.string().trim().max(150)
+  }).strict(),
+  z36.object({
+    kind: z36.literal("link_objects"),
+    source: connectionEnd,
+    target: connectionEnd
   }).strict()
 ]);
 var omniPlannerOutput = z36.discriminatedUnion("type", [
@@ -7090,6 +7151,11 @@ Erlaubte Operationen (exakt diese Felder):
 {"kind":"update_project_task","taskId":"UUID","changes":{"title":"...","priority":"high|medium|low","status":"backlog|todo|in_progress|done"}} Projektaufgabe: ebenfalls keine F\xE4lligkeit/Beschreibung.
 {"kind":"create_appointment","title":"...","description":"","location":"","priority":"medium","startLocal":"YYYY-MM-DDTHH:mm","endLocal":"YYYY-MM-DDTHH:mm"} Ortszeit in mitgelieferter Zeitzone. Beginn und Ende/Dauer m\xFCssen vom Nutzer festgelegt sein; bei fehlender Dauer fragen. Keine Personen einladen.
 {"kind":"append_project_note","projectId":"UUID","text":"..."} Text unten an Projektbeschreibung anh\xE4ngen, sonst nichts \xFCberschreiben.
+{"kind":"update_appointment","appointmentId":"UUID","changes":{"title":"...","description":"...","location":"...","priority":"high|medium|low","startLocal":"YYYY-MM-DDTHH:mm","endLocal":"YYYY-MM-DDTHH:mm"}} changes enth\xE4lt nur gew\xFCnschte Felder. Beginn und Ende nur gemeinsam \xE4ndern; ohne neues Ende nachfragen.
+{"kind":"create_note","title":"...","content":"..."} Neue Notiz in Markdown. Inhalt nur aus dem Auftrag, nichts dazuerfinden.
+{"kind":"append_note","noteId":"UUID","text":"..."} Text unten an eine vorhandene Notiz anh\xE4ngen, sonst nichts \xFCberschreiben.
+{"kind":"create_contact","firstName":"...","lastName":"","email":"","phone":"","company":""} Nur ausdr\xFCcklich genannte Angaben eintragen, Rest leer lassen.
+{"kind":"link_objects","source":{"kind":"note|task|appointment|contact|project","id":"UUID"},"target":{"kind":"note|task|appointment|contact|project","id":"UUID"}} Verkn\xFCpft zwei vorhandene Eintr\xE4ge miteinander; die Verbindung gilt in beide Richtungen. Nicht mit sich selbst.
 Relative Daten anhand des aktuellen Ortsdatums aufl\xF6sen. Unklare Tage/Uhrzeiten nicht erraten. Keine freien Felder, userId, Werkzeuge oder Ausf\xFChrungsbehauptungen. Wenn ein Teil nicht unterst\xFCtzt ist, frage vor dem gesamten Plan nach. Antworten auf R\xFCckfragen werden als vollst\xE4ndiger neuer Auftrag eingegeben.`;
 async function planOmniWithAI(prompt, context, timeZone, now = /* @__PURE__ */ new Date()) {
   const keys = [
@@ -7195,7 +7261,34 @@ var labels = {
   location: "Ort",
   startsAt: "Beginn",
   endsAt: "Ende",
-  note: "Erg\xE4nzung zur Projektbeschreibung"
+  note: "Erg\xE4nzung",
+  content: "Inhalt",
+  firstName: "Vorname",
+  lastName: "Nachname",
+  email: "E-Mail",
+  phone: "Telefon",
+  company: "Firma",
+  link: "Verkn\xFCpfung"
+};
+var TARGET_TYPE = {
+  create_task: "task",
+  update_task: "task",
+  create_project_task: "project-task",
+  update_project_task: "project-task",
+  append_project_note: "project",
+  create_appointment: "appointment",
+  update_appointment: "appointment",
+  create_note: "note",
+  append_note: "note",
+  create_contact: "contact",
+  link_objects: "connection"
+};
+var CONNECTION_LABELS = {
+  note: "Notiz",
+  task: "Aufgabe",
+  appointment: "Termin",
+  contact: "Kontakt",
+  project: "Projekt"
 };
 var values2 = {
   high: "Hoch",
@@ -7298,16 +7391,86 @@ function prepareOmniOperations(operations, context, timeZone) {
       href = `/calendar?appointment=${id}`;
       warning = "Interner Kalendertermin. Es werden keine Einladungen versendet; zeitliche \xDCberschneidungen sind m\xF6glich.";
     }
-    const targetKey = `${op.kind.includes("project_task") ? "project-task" : op.kind === "append_project_note" ? "project" : "task"}:${id}`;
+    if (op.kind === "update_appointment") {
+      const appointment = context.appointments.find((a) => a.id === op.appointmentId);
+      if (!appointment)
+        throw new OmniActionError(
+          "Der gew\xE4hlte Termin ist nicht in deinen verf\xFCgbaren Quellen. Bitte genauer ausw\xE4hlen."
+        );
+      before = { ...appointment };
+      id = appointment.id;
+      const { startLocal, endLocal, ...rest } = op.changes;
+      after = { ...rest };
+      if (startLocal && endLocal) {
+        const startsAt = localTimeToIso(startLocal, timeZone), endsAt = localTimeToIso(endLocal, timeZone);
+        if (endsAt <= startsAt)
+          throw new OmniActionError("Das Terminende muss nach dem Beginn liegen.");
+        after = { ...after, startsAt, endsAt };
+      }
+      target = appointment.title;
+      href = `/calendar?appointment=${id}`;
+    }
+    if (op.kind === "create_note") {
+      after = { title: op.title, content: op.content };
+      target = op.title;
+      href = `/notes?note=${id}`;
+    }
+    if (op.kind === "append_note") {
+      const note = context.notes.find((n) => n.id === op.noteId);
+      if (!note)
+        throw new OmniActionError(
+          "Die gew\xE4hlte Notiz ist nicht in deinen verf\xFCgbaren Quellen. Bitte genauer ausw\xE4hlen."
+        );
+      before = { ...note };
+      id = note.id;
+      const content = note.content + (note.content ? "\n\n" : "") + op.text;
+      if (content.length > 2e4)
+        throw new OmniActionError("Die erg\xE4nzte Notiz w\xE4re zu lang. Bitte k\xFCrzen.");
+      after = { note: op.text, content };
+      target = note.title || "Unbenannte Notiz";
+      href = `/notes?note=${id}`;
+      warning = "Der Text wird unten an die vorhandene Notiz angeh\xE4ngt.";
+    }
+    if (op.kind === "create_contact") {
+      const { kind: _kind, ...fields } = op;
+      after = { ...fields };
+      target = `${op.firstName} ${op.lastName}`.trim();
+      href = `/contacts?contact=${id}`;
+    }
+    if (op.kind === "link_objects") {
+      const name = (end) => {
+        const found = end.kind === "note" ? context.notes.find((entry) => entry.id === end.id)?.title : end.kind === "task" ? context.tasks.find((entry) => entry.id === end.id)?.title : end.kind === "appointment" ? context.appointments.find((entry) => entry.id === end.id)?.title : end.kind === "contact" ? context.contacts.find((entry) => entry.id === end.id)?.name : context.projects.find((entry) => entry.id === end.id)?.name;
+        if (!found)
+          throw new OmniActionError(
+            "Ein Ende der Verkn\xFCpfung ist nicht in deinen verf\xFCgbaren Quellen. Bitte genauer ausw\xE4hlen."
+          );
+        return `${CONNECTION_LABELS[end.kind] ?? end.kind} \u201E${found || "Ohne Titel"}\u201C`;
+      };
+      if (op.source.kind === op.target.kind && op.source.id === op.target.id)
+        throw new OmniActionError("Ein Eintrag l\xE4sst sich nicht mit sich selbst verkn\xFCpfen.");
+      const label = `${name(op.source)} \u2194 ${name(op.target)}`;
+      const [first, second] = orderEnds(op.source, op.target);
+      after = {
+        link: label,
+        aKind: first.kind,
+        aId: first.id,
+        bKind: second.kind,
+        bId: second.id
+      };
+      target = label;
+      href = `/${op.source.kind === "project" ? "projects" : op.source.kind === "note" ? "notes" : op.source.kind === "task" ? "tasks" : op.source.kind === "appointment" ? "calendar" : "contacts"}`;
+      warning = "Verkn\xFCpfungen sind gegenseitig und von beiden Seiten sichtbar.";
+    }
+    const targetKey = `${TARGET_TYPE[op.kind]}:${id}`;
     if (targets.has(targetKey))
       throw new OmniActionError(
         "Ein Eintrag w\xFCrde mehrfach ge\xE4ndert. Bitte die \xC4nderungen in einem Schritt zusammenfassen."
       );
     targets.add(targetKey);
     const changes = Object.entries(after).filter(
-      ([key]) => key !== "description" || op.kind !== "append_project_note"
+      ([key]) => !(key === "description" && op.kind === "append_project_note") && !(key === "content" && op.kind === "append_note") && !(op.kind === "link_objects" && key !== "link")
     ).filter(
-      ([key, value]) => !before || key === "note" || String(before[key] ?? "") !== String(value ?? "")
+      ([key, value]) => !before || key === "note" || key === "link" || String(before[key] ?? "") !== String(value ?? "")
     );
     if (!changes.length)
       throw new OmniActionError(
@@ -7327,7 +7490,7 @@ function prepareOmniOperations(operations, context, timeZone) {
       href: op.kind.startsWith("create_") ? null : href,
       changes: changes.map(([key, value]) => ({
         label: labels[key] ?? key,
-        before: before && key !== "note" ? display(key, before[key], timeZone) : null,
+        before: before && key !== "note" && key !== "link" ? display(key, before[key], timeZone) : null,
         after: display(key, value, timeZone)
       })),
       warning
@@ -7338,13 +7501,29 @@ function prepareOmniOperations(operations, context, timeZone) {
 }
 
 // server/omni-actions-storage.ts
-init_neon_storage();
 import { randomUUID as randomUUID5 } from "node:crypto";
+init_neon_storage();
 var omniActionsDdl = [
+  // Omni kann seit dem 29.10.2026 auch verknüpfen; die Tabelle dafür stammt
+  // aus der Verknüpfungs-Ebene und wird hier nur mit angelegt.
+  ...connectionsDdl,
+  // Bewusst plpgsql: Eine SQL-Funktion würde beim Anlegen sofort gegen alle
+  // genannten Tabellen geprüft und scheitern, solange eine davon fehlt.
+  `CREATE OR REPLACE FUNCTION public.omnidesk_owns_entity(p_user text,p_kind text,p_id uuid) RETURNS boolean LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public AS $owns$
+   BEGIN
+   RETURN CASE p_kind
+     WHEN 'note' THEN EXISTS(SELECT 1 FROM public.notes WHERE id=p_id AND user_id=p_user)
+     WHEN 'task' THEN EXISTS(SELECT 1 FROM public.tasks WHERE id=p_id AND user_id=p_user)
+     WHEN 'appointment' THEN EXISTS(SELECT 1 FROM public.appointments WHERE id=p_id AND user_id=p_user)
+     WHEN 'contact' THEN EXISTS(SELECT 1 FROM public.contacts WHERE id=p_id AND user_id=p_user)
+     WHEN 'project' THEN EXISTS(SELECT 1 FROM public.projects WHERE id=p_id AND user_id=p_user)
+     ELSE false END;
+   END;
+  $owns$`,
   `CREATE TABLE IF NOT EXISTS v2_omni_action_plans(id uuid PRIMARY KEY,user_id text NOT NULL,request_id uuid NOT NULL,prompt text NOT NULL,time_zone text NOT NULL,status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','executed','cancelled')),operations jsonb NOT NULL,previews jsonb NOT NULL,result_links jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL DEFAULT now()+interval '15 minutes',executed_at timestamptz,UNIQUE(user_id,request_id))`,
   `CREATE INDEX IF NOT EXISTS v2_omni_action_plans_owner_idx ON v2_omni_action_plans(user_id,created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS v2_omni_action_limits(user_id text PRIMARY KEY,next_plan_at timestamptz NOT NULL)`,
-  `CREATE OR REPLACE FUNCTION public.omnidesk_execute_actions_v2(p_user text,p_id uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public AS $omni$
+  `CREATE OR REPLACE FUNCTION public.omnidesk_execute_actions_v3(p_user text,p_id uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public AS $omni$
  DECLARE plan public.v2_omni_action_plans%ROWTYPE;op jsonb;a jsonb;target_id uuid;parent_id uuid;fingerprint text;
  BEGIN
  SELECT * INTO plan FROM public.v2_omni_action_plans WHERE id=p_id AND user_id=p_user FOR UPDATE;
@@ -7384,6 +7563,27 @@ var omniActionsDdl = [
    UPDATE public.projects SET description=a->>'description',updated_at=clock_timestamp() WHERE id=parent_id AND user_id=p_user;
   WHEN 'create_appointment' THEN
    INSERT INTO public.appointments(id,user_id,title,description,location,priority,starts_at,ends_at) VALUES(target_id,p_user,a->>'title',a->>'description',a->>'location',a->>'priority',(a->>'startsAt')::timestamptz,(a->>'endsAt')::timestamptz);
+  WHEN 'update_appointment' THEN
+   SELECT md5(to_jsonb(x)::text) INTO fingerprint FROM public.appointments x WHERE x.id=target_id AND x.user_id=p_user FOR UPDATE;
+   IF NOT FOUND OR fingerprint IS DISTINCT FROM op->'before'->>'version' THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   UPDATE public.appointments x SET title=CASE WHEN a?'title' THEN a->>'title' ELSE x.title END,
+    description=CASE WHEN a?'description' THEN a->>'description' ELSE x.description END,
+    location=CASE WHEN a?'location' THEN a->>'location' ELSE x.location END,
+    priority=CASE WHEN a?'priority' THEN a->>'priority' ELSE x.priority END,
+    starts_at=CASE WHEN a?'startsAt' THEN (a->>'startsAt')::timestamptz ELSE x.starts_at END,
+    ends_at=CASE WHEN a?'endsAt' THEN (a->>'endsAt')::timestamptz ELSE x.ends_at END,updated_at=clock_timestamp()
+    WHERE x.id=target_id AND x.user_id=p_user;
+  WHEN 'create_note' THEN
+   INSERT INTO public.notes(id,user_id,title,content) VALUES(target_id,p_user,a->>'title',a->>'content');
+  WHEN 'append_note' THEN
+   SELECT md5(to_jsonb(n)::text) INTO fingerprint FROM public.notes n WHERE n.id=target_id AND n.user_id=p_user FOR UPDATE;
+   IF NOT FOUND OR fingerprint IS DISTINCT FROM op->'before'->>'version' THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   UPDATE public.notes n SET content=a->>'content',updated_at=clock_timestamp() WHERE n.id=target_id AND n.user_id=p_user;
+  WHEN 'create_contact' THEN
+   INSERT INTO public.contacts(id,user_id,first_name,last_name,email,phone,company) VALUES(target_id,p_user,a->>'firstName',a->>'lastName',a->>'email',a->>'phone',a->>'company');
+  WHEN 'link_objects' THEN
+   IF NOT public.omnidesk_owns_entity(p_user,a->>'aKind',(a->>'aId')::uuid) OR NOT public.omnidesk_owns_entity(p_user,a->>'bKind',(a->>'bId')::uuid) THEN RAISE EXCEPTION 'OMNI_CONFLICT'; END IF;
+   INSERT INTO public.v2_connections(id,user_id,a_kind,a_id,b_kind,b_id) VALUES(target_id,p_user,a->>'aKind',(a->>'aId')::uuid,a->>'bKind',(a->>'bId')::uuid) ON CONFLICT DO NOTHING;
   ELSE RAISE EXCEPTION 'OMNI_INVALID';
   END CASE;
  END LOOP;
@@ -7394,7 +7594,7 @@ var omniActionsDdl = [
 ];
 async function initializeOmniActions() {
   const sql10 = monitoringSql();
-  const [exists] = await sql10`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v2(text,uuid)') IS NOT NULL AS ready`;
+  const [exists] = await sql10`SELECT to_regclass('public.v2_omni_action_plans') IS NOT NULL AND to_regclass('public.v2_omni_action_limits') IS NOT NULL AND to_regclass('public.v2_connections') IS NOT NULL AND to_regprocedure('public.omnidesk_execute_actions_v3(text,uuid)') IS NOT NULL AS ready`;
   if (exists?.ready) return;
   await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(184730027)`,
@@ -7440,9 +7640,10 @@ async function saveOmniPlan(userId, requestId, prompt, timeZone, prepared5) {
 }
 async function executeOmniPlan(userId, id) {
   await retireWorkingHistory();
+  await initializeOmniActions();
   const sql10 = monitoringSql();
   try {
-    await sql10`SELECT public.omnidesk_execute_actions_v2(${userId},${id}::uuid)`;
+    await sql10`SELECT public.omnidesk_execute_actions_v3(${userId},${id}::uuid)`;
   } catch (error) {
     const message = error.message;
     if (message.includes("OMNI_NOT_FOUND"))

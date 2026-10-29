@@ -21,6 +21,11 @@ const kinds: Record<string, string> = {
   update_project_task: 'Projektaufgabe ändern',
   create_appointment: 'Termin anlegen',
   append_project_note: 'Projektnotiz ergänzen',
+  update_appointment: 'Termin ändern',
+  create_note: 'Notiz anlegen',
+  append_note: 'Notiz ergänzen',
+  create_contact: 'Kontakt anlegen',
+  link_objects: 'Verknüpfung anlegen',
 }
 const statuses: Record<OmniActionPlan['status'], string> = {
   pending: 'Bestätigung ausstehend',

@@ -38,6 +38,29 @@ const personalFields = z
   })
   .strict()
   .refine((v) => Object.keys(v).length > 0)
+const appointmentFields = z
+  .object({
+    title: title.optional(),
+    description: z.string().max(10000).optional(),
+    location: z.string().max(300).optional(),
+    priority: priority.optional(),
+    startLocal: localTime.optional(),
+    endLocal: localTime.optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0)
+  // Zeiten nur im Paar: Eine Verschiebung ohne neues Ende würde die Dauer
+  // stillschweigend verändern.
+  .refine((v) => Boolean(v.startLocal) === Boolean(v.endLocal), {
+    message: 'Beginn und Ende müssen gemeinsam geändert werden.',
+  })
+/** Die fünf verknüpfbaren Arten aus der Verknüpfungs-Ebene. */
+const connectionEnd = z
+  .object({
+    kind: z.enum(['note', 'task', 'appointment', 'contact', 'project']),
+    id: z.uuid(),
+  })
+  .strict()
 const projectFields = z
   .object({
     title: title.optional(),
@@ -96,6 +119,44 @@ export const omniOperationSchema = z.discriminatedUnion('kind', [
       kind: z.literal('append_project_note'),
       projectId: z.uuid(),
       text: z.string().trim().min(1).max(5000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('update_appointment'),
+      appointmentId: z.uuid(),
+      changes: appointmentFields,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('create_note'),
+      title,
+      content: z.string().max(20000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('append_note'),
+      noteId: z.uuid(),
+      text: z.string().trim().min(1).max(5000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('create_contact'),
+      firstName: z.string().trim().min(1).max(100),
+      lastName: z.string().trim().max(100),
+      email: z.string().trim().max(255),
+      phone: z.string().trim().max(60),
+      company: z.string().trim().max(150),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('link_objects'),
+      source: connectionEnd,
+      target: connectionEnd,
     })
     .strict(),
 ])

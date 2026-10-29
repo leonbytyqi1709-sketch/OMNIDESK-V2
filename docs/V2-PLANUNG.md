@@ -637,3 +637,29 @@ Bis jetzt konnte nichts in der Anwendung eine Datei halten — außer Notizen, u
 **Geprüft.** Elf neue Tests: Hochladen und unverändertes Zurückgeben, ausführbare Inhalte, entschärfte Dateinamen, fremde Objekte und Anhänge, ungültige Angaben, Größengrenze, Anzahlgrenze, belegter Platz, Aufräumen nach dem Löschen des Objekts, Löschen eines Anhangs. 236 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** das Hochladen in der angemeldeten Sitzung.
+
+## Ausbaustufe 6 von 6: Omni darf handeln · 29.10.2026
+
+Omni konnte bisher persönliche Aufgaben, Projektaufgaben, Termine und Projektbeschreibungen. Notizen, Kontakte und alles Verbindende blieben außen vor. Jetzt reicht Omni über **alle Module**, die in den Stufen davor entstanden sind.
+
+**Neu im Blickfeld (Lesen):** Notizen, kommende Termine (ab sieben Tage rückwärts) und Kontakte, je bis 100 Einträge. Wie bisher sieht das Modell nur Titel und Kennungen — Notizinhalte, Terminbeschreibungen und Kontaktdaten bleiben serverseitig und dienen nur der Konfliktprüfung.
+
+**Neu erlaubt (Schreiben, immer erst nach Bestätigung):**
+- `create_note` und `append_note` — eine Notiz anlegen oder unten etwas anhängen, ohne Vorhandenes zu überschreiben.
+- `update_appointment` — einen Termin ändern. Beginn und Ende nur gemeinsam; sonst würde sich die Dauer stillschweigend verschieben.
+- `create_contact` — nur ausdrücklich genannte Angaben, der Rest bleibt leer.
+- `link_objects` — zwei Einträge verknüpfen, in derselben festen Reihenfolge wie in Stufe 1, damit keine Verbindung doppelt entsteht.
+
+**Am Verfahren hat sich nichts geändert:** Omni schlägt vor, zeigt jede Änderung im Vorher-Nachher und schreibt erst nach dem Bestätigen — alles oder nichts, mit Versionsprüfung auf jedem betroffenen Eintrag. Ein Vorschlag enthält höchstens fünf Schritte, und ein zwischenzeitlich geänderter Eintrag lässt den gesamten Vorschlag scheitern.
+
+**Technisch.** Die Ausführung läuft in einer Datenbankfunktion; sie heißt jetzt `omnidesk_execute_actions_v3`, weil die alte Version bei bestehenden Installationen nicht neu angelegt worden wäre. Dazu kommt `omnidesk_owns_entity` für die Besitzprüfung beim Verknüpfen — bewusst in PL/pgSQL, weil eine SQL-Funktion beim Anlegen sofort gegen alle genannten Tabellen geprüft würde und an einer fehlenden scheitern könnte. Die Verknüpfungstabelle wird von Omni mit angelegt; die Definition stammt unverändert aus Stufe 1.
+
+**Geprüft.** Zehn neue Tests: der erweiterte Kontext samt verborgener Inhalte, Anlegen und Anhängen von Notizen, die Vorschau, die nur die Ergänzung zeigt, das Verschieben eines Termins mit erhaltenen übrigen Feldern, abgelehntes Ende vor dem Beginn, Kontakt anlegen, feste Reihenfolge der Verknüpfung, Abweisung fremder und unsinniger Ziele und der Abbruch bei zwischenzeitlicher Änderung. Die sieben bestehenden Omni-Tests laufen unverändert weiter. 246 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** Omni in der angemeldeten Sitzung mit echtem KI-Anbieter. Ob das Modell die neuen Operationen gut trifft, zeigt erst die Nutzung.
+
+---
+
+## Die sechs Ausbaustufen · Stand 29.10.2026
+
+Alle sechs am 29.10.2026 beauftragten Stufen sind umgesetzt, dokumentiert und bereitgestellt: Verknüpfungen, Suche über alle Module, Zeit an Aufgaben, Serientermine, Dateianhänge und Omni über alle Module. 246 Tests bestanden. **Keine der sechs Stufen ist in der angemeldeten Sitzung geprüft** — das steht als Nächstes an und ist ausdrücklich Sache des Nutzers.
