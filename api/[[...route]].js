@@ -1120,8 +1120,8 @@ async function checkNeonSql(link, snapshot) {
     if (!snapshot?.endpoints?.some((endpoint) => hostname === endpoint.id || hostname === `${endpoint.id}-pooler`)) throw new Error("Endpoint mismatch");
     const sql10 = neon2(raw, { fetchOptions: { signal: AbortSignal.timeout(8e3) } });
     const started = performance.now();
-    const [rows] = await sql10.transaction([sql10`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
-    if (rows[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
+    const [rows2] = await sql10.transaction([sql10`select 1 as omnidesk_probe`], { readOnly: true, isolationLevel: "ReadCommitted" });
+    if (rows2[0]?.omnidesk_probe !== 1) throw new Error("Probe result invalid");
     return { checkedAt, status: "up", latencyMs: Math.round(performance.now() - started), message: null };
   } catch {
     return {
@@ -1220,10 +1220,10 @@ async function completeNeonCheck(link, token, snapshot, sqlCheck, conditions, so
 }
 async function monitoringMonitors(link, settings2) {
   const sql10 = monitoringSql();
-  const rows = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
+  const rows2 = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms,c.checked_at FROM uptime_monitors m
     LEFT JOIN LATERAL (SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     WHERE m.user_id=${link.userId} ORDER BY m.name LIMIT 500`;
-  return rows.map((row) => ({
+  return rows2.map((row) => ({
     id: String(row.id),
     name: String(row.name),
     active: Boolean(row.active),
@@ -1279,9 +1279,9 @@ async function readNeonMonitoring(link, days) {
 }
 async function acknowledgeNeonAlert(link, id) {
   const sql10 = monitoringSql();
-  const rows = await sql10`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
+  const rows2 = await sql10`UPDATE v2_neon_alerts SET acknowledged_at=COALESCE(acknowledged_at,now())
     WHERE id=${id} AND project_id=${link.projectId} AND user_id=${link.userId} AND resource_key=${resourceKey(link)} RETURNING id`;
-  return rows.length > 0;
+  return rows2.length > 0;
 }
 var resourceKey, neonDdl;
 var init_neon_storage = __esm({
@@ -1681,14 +1681,14 @@ async function runNeonScheduler(projectId) {
   const sql10 = monitoringSql();
   const links2 = readNeonLinks();
   const permitted = JSON.stringify(links2);
-  let rows;
+  let rows2;
   try {
     await sql10`UPDATE v2_neon_config c SET last_scheduler_at=now() FROM projects p
       WHERE p.id=c.project_id AND p.user_id=c.user_id AND (c.settings->>'enabled')::boolean
       AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
         AND (l->>'neonProjectId')||':'||(l->>'branchId')=c.resource_key)`;
-    rows = await sql10`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
+    rows2 = await sql10`SELECT c.project_id,c.user_id,c.resource_key FROM v2_neon_config c
       JOIN projects p ON p.id=c.project_id AND p.user_id=c.user_id
       WHERE (c.settings->>'enabled')::boolean AND (${projectId ?? null}::uuid IS NULL OR c.project_id=${projectId ?? null}::uuid)
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${permitted}::jsonb) l WHERE l->>'projectId'=c.project_id::text AND l->>'userId'=c.user_id
@@ -1700,7 +1700,7 @@ async function runNeonScheduler(projectId) {
     if (missingNeonStorage(error)) return { setupRequired: true, processed: 0, pending: false, failures: 0 };
     throw error;
   }
-  const eligible = rows.slice(0, 3).flatMap((row) => {
+  const eligible = rows2.slice(0, 3).flatMap((row) => {
     const link = links2.find((candidate) => candidate.userId === row.user_id && candidate.projectId === row.project_id && `${candidate.neonProjectId}:${candidate.branchId}` === row.resource_key);
     return link ? [link] : [];
   });
@@ -1712,7 +1712,7 @@ async function runNeonScheduler(projectId) {
   return {
     setupRequired: false,
     processed: eligible.length,
-    pending: rows.length > 3,
+    pending: rows2.length > 3,
     failures: results.filter((result) => result.status === "rejected" || result.value.outcome === "recorded_with_errors").length
   };
 }
@@ -1790,8 +1790,8 @@ var linkInput = z.object({
 });
 var linksRoute = new Hono();
 linksRoute.get("/", async (c) => {
-  const rows = await db.select().from(links).where(eq(links.userId, c.get("userId"))).orderBy(desc(links.createdAt));
-  return c.json(rows);
+  const rows2 = await db.select().from(links).where(eq(links.userId, c.get("userId"))).orderBy(desc(links.createdAt));
+  return c.json(rows2);
 });
 linksRoute.post("/", async (c) => {
   const parsed = linkInput.safeParse(await c.req.json());
@@ -1875,8 +1875,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
   const jobs = [];
   if (wanted("note"))
     jobs.push(
-      db.select({ id: notes.id, title: notes.title, content: notes.content, updatedAt: notes.updatedAt }).from(notes).where(where(eq2(notes.userId, userId), notes.title, notes.content)).orderBy(desc2(notes.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      db.select({ id: notes.id, title: notes.title, content: notes.content, updatedAt: notes.updatedAt }).from(notes).where(where(eq2(notes.userId, userId), notes.title, notes.content)).orderBy(desc2(notes.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "note",
             id: row.id,
@@ -1895,8 +1895,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
         description: tasks.description,
         status: tasks.status,
         dueDate: tasks.dueDate
-      }).from(tasks).where(where(eq2(tasks.userId, userId), tasks.title, tasks.description)).orderBy(desc2(tasks.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      }).from(tasks).where(where(eq2(tasks.userId, userId), tasks.title, tasks.description)).orderBy(desc2(tasks.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "task",
             id: row.id,
@@ -1922,8 +1922,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
           appointments.description,
           appointments.location
         )
-      ).orderBy(desc2(appointments.startsAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      ).orderBy(desc2(appointments.startsAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "appointment",
             id: row.id,
@@ -1958,8 +1958,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
           contacts.email,
           contacts.notes
         )
-      ).orderBy(desc2(contacts.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      ).orderBy(desc2(contacts.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "contact",
             id: row.id,
@@ -1977,8 +1977,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
         name: projects.name,
         description: projects.description,
         status: projects.status
-      }).from(projects).where(where(eq2(projects.userId, userId), projects.name, projects.description)).orderBy(desc2(projects.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      }).from(projects).where(where(eq2(projects.userId, userId), projects.name, projects.description)).orderBy(desc2(projects.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "project",
             id: row.id,
@@ -2000,8 +2000,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
         projectName: projects.name
       }).from(projectTasks).innerJoin(projects, eq2(projects.id, projectTasks.projectId)).where(
         where(eq2(projectTasks.userId, userId), projectTasks.title, projectTasks.description)
-      ).orderBy(desc2(projectTasks.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      ).orderBy(desc2(projectTasks.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "projectTask",
             id: row.id,
@@ -2014,8 +2014,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
     );
   if (wanted("link"))
     jobs.push(
-      db.select({ id: links.id, title: links.title, url: links.url, category: links.category }).from(links).where(where(eq2(links.userId, userId), links.title, links.url, links.category)).orderBy(desc2(links.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      db.select({ id: links.id, title: links.title, url: links.url, category: links.category }).from(links).where(where(eq2(links.userId, userId), links.title, links.url, links.category)).orderBy(desc2(links.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "link",
             id: row.id,
@@ -2033,8 +2033,8 @@ async function searchModules(userId, rawTerm, { kinds, perKind = SEARCH_PER_KIND
         title: commands.title,
         command: commands.command,
         category: commands.category
-      }).from(commands).where(where(eq2(commands.userId, userId), commands.title, commands.command, commands.category)).orderBy(desc2(commands.updatedAt)).limit(perKind).then((rows) => {
-        for (const row of rows)
+      }).from(commands).where(where(eq2(commands.userId, userId), commands.title, commands.command, commands.category)).orderBy(desc2(commands.updatedAt)).limit(perKind).then((rows2) => {
+        for (const row of rows2)
           hits.push({
             kind: "command",
             id: row.id,
@@ -2152,14 +2152,14 @@ async function listConnections(userId, end) {
     async () => {
       await ensureTable();
       const sql10 = monitoringSql();
-      const rows = await sql10.query(
+      const rows2 = await sql10.query(
         `SELECT id,a_kind,a_id,b_kind,b_id,created_at FROM v2_connections
          WHERE user_id=$1 AND ((a_kind=$2 AND a_id=$3) OR (b_kind=$2 AND b_id=$3))
          ORDER BY created_at DESC`,
         [userId, end.kind, end.id]
       );
-      if (rows.length === 0) return [];
-      const others = rows.map((row) => {
+      if (rows2.length === 0) return [];
+      const others = rows2.map((row) => {
         const mine = row.a_kind === end.kind && row.a_id === end.id;
         return {
           connectionId: row.id,
@@ -2216,11 +2216,11 @@ async function disconnect(userId, connectionId) {
   return withTable(
     async () => {
       const sql10 = monitoringSql();
-      const rows = await sql10.query(
+      const rows2 = await sql10.query(
         `DELETE FROM v2_connections WHERE id=$1::uuid AND user_id=$2 RETURNING id`,
         [connectionId, userId]
       );
-      return rows.length > 0;
+      return rows2.length > 0;
     },
     () => false
   );
@@ -2240,11 +2240,11 @@ async function searchEntities(userId, term, perKind = 5) {
 }
 async function ownsEntity(userId, end) {
   const sql10 = monitoringSql();
-  const rows = await sql10.query(
+  const rows2 = await sql10.query(
     `SELECT 1 AS found FROM ${SOURCES[end.kind].table} WHERE id=$1::uuid AND user_id=$2`,
     [end.id, userId]
   );
-  return rows.length > 0;
+  return rows2.length > 0;
 }
 
 // server/routes/connections.ts
@@ -2338,21 +2338,21 @@ async function recordFocusSession(userId, input) {
   const sql10 = monitoringSql();
   const seconds = Math.round(input.seconds);
   if (!input.target) {
-    const rows2 = await sql10.query(
+    const rows3 = await sql10.query(
       `INSERT INTO v2_focus_sessions(id,user_id,started_at,seconds)
        VALUES($1::uuid,$2,$3::timestamptz,$4) ON CONFLICT(id) DO NOTHING RETURNING id`,
       [input.id, userId, input.startedAt, seconds]
     );
-    return rows2[0] ? "created" : "known";
+    return rows3[0] ? "created" : "known";
   }
-  const rows = await sql10.query(
+  const rows2 = await sql10.query(
     `INSERT INTO v2_focus_sessions(id,user_id,started_at,seconds,target_kind,target_id)
      SELECT $1::uuid,$2,$3::timestamptz,$4,$5,$6::uuid
      WHERE EXISTS(SELECT 1 FROM ${TARGET_TABLE[input.target.kind]} WHERE id=$6::uuid AND user_id=$2)
      ON CONFLICT(id) DO NOTHING RETURNING id`,
     [input.id, userId, input.startedAt, seconds, input.target.kind, input.target.id]
   );
-  if (rows[0]) return "created";
+  if (rows2[0]) return "created";
   const known = await sql10.query(`SELECT id FROM v2_focus_sessions WHERE id=$1::uuid AND user_id=$2`, [
     input.id,
     userId
@@ -2362,11 +2362,11 @@ async function recordFocusSession(userId, input) {
 async function deleteFocusSession(userId, id) {
   try {
     const sql10 = monitoringSql();
-    const rows = await sql10.query(
+    const rows2 = await sql10.query(
       `DELETE FROM v2_focus_sessions WHERE id=$1::uuid AND user_id=$2 RETURNING id`,
       [id, userId]
     );
-    return rows.length > 0;
+    return rows2.length > 0;
   } catch (error) {
     if (missingNeonStorage(error)) return false;
     throw error;
@@ -2441,14 +2441,14 @@ async function focusForTarget(userId, kind, id) {
   try {
     await ensureTable2();
     const sql10 = monitoringSql();
-    const rows = await sql10.query(
+    const rows2 = await sql10.query(
       `SELECT COALESCE(SUM(seconds),0) AS seconds,COUNT(*) AS sessions
        FROM v2_focus_sessions WHERE user_id=$1 AND target_kind=$2 AND target_id=$3::uuid`,
       [userId, kind, id]
     );
     return {
-      seconds: toNumber(rows[0]?.seconds ?? 0),
-      sessions: toNumber(rows[0]?.sessions ?? 0)
+      seconds: toNumber(rows2[0]?.seconds ?? 0),
+      sessions: toNumber(rows2[0]?.sessions ?? 0)
     };
   } catch (error) {
     if (missingNeonStorage(error)) return { seconds: 0, sessions: 0 };
@@ -2526,11 +2526,11 @@ var retired = false;
 async function retireWorkingHistory() {
   if (retired) return;
   const sql10 = monitoringSql();
-  const rows = await sql10`SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND (
+  const rows2 = await sql10`SELECT 1 FROM pg_trigger t WHERE NOT t.tgisinternal AND (
     (t.tgname='v2_history_notes' AND t.tgrelid=to_regclass('public.notes')) OR
     (t.tgname='v2_history_tasks' AND t.tgrelid=to_regclass('public.tasks')) OR
     (t.tgname='v2_history_project_tasks' AND t.tgrelid=to_regclass('public.project_tasks'))) LIMIT 1`;
-  if (!rows.length) {
+  if (!rows2.length) {
     retired = true;
     return;
   }
@@ -2561,8 +2561,8 @@ notesRoute.use("*", async (c, next) => {
   await next();
 });
 notesRoute.get("/", async (c) => {
-  const rows = await db.select(rowFields).from(notes).where(eq4(notes.userId, c.get("userId"))).orderBy(desc3(notes.updatedAt));
-  return c.json(rows);
+  const rows2 = await db.select(rowFields).from(notes).where(eq4(notes.userId, c.get("userId"))).orderBy(desc3(notes.updatedAt));
+  return c.json(rows2);
 });
 notesRoute.post("/", async (c) => {
   const [row] = await db.insert(notes).values({ userId: c.get("userId") }).returning(rowFields);
@@ -2633,8 +2633,8 @@ tasksRoute.use("*", async (c, next) => {
   await next();
 });
 tasksRoute.get("/", async (c) => {
-  const rows = await db.select(rowFields2).from(tasks).where(eq5(tasks.userId, c.get("userId"))).orderBy(desc4(tasks.createdAt));
-  return c.json(rows);
+  const rows2 = await db.select(rowFields2).from(tasks).where(eq5(tasks.userId, c.get("userId"))).orderBy(desc4(tasks.createdAt));
+  return c.json(rows2);
 });
 tasksRoute.post("/", async (c) => {
   const parsed = taskInput.safeParse(await c.req.json());
@@ -2699,8 +2699,8 @@ var contactInput = z9.object({
 });
 var contactsRoute = new Hono7();
 contactsRoute.get("/", async (c) => {
-  const rows = await db.select().from(contacts).where(eq6(contacts.userId, c.get("userId"))).orderBy(asc(contacts.firstName), asc(contacts.lastName));
-  return c.json(rows);
+  const rows2 = await db.select().from(contacts).where(eq6(contacts.userId, c.get("userId"))).orderBy(asc(contacts.firstName), asc(contacts.lastName));
+  return c.json(rows2);
 });
 contactsRoute.post("/", async (c) => {
   const parsed = contactInput.safeParse(await c.req.json());
@@ -2735,6 +2735,239 @@ init_schema();
 import { and as and6, asc as asc2, eq as eq7 } from "drizzle-orm";
 import { Hono as Hono8 } from "hono";
 import { z as z10 } from "zod";
+
+// src/lib/recurrence.ts
+import { addDays, addMonths, addWeeks } from "date-fns";
+var RECURRENCE_FREQUENCIES = ["daily", "weekly", "monthly"];
+var MAX_OCCURRENCES = 200;
+var MAX_HORIZON_MONTHS = 24;
+function sameClockTime(reference, day2) {
+  const result = new Date(day2);
+  result.setHours(
+    reference.getHours(),
+    reference.getMinutes(),
+    reference.getSeconds(),
+    reference.getMilliseconds()
+  );
+  return result;
+}
+function occurrences(start, rule) {
+  const interval = Math.max(1, Math.min(52, Math.floor(rule.interval)));
+  const limit = rule.ends.type === "count" ? Math.max(1, Math.min(MAX_OCCURRENCES, Math.floor(rule.ends.count))) : MAX_OCCURRENCES;
+  const horizon = addMonths(start, MAX_HORIZON_MONTHS);
+  const until = rule.ends.type === "until" ? new Date(Math.min((/* @__PURE__ */ new Date(`${rule.ends.until}T23:59:59.999`)).getTime(), horizon.getTime())) : horizon;
+  const result = [];
+  const push = (date) => {
+    if (date.getTime() < start.getTime() || date.getTime() > until.getTime()) return;
+    result.push(date);
+  };
+  if (rule.frequency === "weekly") {
+    const days = rule.weekdays.length > 0 ? [...new Set(rule.weekdays)].sort() : [start.getDay()];
+    const weekStart = addDays(start, -start.getDay());
+    for (let week = 0; result.length < limit; week += 1) {
+      const base = addWeeks(weekStart, week * interval);
+      if (base.getTime() > until.getTime() + 7 * 864e5) break;
+      for (const day2 of days) {
+        if (result.length >= limit) break;
+        push(sameClockTime(start, addDays(base, day2)));
+      }
+      if (week > 520) break;
+    }
+  } else {
+    for (let step = 0; result.length < limit; step += 1) {
+      const date = rule.frequency === "daily" ? addDays(start, step * interval) : addMonths(start, step * interval);
+      if (date.getTime() > until.getTime()) break;
+      if (rule.frequency === "monthly" && date.getDate() !== start.getDate()) continue;
+      push(sameClockTime(start, date));
+      if (step > MAX_OCCURRENCES * 12) break;
+    }
+  }
+  return result.sort((one, other) => one.getTime() - other.getTime()).slice(0, limit);
+}
+
+// server/appointment-series.ts
+init_neon_storage();
+var seriesDdl = [
+  `CREATE TABLE IF NOT EXISTS v2_appointment_series (
+    id uuid PRIMARY KEY,
+    user_id text NOT NULL,
+    rule jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS v2_appointment_series_items (
+    appointment_id uuid PRIMARY KEY REFERENCES appointments(id) ON DELETE CASCADE,
+    series_id uuid NOT NULL REFERENCES v2_appointment_series(id) ON DELETE CASCADE,
+    user_id text NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS v2_series_items_series ON v2_appointment_series_items(series_id)`
+];
+var prepared3 = null;
+async function ensureSeriesTables() {
+  prepared3 ??= (async () => {
+    try {
+      const sql10 = monitoringSql();
+      const [state2] = await sql10`SELECT to_regclass('v2_appointment_series_items') IS NOT NULL AS ready`;
+      if (state2?.ready) return;
+      await sql10.transaction([
+        sql10`SELECT pg_advisory_xact_lock(184730036)`,
+        ...seriesDdl.map((statement) => sql10.query(statement))
+      ]);
+    } catch (error) {
+      prepared3 = null;
+      throw error;
+    }
+  })();
+  return prepared3;
+}
+async function seriesOf(userId, appointmentIds) {
+  if (appointmentIds.length === 0) return /* @__PURE__ */ new Map();
+  try {
+    await ensureSeriesTables();
+    const sql10 = monitoringSql();
+    const rows2 = await sql10.query(
+      `SELECT appointment_id,series_id FROM v2_appointment_series_items
+       WHERE user_id=$1 AND appointment_id IN (${appointmentIds.map((_, index20) => `$${index20 + 2}::uuid`).join(",")})`,
+      [userId, ...appointmentIds]
+    );
+    return new Map(rows2.map((row) => [row.appointment_id, row.series_id]));
+  } catch (error) {
+    if (missingNeonStorage(error)) return /* @__PURE__ */ new Map();
+    throw error;
+  }
+}
+async function seriesForAppointment(userId, appointmentId) {
+  try {
+    await ensureSeriesTables();
+    const sql10 = monitoringSql();
+    const rows2 = await sql10.query(
+      `SELECT s.id,s.rule FROM v2_appointment_series_items i
+       JOIN v2_appointment_series s ON s.id=i.series_id AND s.user_id=i.user_id
+       WHERE i.appointment_id=$1::uuid AND i.user_id=$2`,
+      [appointmentId, userId]
+    );
+    if (!rows2[0]) return null;
+    const rule = typeof rows2[0].rule === "string" ? JSON.parse(rows2[0].rule) : rows2[0].rule;
+    return { seriesId: rows2[0].id, rule };
+  } catch (error) {
+    if (missingNeonStorage(error)) return null;
+    throw error;
+  }
+}
+function rows(fields, userId, starts) {
+  const span = new Date(fields.endsAt).getTime() - new Date(fields.startsAt).getTime();
+  return starts.map((start) => ({
+    id: crypto.randomUUID(),
+    userId,
+    startsAt: start,
+    endsAt: new Date(start.getTime() + span)
+  }));
+}
+var values = (entry, fields) => [
+  entry.id,
+  entry.userId,
+  fields.title,
+  fields.description,
+  fields.location,
+  fields.priority,
+  entry.startsAt.toISOString(),
+  entry.endsAt.toISOString()
+];
+var COLUMNS = 8;
+function insertStatements(seriesId, userId, fields, starts) {
+  const entries = rows(fields, userId, starts);
+  const appointmentParams = [];
+  const appointmentPlaceholders = entries.map((entry, index20) => {
+    appointmentParams.push(...values(entry, fields));
+    const base = index20 * COLUMNS;
+    return `($${base + 1}::uuid,$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7}::timestamptz,$${base + 8}::timestamptz)`;
+  }).join(",");
+  const itemParams = [seriesId, userId];
+  const itemPlaceholders = entries.map((entry, index20) => {
+    itemParams.push(entry.id);
+    return `($${index20 + 3}::uuid,$1::uuid,$2)`;
+  }).join(",");
+  return {
+    entries,
+    appointments: {
+      text: `INSERT INTO appointments(id,user_id,title,description,location,priority,starts_at,ends_at)
+             VALUES ${appointmentPlaceholders}`,
+      params: appointmentParams
+    },
+    items: {
+      text: `INSERT INTO v2_appointment_series_items(appointment_id,series_id,user_id) VALUES ${itemPlaceholders}`,
+      params: itemParams
+    }
+  };
+}
+async function createSeries(userId, fields, rule) {
+  await ensureSeriesTables();
+  const starts = occurrences(new Date(fields.startsAt), rule);
+  if (starts.length === 0) throw new Error("Die Serie enth\xE4lt keinen einzigen Termin.");
+  const seriesId = crypto.randomUUID();
+  const statements = insertStatements(seriesId, userId, fields, starts);
+  const sql10 = monitoringSql();
+  await sql10.transaction([
+    sql10.query(`INSERT INTO v2_appointment_series(id,user_id,rule) VALUES($1::uuid,$2,$3::jsonb)`, [
+      seriesId,
+      userId,
+      JSON.stringify(rule)
+    ]),
+    sql10.query(statements.appointments.text, statements.appointments.params),
+    sql10.query(statements.items.text, statements.items.params)
+  ]);
+  return { seriesId, created: starts.length, firstId: statements.entries[0].id };
+}
+async function updateSeriesFrom(userId, seriesId, fromStartsAt, fields, rule) {
+  await ensureSeriesTables();
+  const starts = occurrences(new Date(fields.startsAt), rule);
+  if (starts.length === 0) throw new Error("Die Serie enth\xE4lt keinen einzigen Termin.");
+  if (starts.length > MAX_OCCURRENCES) starts.length = MAX_OCCURRENCES;
+  const statements = insertStatements(seriesId, userId, fields, starts);
+  const sql10 = monitoringSql();
+  await sql10.transaction([
+    sql10.query(
+      `DELETE FROM appointments a USING v2_appointment_series_items i
+       WHERE i.appointment_id=a.id AND i.series_id=$1::uuid AND i.user_id=$2
+         AND a.user_id=$2 AND a.starts_at >= $3::timestamptz`,
+      [seriesId, userId, fromStartsAt]
+    ),
+    sql10.query(`UPDATE v2_appointment_series SET rule=$3::jsonb,updated_at=now() WHERE id=$1::uuid AND user_id=$2`, [
+      seriesId,
+      userId,
+      JSON.stringify(rule)
+    ]),
+    sql10.query(statements.appointments.text, statements.appointments.params),
+    sql10.query(statements.items.text, statements.items.params)
+  ]);
+  return { seriesId, created: starts.length, firstId: statements.entries[0].id };
+}
+async function deleteSeriesFrom(userId, seriesId, fromStartsAt) {
+  await ensureSeriesTables();
+  const sql10 = monitoringSql();
+  const removed = await sql10.query(
+    `DELETE FROM appointments a USING v2_appointment_series_items i
+     WHERE i.appointment_id=a.id AND i.series_id=$1::uuid AND i.user_id=$2
+       AND a.user_id=$2 AND a.starts_at >= $3::timestamptz RETURNING a.id`,
+    [seriesId, userId, fromStartsAt]
+  );
+  await sql10.query(
+    `DELETE FROM v2_appointment_series s WHERE s.id=$1::uuid AND s.user_id=$2
+       AND NOT EXISTS(SELECT 1 FROM v2_appointment_series_items i WHERE i.series_id=s.id)`,
+    [seriesId, userId]
+  );
+  return removed.length;
+}
+
+// server/routes/appointments.ts
+var recurrenceInput = z10.object({
+  frequency: z10.enum(RECURRENCE_FREQUENCIES),
+  interval: z10.number().int().min(1).max(52).default(1),
+  weekdays: z10.array(z10.number().int().min(0).max(6)).max(7).default([]),
+  ends: z10.discriminatedUnion("type", [
+    z10.object({ type: z10.literal("count"), count: z10.number().int().min(1).max(MAX_OCCURRENCES) }),
+    z10.object({ type: z10.literal("until"), until: z10.iso.date() })
+  ])
+});
+var scopeOf = (c) => c.req.query("scope") === "series" ? "series" : "single";
 var appointmentInput = z10.object({
   title: z10.string().trim().min(1, "Titel fehlt").max(300),
   description: z10.string().max(1e4).default(""),
@@ -2748,13 +2981,29 @@ var appointmentInput = z10.object({
 });
 var appointmentsRoute = new Hono8();
 appointmentsRoute.get("/", async (c) => {
-  const rows = await db.select().from(appointments).where(eq7(appointments.userId, c.get("userId"))).orderBy(asc2(appointments.startsAt));
-  return c.json(rows);
+  const userId = c.get("userId");
+  const rows2 = await db.select().from(appointments).where(eq7(appointments.userId, userId)).orderBy(asc2(appointments.startsAt));
+  const series = await seriesOf(userId, rows2.map((row) => row.id));
+  return c.json(rows2.map((row) => ({ ...row, seriesId: series.get(row.id) ?? null })));
 });
 appointmentsRoute.post("/", async (c) => {
-  const parsed = appointmentInput.safeParse(await c.req.json());
+  const body = await c.req.json().catch(() => null);
+  const parsed = appointmentInput.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: z10.prettifyError(parsed.error) }, 400);
+  }
+  if (body?.recurrence) {
+    const rule = recurrenceInput.safeParse(body.recurrence);
+    if (!rule.success) return c.json({ error: z10.prettifyError(rule.error) }, 400);
+    if (occurrences(new Date(parsed.data.startsAt), rule.data).length === 0)
+      return c.json({ error: "Mit dieser Wiederholung entsteht kein einziger Termin." }, 400);
+    const result = await createSeries(
+      c.get("userId"),
+      { ...parsed.data, description: parsed.data.description, location: parsed.data.location },
+      rule.data
+    );
+    const [first] = await db.select().from(appointments).where(and6(eq7(appointments.id, result.firstId), eq7(appointments.userId, c.get("userId"))));
+    return c.json({ ...first, seriesId: result.seriesId, created: result.created }, 201);
   }
   const { startsAt, endsAt, ...rest } = parsed.data;
   const [row] = await db.insert(appointments).values({
@@ -2765,10 +3014,40 @@ appointmentsRoute.post("/", async (c) => {
   }).returning();
   return c.json(row, 201);
 });
+appointmentsRoute.get("/:id/series", async (c) => {
+  const parsed = z10.uuid().safeParse(c.req.param("id"));
+  if (!parsed.success) return c.json({ error: "Ung\xFCltige Kennung" }, 400);
+  const series = await seriesForAppointment(c.get("userId"), parsed.data);
+  if (!series) return c.json({ error: "Dieser Termin geh\xF6rt zu keiner Serie" }, 404);
+  return c.json(series);
+});
 appointmentsRoute.put("/:id", async (c) => {
-  const parsed = appointmentInput.safeParse(await c.req.json());
+  const body = await c.req.json().catch(() => null);
+  const parsed = appointmentInput.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: z10.prettifyError(parsed.error) }, 400);
+  }
+  const userId = c.get("userId");
+  if (scopeOf(c) === "series") {
+    const id = z10.uuid().safeParse(c.req.param("id"));
+    if (!id.success) return c.json({ error: "Ung\xFCltige Kennung" }, 400);
+    const [current] = await db.select({ startsAt: appointments.startsAt }).from(appointments).where(and6(eq7(appointments.id, id.data), eq7(appointments.userId, userId)));
+    if (!current) return c.json({ error: "Termin nicht gefunden" }, 404);
+    const series = await seriesForAppointment(userId, id.data);
+    if (!series) return c.json({ error: "Dieser Termin geh\xF6rt zu keiner Serie" }, 404);
+    const rule = recurrenceInput.safeParse(body?.recurrence ?? series.rule);
+    if (!rule.success) return c.json({ error: z10.prettifyError(rule.error) }, 400);
+    if (occurrences(new Date(parsed.data.startsAt), rule.data).length === 0)
+      return c.json({ error: "Mit dieser Wiederholung entsteht kein einziger Termin." }, 400);
+    const result = await updateSeriesFrom(
+      userId,
+      series.seriesId,
+      current.startsAt.toISOString(),
+      parsed.data,
+      rule.data
+    );
+    const [first] = await db.select().from(appointments).where(and6(eq7(appointments.id, result.firstId), eq7(appointments.userId, userId)));
+    return c.json({ ...first, seriesId: result.seriesId, created: result.created });
   }
   const { startsAt, endsAt, ...rest } = parsed.data;
   const [row] = await db.update(appointments).set({
@@ -2786,6 +3065,17 @@ appointmentsRoute.put("/:id", async (c) => {
   return c.json(row);
 });
 appointmentsRoute.delete("/:id", async (c) => {
+  if (scopeOf(c) === "series") {
+    const id = z10.uuid().safeParse(c.req.param("id"));
+    if (!id.success) return c.json({ error: "Ung\xFCltige Kennung" }, 400);
+    const userId = c.get("userId");
+    const [current] = await db.select({ startsAt: appointments.startsAt }).from(appointments).where(and6(eq7(appointments.id, id.data), eq7(appointments.userId, userId)));
+    if (!current) return c.json({ error: "Termin nicht gefunden" }, 404);
+    const series = await seriesForAppointment(userId, id.data);
+    if (!series) return c.json({ error: "Dieser Termin geh\xF6rt zu keiner Serie" }, 404);
+    const removed = await deleteSeriesFrom(userId, series.seriesId, current.startsAt.toISOString());
+    return c.json({ ok: true, removed });
+  }
   const [row] = await db.delete(appointments).where(
     and6(
       eq7(appointments.id, c.req.param("id")),
@@ -2809,8 +3099,8 @@ var commandInput = z11.object({
 });
 var commandsRoute = new Hono9();
 commandsRoute.get("/", async (c) => {
-  const rows = await db.select().from(commands).where(eq8(commands.userId, c.get("userId"))).orderBy(asc3(commands.category), asc3(commands.title));
-  return c.json(rows);
+  const rows2 = await db.select().from(commands).where(eq8(commands.userId, c.get("userId"))).orderBy(asc3(commands.category), asc3(commands.title));
+  return c.json(rows2);
 });
 commandsRoute.post("/", async (c) => {
   const parsed = commandInput.safeParse(await c.req.json());
@@ -2826,8 +3116,8 @@ commandsRoute.post("/bulk", async (c) => {
     return c.json({ error: z11.prettifyError(parsed.error) }, 400);
   }
   if (parsed.data.length === 0) return c.json([]);
-  const rows = await db.insert(commands).values(parsed.data.map((d) => ({ ...d, userId: c.get("userId") }))).returning();
-  return c.json(rows, 201);
+  const rows2 = await db.insert(commands).values(parsed.data.map((d) => ({ ...d, userId: c.get("userId") }))).returning();
+  return c.json(rows2, 201);
 });
 commandsRoute.put("/:id", async (c) => {
   const parsed = commandInput.safeParse(await c.req.json());
@@ -2910,8 +3200,8 @@ projectsRoute.use("*", async (c, next) => {
   await next();
 });
 projectsRoute.get("/", async (c) => {
-  const rows = await db.select().from(projects).where(eq9(projects.userId, c.get("userId"))).orderBy(desc5(projects.createdAt));
-  return c.json(rows);
+  const rows2 = await db.select().from(projects).where(eq9(projects.userId, c.get("userId"))).orderBy(desc5(projects.createdAt));
+  return c.json(rows2);
 });
 projectsRoute.get("/:id", async (c) => {
   const userId = c.get("userId");
@@ -3089,8 +3379,8 @@ vaultRoute.post("/meta", async (c) => {
   return c.json(row, 201);
 });
 vaultRoute.get("/entries", async (c) => {
-  const rows = await db.select().from(vaultEntries).where(eq10(vaultEntries.userId, c.get("userId"))).orderBy(desc6(vaultEntries.updatedAt));
-  return c.json(rows);
+  const rows2 = await db.select().from(vaultEntries).where(eq10(vaultEntries.userId, c.get("userId"))).orderBy(desc6(vaultEntries.updatedAt));
+  return c.json(rows2);
 });
 vaultRoute.post("/entries", async (c) => {
   const parsed = entryInput.safeParse(await c.req.json());
@@ -3965,7 +4255,7 @@ integrationsRoute.get("/google/auth-url", (c) => {
   }
 });
 integrationsRoute.get("/accounts", async (c) => {
-  const rows = await db.select({
+  const rows2 = await db.select({
     id: connectedAccounts.id,
     userId: connectedAccounts.userId,
     provider: connectedAccounts.provider,
@@ -3979,7 +4269,7 @@ integrationsRoute.get("/accounts", async (c) => {
     createdAt: connectedAccounts.createdAt,
     updatedAt: connectedAccounts.updatedAt
   }).from(connectedAccounts).where(eq16(connectedAccounts.userId, c.get("userId"))).orderBy(desc7(connectedAccounts.createdAt));
-  const sanitized = rows.map((r) => ({
+  const sanitized = rows2.map((r) => ({
     ...r,
     hasRefreshToken: Boolean(r.hasRefreshToken)
   }));
@@ -4564,8 +4854,8 @@ async function ownsProject2(link) {
 }
 async function ownsMonitors(link, ids) {
   if (!ids.length) return true;
-  const rows = await db.select({ id: uptimeMonitors.id }).from(uptimeMonitors).where(and19(eq22(uptimeMonitors.userId, link.userId), inArray5(uptimeMonitors.id, ids)));
-  return rows.length === ids.length;
+  const rows2 = await db.select({ id: uptimeMonitors.id }).from(uptimeMonitors).where(and19(eq22(uptimeMonitors.userId, link.userId), inArray5(uptimeMonitors.id, ids)));
+  return rows2.length === ids.length;
 }
 function createNeonHistoryRoute(dependencies = { ownsProject: ownsProject2, ownsMonitors, initializeNeonStorage, saveNeonSettings, readNeonMonitoring, acknowledgeNeonAlert, runNeonCheck }) {
   const route = new Hono19();
@@ -4771,17 +5061,17 @@ async function readSecurityOverview(userId) {
   const sql10 = monitoringSql();
   const connectionsResult = await Promise.allSettled([securityConnections(userId)]);
   const connections = connectionsResult[0].status === "fulfilled" ? connectionsResult[0].value : [];
-  let rows = [];
+  let rows2 = [];
   let setupRequired = false;
   try {
-    rows = await sql10`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
+    rows2 = await sql10`SELECT * FROM v2_account_security WHERE user_id=${userId} ORDER BY created_at DESC LIMIT 501`;
   } catch (error) {
     if (!missing(error)) throw error;
     setupRequired = true;
   }
   return {
     setupRequired,
-    accounts: rows.map((row) => publicSecurityAccount(row, connections)),
+    accounts: rows2.map((row) => publicSecurityAccount(row, connections)),
     connections,
     connectionsUnavailable: connectionsResult[0].status === "rejected",
     checkedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -4823,11 +5113,11 @@ async function updateSecurityAccount(userId, id, version, input) {
   const sql10 = monitoringSql();
   const value = await validatedDetails(userId, input);
   try {
-    const rows = await sql10`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
+    const rows2 = await sql10`UPDATE v2_account_security SET details=${JSON.stringify(value.details)}::jsonb,connected_account_id=${value.connectedAccountId}::uuid,
       manual_reviewed_at=CASE WHEN ${value.reviewed} THEN now() END, updated_at=now(),version=version+1
       WHERE id=${id} AND user_id=${userId} AND version=${version}
         AND (${value.connectedAccountId}::uuid IS NULL OR EXISTS (SELECT 1 FROM connected_accounts WHERE id=${value.connectedAccountId}::uuid AND user_id=${userId})) RETURNING id`;
-    if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+    if (!rows2.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
     return { id };
   } catch (error) {
     return translateStorageError(error);
@@ -4835,14 +5125,14 @@ async function updateSecurityAccount(userId, id, version, input) {
 }
 async function reviewSecurityAccount(userId, id, version) {
   const sql10 = monitoringSql();
-  const rows = await sql10`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
-  if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+  const rows2 = await sql10`UPDATE v2_account_security SET manual_reviewed_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows2.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 async function deleteSecurityAccount(userId, id, version) {
   const sql10 = monitoringSql();
-  const rows = await sql10`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
-  if (!rows.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+  const rows2 = await sql10`DELETE FROM v2_account_security WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows2.length) throw new SecurityAccountError("Eintrag nicht mehr verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 
@@ -4961,9 +5251,9 @@ async function previousBriefingVisit(userId, visitId) {
 }
 async function saveBriefingPreferences(userId, version, preferences) {
   const sql10 = monitoringSql();
-  const rows = await sql10`UPDATE v2_briefing_state SET preferences=${JSON.stringify(preferences)}::jsonb,version=version+1,
+  const rows2 = await sql10`UPDATE v2_briefing_state SET preferences=${JSON.stringify(preferences)}::jsonb,version=version+1,
     ai_digest=NULL,ai_message=NULL,ai_generated_at=NULL,lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND version=${version} RETURNING user_id`;
-  if (!rows.length) throw new SecurityAccountError("Einstellungen zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+  if (!rows2.length) throw new SecurityAccountError("Einstellungen zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
 }
 
 // server/briefing-data.ts
@@ -4973,7 +5263,7 @@ var item = (id, title2, href, kind, state2, at, reasons) => ({ id, title: String
 var partial = (source2, status) => ({ source: source2, status, counts: {}, items: [], changes: null });
 async function loadBriefingTasks(ctx) {
   const sql10 = monitoringSql(), { userId, timeZone, day: day2, previousVisitAt: since } = ctx;
-  const [totals, rows] = await sql10.transaction([
+  const [totals, rows2] = await sql10.transaction([
     sql10`SELECT count(*) FILTER(WHERE status<>'done')::int AS open,
       count(*) FILTER(WHERE status<>'done' AND (due_date AT TIME ZONE ${timeZone})::date<${day2}::date)::int AS overdue,
       count(*) FILTER(WHERE status<>'done' AND (due_date AT TIME ZONE ${timeZone})::date=${day2}::date)::int AS today,
@@ -4987,7 +5277,7 @@ async function loadBriefingTasks(ctx) {
     status: "ready",
     counts: { open: number(totals[0].open), overdue: number(totals[0].overdue), today: number(totals[0].today) },
     changes: totals[0].changes == null ? null : number(totals[0].changes),
-    items: rows.map((row) => {
+    items: rows2.map((row) => {
       const dueDay = row.due_date ? briefingDay(row.due_date, timeZone) : null;
       return item(
         `task:${row.id}`,
@@ -5037,19 +5327,19 @@ async function loadBriefingProjects(ctx) {
 }
 async function loadBriefingCalendar(ctx) {
   const sql10 = monitoringSql(), end = briefingDayStart(addBriefingDays(ctx.day, 7), ctx.timeZone), now = ctx.now.toISOString();
-  const [counts, rows] = await sql10.transaction([
+  const [counts, rows2] = await sql10.transaction([
     sql10`SELECT count(*)::int AS upcoming,count(*) FILTER(WHERE (starts_at AT TIME ZONE ${ctx.timeZone})::date=${ctx.day}::date)::int AS today,
       CASE WHEN ${ctx.previousVisitAt}::timestamptz IS NULL THEN NULL ELSE count(*) FILTER(WHERE updated_at>${ctx.previousVisitAt}::timestamptz)::int END AS changes FROM appointments WHERE user_id=${ctx.userId} AND ends_at>${now}::timestamptz AND starts_at<${end}::timestamptz`,
     sql10`SELECT id,title,starts_at,ends_at FROM appointments WHERE user_id=${ctx.userId} AND ends_at>${now}::timestamptz AND starts_at<${end}::timestamptz ORDER BY starts_at,id LIMIT 12`
   ], { isolationLevel: "RepeatableRead", readOnly: true });
-  return { source: "calendar", status: "ready", counts: { upcoming: number(counts[0].upcoming), todayAppointments: number(counts[0].today) }, changes: counts[0].changes == null ? null : number(counts[0].changes), items: rows.map((row) => item(`appointment:${row.id}`, row.title, `/calendar?appointment=${row.id}`, "Termin", new Date(row.starts_at) <= ctx.now ? "ongoing" : "upcoming", row.starts_at, ["upcoming"])) };
+  return { source: "calendar", status: "ready", counts: { upcoming: number(counts[0].upcoming), todayAppointments: number(counts[0].today) }, changes: counts[0].changes == null ? null : number(counts[0].changes), items: rows2.map((row) => item(`appointment:${row.id}`, row.title, `/calendar?appointment=${row.id}`, "Termin", new Date(row.starts_at) <= ctx.now ? "ongoing" : "upcoming", row.starts_at, ["upcoming"])) };
 }
 async function loadBriefingUptime(ctx) {
   const sql10 = monitoringSql();
-  const rows = await sql10`SELECT m.id,m.name,c.status,c.checked_at,c.ssl_days_left FROM uptime_monitors m LEFT JOIN LATERAL
+  const rows2 = await sql10`SELECT m.id,m.name,c.status,c.checked_at,c.ssl_days_left FROM uptime_monitors m LEFT JOIN LATERAL
     (SELECT status,checked_at,ssl_days_left FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     WHERE m.user_id=${ctx.userId} AND m.active ORDER BY m.id`;
-  const mapped = rows.map((row) => {
+  const mapped = rows2.map((row) => {
     const age = row.checked_at ? ctx.now.getTime() - new Date(row.checked_at).getTime() : Infinity;
     const stale = age > 6e5 || age < -6e4, down = !stale && row.status === "down", ssl = !stale && row.ssl_days_left != null && row.ssl_days_left < 14;
     return { row, stale, down, ssl };
@@ -5206,9 +5496,9 @@ async function callBriefingAI(snapshot) {
 }
 async function claimBriefingAI(userId, token) {
   const sql10 = monitoringSql();
-  const rows = await sql10`UPDATE v2_briefing_state SET lease_token=${token},lease_until=now()+interval '40 seconds',next_ai_at=now()+interval '10 minutes'
+  const rows2 = await sql10`UPDATE v2_briefing_state SET lease_token=${token},lease_until=now()+interval '40 seconds',next_ai_at=now()+interval '10 minutes'
     WHERE user_id=${userId} AND (lease_until IS NULL OR lease_until<now()) AND (next_ai_at IS NULL OR next_ai_at<=now()) RETURNING user_id`;
-  return rows.length > 0;
+  return rows2.length > 0;
 }
 async function finishBriefingAI(userId, token, digest, message) {
   const sql10 = monitoringSql();
@@ -5216,8 +5506,8 @@ async function finishBriefingAI(userId, token, digest, message) {
     await sql10`UPDATE v2_briefing_state SET lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token}`;
     return false;
   }
-  const rows = await sql10`UPDATE v2_briefing_state SET ai_digest=${digest},ai_message=${JSON.stringify(message)}::jsonb,ai_generated_at=now(),lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token} RETURNING user_id`;
-  return rows.length > 0;
+  const rows2 = await sql10`UPDATE v2_briefing_state SET ai_digest=${digest},ai_message=${JSON.stringify(message)}::jsonb,ai_generated_at=now(),lease_token=NULL,lease_until=NULL WHERE user_id=${userId} AND lease_token=${token} RETURNING user_id`;
+  return rows2.length > 0;
 }
 function createBriefingMessageService(dependencies = { readBriefingState, claimBriefingAI, callBriefingAI, finishBriefingAI }) {
   return async (userId, snapshot) => {
@@ -5327,11 +5617,11 @@ async function readAccountMap(userId) {
   let setupRequired = false;
   try {
     const sql10 = monitoringSql();
-    const rows = await sql10`SELECT r.* FROM v2_account_relations r
+    const rows2 = await sql10`SELECT r.* FROM v2_account_relations r
       JOIN v2_account_security a ON a.id=r.from_account_id AND a.user_id=r.user_id
       JOIN v2_account_security b ON b.id=r.to_account_id AND b.user_id=r.user_id
       WHERE r.user_id=${userId} ORDER BY r.created_at DESC LIMIT 1001`;
-    relations = rows.map((row) => ({
+    relations = rows2.map((row) => ({
       id: String(row.id),
       fromAccountId: String(row.from_account_id),
       toAccountId: String(row.to_account_id),
@@ -5373,11 +5663,11 @@ async function createAccountRelation(userId, relation) {
 async function updateAccountRelation(userId, id, version, relation) {
   const sql10 = monitoringSql();
   try {
-    const rows = await sql10`UPDATE v2_account_relations r SET from_account_id=a.id,to_account_id=b.id,type=${relation.type},login_dependency=${relation.loginDependency},
+    const rows2 = await sql10`UPDATE v2_account_relations r SET from_account_id=a.id,to_account_id=b.id,type=${relation.type},login_dependency=${relation.loginDependency},
       manual_reviewed_at=CASE WHEN ${relation.reviewed} THEN now() END,updated_at=now(),version=r.version+1
       FROM v2_account_security a,v2_account_security b WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version}
         AND a.id=${relation.fromAccountId} AND b.id=${relation.toAccountId} AND a.user_id=${userId} AND b.user_id=${userId} AND a.id<>b.id RETURNING r.id`;
-    if (!rows.length) throw new SecurityAccountError("Verbindung oder Konten nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+    if (!rows2.length) throw new SecurityAccountError("Verbindung oder Konten nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
     return { id };
   } catch (error) {
     return translate(error);
@@ -5385,9 +5675,9 @@ async function updateAccountRelation(userId, id, version, relation) {
 }
 async function deleteAccountRelation(userId, id, version) {
   const sql10 = monitoringSql();
-  const rows = await sql10`DELETE FROM v2_account_relations r USING v2_account_security a,v2_account_security b
+  const rows2 = await sql10`DELETE FROM v2_account_relations r USING v2_account_security a,v2_account_security b
     WHERE r.id=${id} AND r.user_id=${userId} AND r.version=${version} AND a.id=r.from_account_id AND b.id=r.to_account_id AND a.user_id=${userId} AND b.user_id=${userId} RETURNING r.id`;
-  if (!rows.length) throw new SecurityAccountError("Verbindung nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
+  if (!rows2.length) throw new SecurityAccountError("Verbindung nicht verf\xFCgbar oder zwischenzeitlich ge\xE4ndert. Bitte neu laden.", 409);
   return { id };
 }
 
@@ -5577,8 +5867,8 @@ async function fetchGitHubSnapshot(name) {
   };
   const keys = Object.keys(loaders2);
   const results = await Promise.allSettled(keys.map((key) => loaders2[key]()));
-  const values2 = Object.fromEntries(keys.map((key, i) => [key, results[i].status === "fulfilled" ? results[i].value : null]));
-  return { repository, ...values2, checkedAt: (/* @__PURE__ */ new Date()).toISOString(), unavailable: keys.filter((_key, i) => results[i].status === "rejected"), limit: 20 };
+  const values3 = Object.fromEntries(keys.map((key, i) => [key, results[i].status === "fulfilled" ? results[i].value : null]));
+  return { repository, ...values3, checkedAt: (/* @__PURE__ */ new Date()).toISOString(), unavailable: keys.filter((_key, i) => results[i].status === "rejected"), limit: 20 };
 }
 
 // server/github-links.ts
@@ -5596,9 +5886,9 @@ async function ownsGitHubProject(userId, projectId) {
 async function listGitHubLinks(userId) {
   const sql10 = monitoringSql();
   try {
-    const rows = await sql10`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
+    const rows2 = await sql10`SELECT l.project_id AS "projectId", l.repository FROM v2_github_links l
       JOIN projects p ON p.id=l.project_id AND p.user_id=l.user_id WHERE l.user_id=${userId}`;
-    return rows;
+    return rows2;
   } catch (error) {
     if (error.code === "42P01") return [];
     throw error;
@@ -5611,10 +5901,10 @@ async function saveGitHubLink(userId, projectId, repository) {
   const sql10 = monitoringSql();
   const [exists] = await sql10`SELECT to_regclass('v2_github_links') IS NOT NULL AS ready`;
   if (!exists?.ready) await sql10.transaction([sql10`SELECT pg_advisory_xact_lock(184730020)`, sql10.query(githubLinksDdl)]);
-  const rows = await sql10`INSERT INTO v2_github_links(project_id,user_id,repository)
+  const rows2 = await sql10`INSERT INTO v2_github_links(project_id,user_id,repository)
     SELECT id,user_id,${repository} FROM projects WHERE id=${projectId} AND user_id=${userId}
     ON CONFLICT(project_id) DO UPDATE SET user_id=EXCLUDED.user_id,repository=EXCLUDED.repository,updated_at=now() RETURNING project_id`;
-  return rows.length > 0;
+  return rows2.length > 0;
 }
 async function deleteGitHubLink(userId, projectId) {
   const sql10 = monitoringSql();
@@ -6115,8 +6405,8 @@ async function createOmniMemory(userId, input) {
 }
 async function updateOmniMemory(userId, id, input) {
   const sql10 = monitoringSql();
-  const rows = await sql10`WITH changed AS(UPDATE v2_omni_memories SET title=${input.title},content=${input.content},category=${input.category},project_id=${input.projectId},pinned=${input.pinned},archived=${input.archived},version=version+1,updated_at=clock_timestamp() WHERE id=${id} AND user_id=${userId} AND version=${input.version} AND (${input.projectId}::uuid IS NULL OR project_id=${input.projectId}::uuid OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND user_id=${userId})) RETURNING *) INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id`;
-  if (!rows.length)
+  const rows2 = await sql10`WITH changed AS(UPDATE v2_omni_memories SET title=${input.title},content=${input.content},category=${input.category},project_id=${input.projectId},pinned=${input.pinned},archived=${input.archived},version=version+1,updated_at=clock_timestamp() WHERE id=${id} AND user_id=${userId} AND version=${input.version} AND (${input.projectId}::uuid IS NULL OR project_id=${input.projectId}::uuid OR EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND user_id=${userId})) RETURNING *) INSERT INTO v2_omni_memory_versions(memory_id,user_id,version,title,content,category,project_id,pinned,archived) SELECT id,user_id,version,title,content,category,project_id,pinned,archived FROM changed RETURNING memory_id`;
+  if (!rows2.length)
     throw new OmniMemoryError(
       "Eintrag zwischenzeitlich ge\xE4ndert, entfernt oder Projekt nicht verf\xFCgbar. Bitte neu laden.",
       409
@@ -6125,8 +6415,8 @@ async function updateOmniMemory(userId, id, input) {
 }
 async function deleteOmniMemory(userId, id, version) {
   const sql10 = monitoringSql();
-  const rows = await sql10`DELETE FROM v2_omni_memories WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
-  if (!rows.length)
+  const rows2 = await sql10`DELETE FROM v2_omni_memories WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows2.length)
     throw new OmniMemoryError(
       "Eintrag zwischenzeitlich ge\xE4ndert oder entfernt. Bitte neu laden.",
       409
@@ -6135,8 +6425,8 @@ async function deleteOmniMemory(userId, id, version) {
 }
 async function readMemoryVersions(userId, id) {
   const sql10 = monitoringSql();
-  const rows = await sql10`SELECT v.* FROM v2_omni_memory_versions v JOIN v2_omni_memories m ON m.id=v.memory_id AND m.user_id=v.user_id WHERE v.memory_id=${id} AND v.user_id=${userId} ORDER BY v.version DESC LIMIT 50`;
-  return rows.map((row) => ({
+  const rows2 = await sql10`SELECT v.* FROM v2_omni_memory_versions v JOIN v2_omni_memories m ON m.id=v.memory_id AND m.user_id=v.user_id WHERE v.memory_id=${id} AND v.user_id=${userId} ORDER BY v.version DESC LIMIT 50`;
+  return rows2.map((row) => ({
     title: String(row.title),
     content: String(row.content),
     category: row.category,
@@ -6166,8 +6456,8 @@ async function initializeAutoMemory() {
 }
 async function claimAutoCapture(userId, sourceId, assistantId, projectId) {
   const sql10 = monitoringSql();
-  const rows = await sql10`INSERT INTO v2_omni_memory_captures(source_id,assistant_id,user_id,project_id,status) SELECT u.id,a.id,${userId},${projectId},'processing' FROM chat_messages u JOIN chat_messages a ON a.session_id=u.session_id JOIN chat_sessions s ON s.id=u.session_id WHERE u.id=${sourceId} AND a.id=${assistantId} AND u.role='user' AND a.role='assistant' AND s.user_id=${userId} AND (${projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId})) ON CONFLICT(source_id) DO NOTHING RETURNING source_id`;
-  return Boolean(rows.length);
+  const rows2 = await sql10`INSERT INTO v2_omni_memory_captures(source_id,assistant_id,user_id,project_id,status) SELECT u.id,a.id,${userId},${projectId},'processing' FROM chat_messages u JOIN chat_messages a ON a.session_id=u.session_id JOIN chat_sessions s ON s.id=u.session_id WHERE u.id=${sourceId} AND a.id=${assistantId} AND u.role='user' AND a.role='assistant' AND s.user_id=${userId} AND (${projectId}::uuid IS NULL OR EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId})) ON CONFLICT(source_id) DO NOTHING RETURNING source_id`;
+  return Boolean(rows2.length);
 }
 async function finishAutoCapture(userId, sourceId, failed = false) {
   const sql10 = monitoringSql();
@@ -6176,8 +6466,8 @@ async function finishAutoCapture(userId, sourceId, failed = false) {
 async function createAutoEvent(userId, sourceId, slot, projectId, proposal, target) {
   const sql10 = monitoringSql();
   const id = randomUUID3(), targetId = target?.id ?? randomUUID3();
-  const rows = await sql10`INSERT INTO v2_omni_memory_auto_events(id,user_id,source_id,slot,project_id,target_id,target_version,memory_id,status,proposal) SELECT ${id},${userId},source_id,${slot},${projectId},${targetId},${target?.version ?? null},${target?.id ?? null},'pending',${JSON.stringify(proposal)}::jsonb FROM v2_omni_memory_captures WHERE source_id=${sourceId} AND user_id=${userId} AND project_id IS NOT DISTINCT FROM ${projectId}::uuid ON CONFLICT(source_id,slot) DO NOTHING RETURNING id`;
-  return rows[0] ? String(rows[0].id) : null;
+  const rows2 = await sql10`INSERT INTO v2_omni_memory_auto_events(id,user_id,source_id,slot,project_id,target_id,target_version,memory_id,status,proposal) SELECT ${id},${userId},source_id,${slot},${projectId},${targetId},${target?.version ?? null},${target?.id ?? null},'pending',${JSON.stringify(proposal)}::jsonb FROM v2_omni_memory_captures WHERE source_id=${sourceId} AND user_id=${userId} AND project_id IS NOT DISTINCT FROM ${projectId}::uuid ON CONFLICT(source_id,slot) DO NOTHING RETURNING id`;
+  return rows2[0] ? String(rows2[0].id) : null;
 }
 async function applyAutoMemoryEvent(userId, id) {
   const sql10 = monitoringSql();
@@ -6203,8 +6493,8 @@ async function applyAutoMemoryEvent(userId, id) {
 }
 async function dismissAutoMemoryEvent(userId, id) {
   const sql10 = monitoringSql();
-  const rows = await sql10`UPDATE v2_omni_memory_auto_events SET status='dismissed',proposal=NULL WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
-  if (!rows.length)
+  const rows2 = await sql10`UPDATE v2_omni_memory_auto_events SET status='dismissed',proposal=NULL WHERE id=${id} AND user_id=${userId} AND status='pending' RETURNING id`;
+  if (!rows2.length)
     throw new OmniMemoryError("Vorschlag nicht mehr offen.", 409);
   return { ok: true };
 }
@@ -6214,13 +6504,13 @@ async function readAutoMemoryStates(userId, sessionId) {
     const [ready2] = await sql10`SELECT to_regclass('v2_omni_memory_auto_events') IS NOT NULL AS ready`;
     if (!ready2?.ready) return {};
     const captures = await sql10`SELECT c.* FROM v2_omni_memory_captures c JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id WHERE c.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId}`;
-    const rows = await sql10`SELECT e.*,m.title,m.content,m.version AS current_version,m.archived,m.category,m.project_id AS current_project FROM v2_omni_memory_auto_events e JOIN v2_omni_memory_captures c ON c.source_id=e.source_id JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id LEFT JOIN v2_omni_memories m ON m.id=e.memory_id AND m.user_id=e.user_id WHERE e.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId} AND e.status<>'dismissed' ORDER BY e.created_at,e.slot`;
+    const rows2 = await sql10`SELECT e.*,m.title,m.content,m.version AS current_version,m.archived,m.category,m.project_id AS current_project FROM v2_omni_memory_auto_events e JOIN v2_omni_memory_captures c ON c.source_id=e.source_id JOIN chat_messages msg ON msg.id=c.assistant_id JOIN chat_sessions s ON s.id=msg.session_id LEFT JOIN v2_omni_memories m ON m.id=e.memory_id AND m.user_id=e.user_id WHERE e.user_id=${userId} AND s.user_id=${userId} AND s.id=${sessionId} AND e.status<>'dismissed' ORDER BY e.created_at,e.slot`;
     return Object.fromEntries(
       captures.map((c) => [
         String(c.assistant_id),
         {
           status: c.status === "done" ? "done" : c.status === "failed" ? "unavailable" : "processing",
-          events: rows.filter((e) => e.source_id === c.source_id).map((e) => ({
+          events: rows2.filter((e) => e.source_id === c.source_id).map((e) => ({
             id: String(e.id),
             status: e.status,
             memoryId: e.memory_id ? String(e.memory_id) : null,
@@ -6641,7 +6931,7 @@ var labels = {
   endsAt: "Ende",
   note: "Erg\xE4nzung zur Projektbeschreibung"
 };
-var values = {
+var values2 = {
   high: "Hoch",
   medium: "Mittel",
   low: "Niedrig",
@@ -6657,7 +6947,7 @@ function display(key, value, timeZone) {
       "de-DE",
       key === "dueDate" ? { timeZone, year: "numeric", month: "2-digit", day: "2-digit" } : { timeZone }
     );
-  return key === "status" || key === "priority" ? values[String(value)] ?? String(value) : String(value);
+  return key === "status" || key === "priority" ? values2[String(value)] ?? String(value) : String(value);
 }
 function prepareOmniOperations(operations, context, timeZone) {
   const stored = [], previews = [], results = [], targets = /* @__PURE__ */ new Set();
@@ -6870,16 +7160,16 @@ async function findOmniRequest(userId, requestId) {
 }
 async function claimOmniPlanning(userId) {
   const sql10 = monitoringSql();
-  const rows = await sql10`INSERT INTO v2_omni_action_limits(user_id,next_plan_at) VALUES(${userId},now()+interval '20 seconds') ON CONFLICT(user_id) DO UPDATE SET next_plan_at=excluded.next_plan_at WHERE v2_omni_action_limits.next_plan_at<=now() RETURNING user_id`;
-  if (!rows.length)
+  const rows2 = await sql10`INSERT INTO v2_omni_action_limits(user_id,next_plan_at) VALUES(${userId},now()+interval '20 seconds') ON CONFLICT(user_id) DO UPDATE SET next_plan_at=excluded.next_plan_at WHERE v2_omni_action_limits.next_plan_at<=now() RETURNING user_id`;
+  if (!rows2.length)
     throw new OmniActionError(
       "Bitte kurz warten: Omni kann alle 20 Sekunden einen neuen Vorschlag planen.",
       429
     );
 }
-async function saveOmniPlan(userId, requestId, prompt, timeZone, prepared3) {
+async function saveOmniPlan(userId, requestId, prompt, timeZone, prepared4) {
   const sql10 = monitoringSql();
-  const [row] = await sql10`INSERT INTO v2_omni_action_plans(id,user_id,request_id,prompt,time_zone,operations,previews,result_links) VALUES(${randomUUID5()},${userId},${requestId},${prompt},${timeZone},${JSON.stringify(prepared3.stored)}::jsonb,${JSON.stringify(prepared3.previews)}::jsonb,${JSON.stringify(prepared3.results)}::jsonb) ON CONFLICT(user_id,request_id) DO UPDATE SET request_id=excluded.request_id RETURNING id,status,prompt,time_zone,created_at,expires_at,previews,result_links`;
+  const [row] = await sql10`INSERT INTO v2_omni_action_plans(id,user_id,request_id,prompt,time_zone,operations,previews,result_links) VALUES(${randomUUID5()},${userId},${requestId},${prompt},${timeZone},${JSON.stringify(prepared4.stored)}::jsonb,${JSON.stringify(prepared4.previews)}::jsonb,${JSON.stringify(prepared4.results)}::jsonb) ON CONFLICT(user_id,request_id) DO UPDATE SET request_id=excluded.request_id RETURNING id,status,prompt,time_zone,created_at,expires_at,previews,result_links`;
   return serialize2(row);
 }
 async function executeOmniPlan(userId, id) {
@@ -6965,7 +7255,7 @@ function createOmniActionsRoute(dependencies = {
     await dependencies.claimOmniPlanning(userId);
     const context = await dependencies.loadOmniContext(userId), proposed = await dependencies.planOmniWithAI(prompt, context, timeZone);
     if (proposed.type === "clarification") return c.json(proposed);
-    const prepared3 = prepareOmniOperations(
+    const prepared4 = prepareOmniOperations(
       proposed.operations,
       context,
       timeZone
@@ -6977,7 +7267,7 @@ function createOmniActionsRoute(dependencies = {
         requestId,
         prompt,
         timeZone,
-        prepared3
+        prepared4
       )
     });
   });
@@ -7269,9 +7559,9 @@ async function prepareChatMemory(userId, query, options) {
     if (!await memoryIsReady())
       return { status: "none", projectId: options.projectId, items: [] };
     const sql10 = monitoringSql();
-    const rows = await sql10`SELECT m.id,m.title,m.content,m.category,m.project_id AS "projectId",m.pinned,m.version,m.updated_at AS "updatedAt" FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.archived=false AND (m.project_id IS NULL OR (m.project_id=${options.projectId}::uuid AND p.id IS NOT NULL)) ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`;
+    const rows2 = await sql10`SELECT m.id,m.title,m.content,m.category,m.project_id AS "projectId",m.pinned,m.version,m.updated_at AS "updatedAt" FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.archived=false AND (m.project_id IS NULL OR (m.project_id=${options.projectId}::uuid AND p.id IS NOT NULL)) ORDER BY m.pinned DESC,m.updated_at DESC,m.id LIMIT 500`;
     const items = selectChatMemories(
-      rows,
+      rows2,
       query,
       options.projectId
     );
@@ -7314,17 +7604,17 @@ async function readMemoryReceipts(userId, sessionId) {
   try {
     if (!await memoryIsReady()) return {};
     const sql10 = monitoringSql();
-    const rows = await sql10`SELECT r.message_id,r.status,r.project_id,r.refs FROM v2_omni_memory_receipts r JOIN chat_messages msg ON msg.id=r.message_id JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=r.user_id WHERE r.user_id=${userId} AND s.id=${sessionId}`;
+    const rows2 = await sql10`SELECT r.message_id,r.status,r.project_id,r.refs FROM v2_omni_memory_receipts r JOIN chat_messages msg ON msg.id=r.message_id JOIN chat_sessions s ON s.id=msg.session_id AND s.user_id=r.user_id WHERE r.user_id=${userId} AND s.id=${sessionId}`;
     const ids = [
       ...new Set(
-        rows.flatMap(
+        rows2.flatMap(
           (row) => row.refs.map((ref) => ref.id)
         )
       )
     ];
     const current = ids.length ? await sql10`SELECT m.id,m.title,m.version,m.archived,m.project_id,p.id AS valid_project FROM v2_omni_memories m LEFT JOIN projects p ON p.id=m.project_id AND p.user_id=m.user_id WHERE m.user_id=${userId} AND m.id=ANY(${ids}::uuid[])` : [];
     return Object.fromEntries(
-      rows.map((row) => [
+      rows2.map((row) => [
         String(row.message_id),
         {
           status: row.status,
@@ -7383,8 +7673,8 @@ var sendMessageSchema = z38.object({
 });
 chatRoute.get("/sessions", async (c) => {
   const userId = c.get("userId");
-  const rows = await db.select().from(chatSessions).where(eq26(chatSessions.userId, userId)).orderBy(desc10(chatSessions.updatedAt));
-  return c.json(rows);
+  const rows2 = await db.select().from(chatSessions).where(eq26(chatSessions.userId, userId)).orderBy(desc10(chatSessions.updatedAt));
+  return c.json(rows2);
 });
 chatRoute.post("/sessions", async (c) => {
   const userId = c.get("userId");
@@ -7905,8 +8195,8 @@ function analyzeMission(snapshot, now = Date.now()) {
   }
   const productionAt = dep?.production?.createdAt;
   if (up && productionAt != null && Number.isFinite(productionAt) && productionAt <= now) {
-    const median = (values2) => {
-      const ordered = [...values2].sort((a, b) => a - b), mid = Math.floor(ordered.length / 2);
+    const median = (values3) => {
+      const ordered = [...values3].sort((a, b) => a - b), mid = Math.floor(ordered.length / 2);
       return ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
     };
     for (const m of up.monitors) {
@@ -8032,30 +8322,30 @@ async function readMissionMonitorOptions(userId, projectId) {
 async function saveMissionMonitors(userId, projectId, ids, version) {
   await initializeMissionStorage();
   const sql10 = monitoringSql(), json = JSON.stringify(ids);
-  const rows = await sql10`INSERT INTO v2_mission_settings(project_id,user_id,monitor_ids)
+  const rows2 = await sql10`INSERT INTO v2_mission_settings(project_id,user_id,monitor_ids)
     SELECT p.id,p.user_id,${json}::jsonb FROM projects p WHERE p.id=${projectId} AND p.user_id=${userId}
     AND (SELECT count(*) FROM uptime_monitors m WHERE m.user_id=${userId} AND m.id IN(SELECT value::uuid FROM jsonb_array_elements_text(${json}::jsonb)))=jsonb_array_length(${json}::jsonb)
     AND (${version}=0 OR EXISTS(SELECT 1 FROM v2_mission_settings s WHERE s.project_id=p.id AND s.user_id=p.user_id AND s.version=${version}))
     ON CONFLICT(project_id) DO UPDATE SET monitor_ids=excluded.monitor_ids,version=v2_mission_settings.version+1,updated_at=now()
     WHERE v2_mission_settings.user_id=excluded.user_id AND v2_mission_settings.version=${version}
     RETURNING version`;
-  if (!rows.length)
+  if (!rows2.length)
     throw new MissionStorageError(
       "Zuordnung nicht gespeichert. Projekt/Monitore geh\xF6ren nicht zu deinem Konto oder die Einstellungen wurden inzwischen ge\xE4ndert. Neu laden und erneut pr\xFCfen.",
       409
     );
-  return { version: Number(rows[0].version) };
+  return { version: Number(rows2[0].version) };
 }
 async function readMissionUptime(userId, projectId) {
   const sql10 = monitoringSql(), selected = await selectedMonitors(userId, projectId);
-  const rows = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms AS "responseTimeMs",c.checked_at AS "checkedAt",
+  const rows2 = await sql10`SELECT m.id,m.name,m.active,c.status,c.response_time_ms AS "responseTimeMs",c.checked_at AS "checkedAt",
     COALESCE(h.checks,'[]'::jsonb) AS "recentChecks" FROM uptime_monitors m
     LEFT JOIN LATERAL(SELECT status,response_time_ms,checked_at FROM uptime_checks WHERE monitor_id=m.id ORDER BY checked_at DESC LIMIT 1) c ON true
     LEFT JOIN LATERAL(SELECT jsonb_agg(jsonb_build_object('at',checked_at,'status',status,'responseTimeMs',response_time_ms) ORDER BY checked_at) AS checks
       FROM(SELECT checked_at,status,response_time_ms FROM uptime_checks WHERE monitor_id=m.id AND checked_at>=now()-interval '24 hours' AND checked_at<=now() ORDER BY checked_at DESC LIMIT 288) bounded) h ON true
     WHERE m.user_id=${userId} AND m.id IN(SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(selected.ids)}::jsonb))
     AND EXISTS(SELECT 1 FROM projects WHERE id=${projectId} AND user_id=${userId}) ORDER BY m.name,m.id`;
-  const monitors = rows.map((r) => {
+  const monitors = rows2.map((r) => {
     const checks = r.recentChecks;
     return {
       id: String(r.id),
@@ -8150,7 +8440,7 @@ function compareMission(before, after, previousAt) {
 async function recordMissionVisit(userId, projectId, visitId, snapshot) {
   await initializeMissionStorage();
   const sql10 = monitoringSql(), observation = missionObservation(snapshot);
-  const [, rows] = await sql10.transaction([
+  const [, rows2] = await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ":" + projectId},0))`,
     sql10`INSERT INTO v2_mission_visits(project_id,user_id,visit_id,baseline,baseline_at,latest)
       SELECT p.id,p.user_id,${visitId}::uuid,previous.latest,previous.last_visit_at,${JSON.stringify(observation)}::jsonb
@@ -8160,7 +8450,7 @@ async function recordMissionVisit(userId, projectId, visitId, snapshot) {
       RETURNING baseline,baseline_at`,
     sql10`DELETE FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} AND visit_id IN(SELECT visit_id FROM v2_mission_visits WHERE project_id=${projectId} AND user_id=${userId} ORDER BY last_visit_at DESC,visit_id DESC OFFSET 10)`
   ]);
-  const row = rows[0];
+  const row = rows2[0];
   if (!row)
     throw new MissionStorageError("Eigenes Projekt nicht mehr vorhanden.", 404);
   return compareMission(
@@ -8172,9 +8462,9 @@ async function recordMissionVisit(userId, projectId, visitId, snapshot) {
 async function claimMissionAI(userId) {
   await initializeMissionStorage();
   const sql10 = monitoringSql();
-  const rows = await sql10`INSERT INTO v2_mission_ai_limits(user_id,next_at) VALUES(${userId},now()+interval '1 minute')
+  const rows2 = await sql10`INSERT INTO v2_mission_ai_limits(user_id,next_at) VALUES(${userId},now()+interval '1 minute')
     ON CONFLICT(user_id) DO UPDATE SET next_at=excluded.next_at WHERE v2_mission_ai_limits.next_at<=now() RETURNING user_id`;
-  return rows.length > 0;
+  return rows2.length > 0;
 }
 
 // server/mission-control.ts
@@ -8182,8 +8472,8 @@ init_neon_monitor();
 init_neon_storage();
 async function readMissionProject(userId, projectId) {
   const sql10 = monitoringSql();
-  const rows = await sql10`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
-  return rows[0] ?? null;
+  const rows2 = await sql10`SELECT id,name,description,status,updated_at AS "updatedAt" FROM projects WHERE id=${projectId} AND user_id=${userId}`;
+  return rows2[0] ?? null;
 }
 async function readMissionTasks(userId, projectId) {
   const sql10 = monitoringSql();
@@ -8673,25 +8963,25 @@ async function ownsBrowserProject(userId, projectId) {
   const [row] = await monitoringSql()`SELECT id FROM projects WHERE id=${projectId} AND user_id=${userId}`;
   return Boolean(row);
 }
-function boundBrowserItems(rows) {
+function boundBrowserItems(rows2) {
   const items = [];
   let bytes2 = 0;
-  for (const row of rows.slice(0, 100)) {
+  for (const row of rows2.slice(0, 100)) {
     const size = Buffer.byteLength(JSON.stringify(row), "utf8");
     if (bytes2 + size > 2e6) break;
     bytes2 += size;
     items.push(row);
   }
-  return { items, limited: rows.length > items.length };
+  return { items, limited: rows2.length > items.length };
 }
 async function listBrowserItems(userId, filters = {}) {
   const sql10 = monitoringSql();
   try {
-    const rows = await sql10`SELECT i.id,i.title,i.url,i.selection,i.annotation,p.id AS "projectId",p.name AS "projectName",i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt"
+    const rows2 = await sql10`SELECT i.id,i.title,i.url,i.selection,i.annotation,p.id AS "projectId",p.name AS "projectName",i.version,i.created_at AS "createdAt",i.updated_at AS "updatedAt"
       FROM v2_browser_items i LEFT JOIN projects p ON p.id=i.project_id AND p.user_id=i.user_id
       WHERE i.user_id=${userId} AND (${filters.url ?? null}::text IS NULL OR i.url=${filters.url ?? null})
       AND (${filters.projectId ?? null}::uuid IS NULL OR p.id=${filters.projectId ?? null}::uuid) ORDER BY i.updated_at DESC,i.id LIMIT 101`;
-    return boundBrowserItems(rows);
+    return boundBrowserItems(rows2);
   } catch (e) {
     if (missingNeonStorage(e)) return { items: [], limited: false };
     throw e;
@@ -8726,8 +9016,8 @@ async function updateBrowserItem(userId, id, input) {
   return { ...row, projectName: null };
 }
 async function deleteBrowserItem(userId, id, version) {
-  const rows = await monitoringSql()`DELETE FROM v2_browser_items WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
-  if (!rows.length)
+  const rows2 = await monitoringSql()`DELETE FROM v2_browser_items WHERE id=${id} AND user_id=${userId} AND version=${version} RETURNING id`;
+  if (!rows2.length)
     throw new BrowserDeskError(
       "Eintrag wurde ver\xE4ndert oder ist nicht mehr zug\xE4nglich. Liste neu laden.",
       409
@@ -8736,7 +9026,7 @@ async function deleteBrowserItem(userId, id, version) {
 async function createBrowserPairing(userId, challenge) {
   await initializeBrowserStorage();
   const sql10 = monitoringSql(), code = randomBytes3(32).toString("base64url");
-  const [, rows] = await sql10.transaction([
+  const [, rows2] = await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`browser-pair:${userId}`},0))`,
     sql10`INSERT INTO v2_browser_pairings(code_hash,user_id,challenge,expires_at)
       SELECT ${browserHash(code)},${userId},${challenge},now()+interval '5 minutes'
@@ -8744,7 +9034,7 @@ async function createBrowserPairing(userId, challenge) {
       AND (SELECT count(*) FROM v2_browser_devices WHERE user_id=${userId} AND revoked_at IS NULL AND expires_at>now())<20 RETURNING code_hash`,
     sql10`DELETE FROM v2_browser_pairings WHERE user_id=${userId} AND created_at<now()-interval '1 day'`
   ]);
-  if (!rows.length)
+  if (!rows2.length)
     throw new BrowserDeskError(
       "Zu viele Verbindungsversuche oder aktive Erweiterungen. Alte Verbindungen trennen oder sp\xE4ter erneut versuchen.",
       429
@@ -8827,8 +9117,8 @@ async function resolvePanelEntries(userId, entries, appOrigin) {
   const linkIds = entries.filter((entry) => entry.kind === "link").map((entry) => entry.target);
   const links2 = /* @__PURE__ */ new Map();
   if (linkIds.length) {
-    const rows = await monitoringSql()`SELECT id,title,url FROM links WHERE user_id=${userId} AND id=ANY(${linkIds}::uuid[])`;
-    for (const row of rows)
+    const rows2 = await monitoringSql()`SELECT id,title,url FROM links WHERE user_id=${userId} AND id=ANY(${linkIds}::uuid[])`;
+    for (const row of rows2)
       links2.set(String(row.id), {
         title: String(row.title),
         url: String(row.url)
@@ -8855,16 +9145,16 @@ async function resolvePanelEntries(userId, entries, appOrigin) {
   });
 }
 async function panelCommands(userId, category) {
-  const rows = await monitoringSql()`SELECT id,title,command,category FROM commands WHERE user_id=${userId} AND (${category}::text IS NULL OR category=${category}::text) ORDER BY category,title,id LIMIT ${MAX_BROWSER_PANEL_COMMANDS + 1}`;
-  const commands2 = rows.slice(
+  const rows2 = await monitoringSql()`SELECT id,title,command,category FROM commands WHERE user_id=${userId} AND (${category}::text IS NULL OR category=${category}::text) ORDER BY category,title,id LIMIT ${MAX_BROWSER_PANEL_COMMANDS + 1}`;
+  const commands2 = rows2.slice(
     0,
     MAX_BROWSER_PANEL_COMMANDS
   );
-  return { commands: commands2, limited: rows.length > commands2.length };
+  return { commands: commands2, limited: rows2.length > commands2.length };
 }
 async function panelCommandCategories(userId) {
-  const rows = await monitoringSql()`SELECT DISTINCT category FROM commands WHERE user_id=${userId} ORDER BY category`;
-  return rows.map((row) => String(row.category));
+  const rows2 = await monitoringSql()`SELECT DISTINCT category FROM commands WHERE user_id=${userId} ORDER BY category`;
+  return rows2.map((row) => String(row.category));
 }
 async function browserPanelView(userId, appOrigin) {
   const config = await readBrowserPanel(userId);
@@ -9263,12 +9553,12 @@ function denied() {
 }
 async function mutate(id, statement) {
   const sql10 = monitoringSql();
-  const [, rows] = await sql10.transaction([
+  const [, rows2] = await sql10.transaction([
     sql10`SELECT pg_advisory_xact_lock(hashtextextended(${`room:${id}`},0))`,
     statement
   ]);
-  if (!rows.length) denied();
-  return rows;
+  if (!rows2.length) denied();
+  return rows2;
 }
 async function listRooms(userId) {
   try {
@@ -9393,7 +9683,7 @@ async function joinRoom(userId, token, name) {
   const [found] = await sql10`SELECT room_id AS id FROM v2_room_invites WHERE token_hash=${hash(token)}`;
   if (!found) denied();
   const roomId = String(found.id);
-  const rows = await mutate(
+  const rows2 = await mutate(
     roomId,
     sql10`WITH used AS(UPDATE v2_room_invites v SET consumed_by=${userId} FROM v2_shared_rooms r
     WHERE v.token_hash=${hash(token)} AND v.room_id=r.id AND r.owner_id<>${userId} AND NOT v.revoked AND v.consumed_by IS NULL
@@ -9406,7 +9696,7 @@ async function joinRoom(userId, token, name) {
     SELECT id FROM joined UNION ALL SELECT r.id FROM v2_room_invites v JOIN v2_shared_rooms r ON r.id=v.room_id JOIN v2_room_members m ON m.room_id=r.id AND m.user_id=${userId}
     WHERE v.token_hash=${hash(token)} AND v.consumed_by=${userId} AND NOT v.revoked AND v.expires_at>clock_timestamp() AND NOT r.closed AND r.expires_at>clock_timestamp() AND NOT m.revoked AND NOT EXISTS(SELECT 1 FROM joined)`
   );
-  return { id: String(rows[0].id) };
+  return { id: String(rows2[0].id) };
 }
 async function updateRoomMember(userId, roomId, id, role, revoked, version) {
   const sql10 = monitoringSql();

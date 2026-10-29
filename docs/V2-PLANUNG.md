@@ -605,3 +605,17 @@ Der Pomodoro-Timer lief frei in der Luft: Gezählt wurden nur die Blöcke der la
 **Geprüft.** 16 neue Tests: neun für Speicher und Route (Zuordnung, Doppelsendung, fremde Ziele, Zeitraumgrenzen, Löschen, gelöschtes Ziel) und sieben für die Zeitrechnung des Timers ohne Browser, mit ersetzter Uhr und ersetztem Speicher — darunter der Reload mitten im Block. 209 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
 
 **Nicht geprüft:** der Timer in der angemeldeten Sitzung.
+
+## Ausbaustufe 4 von 6: Serientermine · 29.10.2026
+
+Der Kalender kannte nur Einzeltermine; ein wöchentlicher Jour fixe war Handarbeit. Jetzt gibt es im Termin-Dialog den Schalter **„Wiederholen“** mit täglich, wöchentlich und monatlich, einem Intervall (alle n Tage/Wochen/Monate), frei wählbaren Wochentagen und einem Ende nach Anzahl oder Datum.
+
+**Entscheidung: echte Termine statt Regel beim Lesen.** Eine Serie erzeugt bei der Anlage ganz normale Termine; nur die Zugehörigkeit steht in `v2_appointment_series_items`. Kalender, Terminliste, Suche, Verknüpfungen und die Buchungsprüfung mussten dadurch **nicht angefasst** werden — sie sehen Termine wie jeden anderen. Die Zuordnung hängt per Fremdschlüssel am Termin: Wird ein einzelner gelöscht, verschwindet sie von selbst. An der Tabelle `appointments` wurde nichts geändert.
+
+**Bearbeiten.** Beim Öffnen eines Serientermins steht die Regel im Klartext da, dazu die Wahl „Nur dieser Termin“ oder „Dieser und alle folgenden“. Die Wahl gilt für Speichern **und** Löschen; der Löschknopf beschriftet sich entsprechend um. Bei „alle folgenden“ bleibt die Vergangenheit unangetastet — sie ist das, was stattgefunden hat — und alles ab diesem Termin wird neu angelegt.
+
+**Grenzen, bewusst gesetzt:** höchstens 200 Termine je Serie und zwei Jahre im Voraus. Monatlich heißt „gleicher Tag im Monat“; Monate ohne diesen Tag fallen aus, statt auf den 28. zu rutschen. Gerechnet wird in Ortszeit, damit ein Termin über die Zeitumstellung hinweg um 9 Uhr bleibt und nicht auf 8 oder 10 Uhr wandert.
+
+**Geprüft.** 16 neue Tests: sieben für die Regelberechnung (Anzahl, mehrere Wochentage, Intervall, übersprungene Monate, Zeitumstellung, Enddatum, Obergrenze) und neun über die API (Anlegen, Regel abfragen, einzelnen Termin verschieben ohne die anderen, Serie ab einem Termin neu aufsetzen, Löschen ab hier, Abweisungen, Einzeltermin bleibt Einzeltermin). 225 Tests bestanden, Typprüfung sauber, Lint unverändert bei sieben Warnungen.
+
+**Nicht geprüft:** der Dialog in der angemeldeten Sitzung. **Nicht enthalten:** einen bestehenden Einzeltermin nachträglich in eine Serie verwandeln.

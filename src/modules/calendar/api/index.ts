@@ -2,6 +2,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiFetch } from '@/hooks/use-api'
 import type { TaskPriority } from '@/db/schema'
+import type { RecurrenceRule } from '@/lib/recurrence'
 
 export type AppointmentPriority = TaskPriority
 
@@ -16,6 +17,8 @@ export interface AppointmentDto {
   endsAt: string
   createdAt: string
   updatedAt: string
+  /** Gesetzt, wenn der Termin zu einer Serie gehört. */
+  seriesId: string | null
 }
 
 export interface AppointmentInput {
@@ -25,7 +28,12 @@ export interface AppointmentInput {
   priority: AppointmentPriority
   startsAt: string
   endsAt: string
+  /** Nur beim Anlegen oder beim Ändern einer ganzen Serie. */
+  recurrence?: RecurrenceRule
 }
+
+/** „single“ ändert oder löscht nur diesen Termin, „series“ ihn und alle folgenden. */
+export type AppointmentScope = 'single' | 'series'
 
 const QUERY_KEY = ['appointments'] as const
 
@@ -61,11 +69,15 @@ export function useUpdateAppointment() {
   const apiFetch = useApiFetch()
   const invalidate = useInvalidateAppointments()
   return useMutation({
-    mutationFn: ({ id, ...input }: AppointmentInput & { id: string }) =>
-      apiFetch<AppointmentDto>(`/api/appointments/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(input),
-      }),
+    mutationFn: ({
+      id,
+      scope,
+      ...input
+    }: AppointmentInput & { id: string; scope?: AppointmentScope }) =>
+      apiFetch<AppointmentDto>(
+        `/api/appointments/${id}${scope === 'series' ? '?scope=series' : ''}`,
+        { method: 'PUT', body: JSON.stringify(input) },
+      ),
     onSuccess: invalidate,
   })
 }
@@ -74,8 +86,21 @@ export function useDeleteAppointment() {
   const apiFetch = useApiFetch()
   const invalidate = useInvalidateAppointments()
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<{ ok: true }>(`/api/appointments/${id}`, { method: 'DELETE' }),
+    mutationFn: ({ id, scope }: { id: string; scope?: AppointmentScope }) =>
+      apiFetch<{ ok: true }>(
+        `/api/appointments/${id}${scope === 'series' ? '?scope=series' : ''}`,
+        { method: 'DELETE' },
+      ),
     onSuccess: invalidate,
+  })
+}
+
+/** Regel einer Serie, für den Bearbeiten-Dialog. */
+export function useAppointmentSeries(id: string | null, enabled: boolean) {
+  const apiFetch = useApiFetch()
+  return useQuery({
+    queryKey: ['appointments', 'series', id],
+    queryFn: () => apiFetch<{ seriesId: string; rule: RecurrenceRule }>(`/api/appointments/${id}/series`),
+    enabled: enabled && Boolean(id),
   })
 }

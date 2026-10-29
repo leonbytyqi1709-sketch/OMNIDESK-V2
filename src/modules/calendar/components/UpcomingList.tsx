@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format, isSameDay } from 'date-fns'
 import { de } from 'date-fns/locale'
-import { ChevronDown, Clock, MapPin, Pencil } from 'lucide-react'
+import { ChevronDown, Clock, MapPin, Pencil, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { AppointmentDto } from '../api'
@@ -125,6 +125,12 @@ export function UpcomingList({ appointments, onEdit }: UpcomingListProps) {
                     <span className="font-medium break-words">
                       {appointment.title}
                     </span>
+                    {appointment.seriesId && (
+                      <Repeat
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                        aria-label="Teil einer Serie"
+                      />
+                    )}
                     {running && (
                       <span className="rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
                         Läuft gerade
