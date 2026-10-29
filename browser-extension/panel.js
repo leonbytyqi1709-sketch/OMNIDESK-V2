@@ -1,4 +1,4 @@
-const APP = 'https://omnidesk-v2-beta.vercel.app'
+const APP = 'https://omnidesk-work.vercel.app'
 const el = (id) => document.getElementById(id)
 const KIND_HINTS = {
   note: 'Die Notiz erscheint im Notizen-Modul. Eine übernommene Seite wird unter den Text gesetzt.',

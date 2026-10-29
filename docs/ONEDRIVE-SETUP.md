@@ -10,7 +10,7 @@ Implementierung: 19. Oktober 2026. Die Anmeldung unterstützt private Microsoft-
 4. Eine Redirect-URI für die Plattform **Web** eintragen (keine SPA-Konfiguration):
 
    ```text
-   https://omnidesk-v2-beta.vercel.app/api/integrations/microsoft/callback
+   https://omnidesk-work.vercel.app/api/integrations/microsoft/callback
    ```
 
 5. Nach Registrierung die **Anwendungs-ID / Application (client) ID** notieren.
@@ -27,7 +27,7 @@ Unter **Settings → Environment Variables**:
 |---|---|
 | `MICROSOFT_CLIENT_ID` | Application (client) ID der neuen Registrierung |
 | `MICROSOFT_CLIENT_SECRET` | Client-Secret-Wert, nur serverseitig |
-| `MICROSOFT_REDIRECT_URI` | `https://omnidesk-v2-beta.vercel.app/api/integrations/microsoft/callback` |
+| `MICROSOFT_REDIRECT_URI` | `https://omnidesk-work.vercel.app/api/integrations/microsoft/callback` |
 | `MICROSOFT_TENANT` | `common` (Standard, unterstützt private und Organisationskonten) |
 
 Die Variablen brauchen keinen `VITE_`-Präfix und dürfen nicht in das Frontend-Bundle gelangen. Für die veröffentlichte V2-Adresse müssen sie in der zugehörigen Vercel-Umgebung verfügbar sein. Anschließend neu deployen. Der bestehende Clerk-Login bei OMNIDESK bleibt die App-Anmeldung; Microsoft verbindet zusätzlich das Cloud-Konto.

@@ -14,7 +14,7 @@ und wird nicht erneut angestoßen. Die unten aufgeführten Einzelpunkte bleiben 
 Aufgaben bestehen.
 
 Begonnen am 22.10.2026. Der Nutzer prüft die produktive V2-Umgebung
-(https://omnidesk-v2-beta.vercel.app) eigenständig und bringt seine eigene Liste mit
+(https://omnidesk-work.vercel.app) eigenständig und bringt seine eigene Liste mit
 Änderungsideen in das nächste gemeinsame Gespräch ein. Diese Datei führt beide Quellen zusammen.
 
 Prüfumgebung beachten: Lokal (`localhost:5173`) fehlen die in Vercel als *Sensitive* markierten

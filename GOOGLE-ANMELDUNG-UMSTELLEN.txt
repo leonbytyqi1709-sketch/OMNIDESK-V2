@@ -17,7 +17,7 @@ in den Fehler "redirect_uri_mismatch".
 
 Die Zieladresse ist in beiden Faellen exakt diese, Zeichen fuer Zeichen:
 
-  https://omnidesk-v2-beta.vercel.app/api/integrations/google/callback
+  https://omnidesk-work.vercel.app/api/integrations/google/callback
 
 
 SCHRITT 1 - GOOGLE CLOUD CONSOLE
@@ -38,7 +38,7 @@ Google braucht manchmal ein paar Minuten, bis die neue Adresse greift.
 
 SCHRITT 2 - VERCEL
 
-1. vercel.com oeffnen, Projekt "omnidesk-v2".
+1. vercel.com oeffnen, Projekt "omnidesk-work".
 2. "Settings" -> "Environment Variables".
 3. Die Variable GOOGLE_REDIRECT_URI suchen.
 4. Bearbeiten und als Wert die Zieladresse von oben eintragen.
@@ -57,7 +57,7 @@ Geaenderte Variablen wirken erst in einem neuen Deployment.
 
 SCHRITT 4 - TESTEN
 
-1. https://omnidesk-v2-beta.vercel.app oeffnen und anmelden.
+1. https://omnidesk-work.vercel.app oeffnen und anmelden.
 2. Einstellungen -> Bereich "Google Drive" -> "Mit Google verbinden".
 3. Google-Konto waehlen und zustimmen.
 
@@ -77,7 +77,7 @@ WENN ETWAS SCHIEFGEHT
 "Bitte Google auf der in GOOGLE_REDIRECT_URI konfigurierten App-Adresse
 verbinden."
   Du bist auf einer anderen Adresse als der konfigurierten, zum Beispiel auf
-  einer Vorschau-URL von Vercel. Die Hauptadresse omnidesk-v2-beta.vercel.app
+  einer Vorschau-URL von Vercel. Die Hauptadresse omnidesk-work.vercel.app
   benutzen.
 
 "Google konnte nicht verbunden werden. Bitte Anmeldung erneut starten..."

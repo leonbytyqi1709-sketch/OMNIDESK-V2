@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "OMNIDESK – Kommandoebene",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Notizen, Aufgaben und Projektaufgaben direkt aus dem Browser in OMNIDESK anlegen, mit eigenen Schnellzugriffen und Befehlen.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
-  "host_permissions": ["https://omnidesk-v2-beta.vercel.app/*"],
+  "host_permissions": ["https://omnidesk-work.vercel.app/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": { "default_title": "OMNIDESK-Kommandoebene öffnen" },
   "side_panel": { "default_path": "panel.html" },
@@ -16,9 +16,9 @@
     }
   },
   "externally_connectable": {
-    "matches": ["https://omnidesk-v2-beta.vercel.app/*"]
+    "matches": ["https://omnidesk-work.vercel.app/*"]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://omnidesk-v2-beta.vercel.app"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://omnidesk-work.vercel.app"
   }
 }

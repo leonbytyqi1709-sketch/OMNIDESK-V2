@@ -62,7 +62,7 @@ function background() {
       create: async (o: { url: string }) => {
         assert.ok(
           o.url.startsWith(
-            'https://omnidesk-v2-beta.vercel.app/browser-desk?extensionId=',
+            'https://omnidesk-work.vercel.app/browser-desk?extensionId=',
           ),
         )
         return { id: 8 }
@@ -218,7 +218,7 @@ test('actual background handshake checks sender and verifier binding, keeps toke
   const invalid = await worker.call(
     'external',
     { type: 'OMNIDESK_PAIR', code: 'c'.repeat(43), challenge: 'b'.repeat(64) },
-    { url: 'https://omnidesk-v2-beta.vercel.app/browser-desk' },
+    { url: 'https://omnidesk-work.vercel.app/browser-desk' },
   )
   assert.equal(invalid.ok, false)
   assert.equal(worker.requests.length, 0)
@@ -229,7 +229,7 @@ test('actual background handshake checks sender and verifier binding, keeps toke
       code: 'c'.repeat(43),
       challenge: pending.challenge,
     },
-    { url: 'https://omnidesk-v2-beta.vercel.app/browser-desk' },
+    { url: 'https://omnidesk-work.vercel.app/browser-desk' },
   )
   assert.equal(paired.ok, true)
   assert.equal(worker.requests[0].body?.verifier, pending.verifier)

@@ -1,5 +1,5 @@
 TESTANLEITUNG - BROWSER-KOMMANDOEBENE
-Stand 27.10.2026, Erweiterungsversion 1.3.0
+Stand 29.10.2026, Erweiterungsversion 1.4.0
 
 
 WAS SICH GEAENDERT HAT
@@ -31,7 +31,11 @@ Schnellzugriffe und Befehle aus der letzten Version bleiben unveraendert.
 WICHTIG VORAB
 
 Die Erweiterung muss neu geladen werden, sonst siehst du den neuen Bereich
-nicht. Die neue Version ist 1.3.0.
+nicht. Die neue Version ist 1.4.0.
+
+Seit dem 29.10.2026 heisst die App omnidesk-work.vercel.app. Die Adresse
+steckt fest in der Erweiterung - ohne das Update unten erreicht sie OMNIDESK
+nicht mehr und meldet einen Verbindungsfehler.
 
 
 SCHRITT 1 - ERWEITERUNG AKTUALISIEREN
@@ -42,7 +46,7 @@ SCHRITT 1 - ERWEITERUNG AKTUALISIEREN
    vorhandene Dateien ueberschreiben.
 4. In Chrome chrome://extensions oeffnen.
 5. Bei "OMNIDESK - Kommandoebene" auf "Neu laden" klicken.
-6. Pruefen, dass dort Version 1.3.0 steht.
+6. Pruefen, dass dort Version 1.4.0 steht.
 
 Deine Verbindung bleibt erhalten. Du musst dich nicht neu verbinden.
 

@@ -53,7 +53,7 @@ Danach neu deployen. Niemals `VITE_` vor diese Variablennamen setzen.
 
 Bei [cron-job.org](https://cron-job.org/) einen Job anlegen:
 
-- URL: `https://omnidesk-v2-beta.vercel.app/api/cron/neon-refresh`
+- URL: `https://omnidesk-work.vercel.app/api/cron/neon-refresh`
 - Methode: **GET**
 - Intervall: **alle 5 Minuten**
 - Unter den erweiterten HTTP-Einstellungen einen Header hinzufügen: Name `Authorization`, Wert `Bearer ` gefolgt vom bestehenden geheimen CRON_SECRET.

@@ -370,7 +370,7 @@ test('extension manifest grants only deliberate tab access and exact OMNIDESK ho
     'sidePanel',
   ])
   assert.deepEqual(manifest.host_permissions, [
-    'https://omnidesk-v2-beta.vercel.app/*',
+    'https://omnidesk-work.vercel.app/*',
   ])
   assert.deepEqual(
     manifest.externally_connectable.matches,

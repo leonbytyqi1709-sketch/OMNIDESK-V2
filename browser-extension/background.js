@@ -1,5 +1,5 @@
 import { browserSourceUrl } from './source-url.js'
-const APP = 'https://omnidesk-v2-beta.vercel.app'
+const APP = 'https://omnidesk-work.vercel.app'
 chrome.storage.local
   .setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
   .catch(() => {})

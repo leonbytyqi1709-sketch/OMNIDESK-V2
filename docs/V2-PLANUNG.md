@@ -545,3 +545,11 @@ Der Nutzer berichtet, dass er zum Verbinden eines Google-Kontos stets beide loka
 Folge der Cookie-Bindung vom 28.10.2026: Der bisherige Mischweg (Start auf der Live-Adresse, Rückkehr auf localhost) funktioniert nicht mehr, weil das Cookie nicht über zwei Adressen hinweg gilt. Bis zur Umstellung muss der Vorgang auch auf `http://localhost:5173` beginnen. Rein lokal und rein produktiv funktioniert der Ablauf unverändert.
 
 Lösung in `GOOGLE-ANMELDUNG-UMSTELLEN.txt`: erst die produktive Callback-Adresse in der Google Cloud Console eintragen, dann `GOOGLE_REDIRECT_URI` in Vercel umstellen, neu bereitstellen, testen. Der localhost-Eintrag in der Cloud Console bleibt für die lokale Entwicklung bestehen. Beide Stellen liegen beim Nutzer; Umsetzung und Live-Prüfung stehen aus.
+
+### Neue Adresse omnidesk-work.vercel.app · 29.10.2026
+
+Der Nutzer hat das verwaiste V1-Projekt auf Vercel gelöscht und das verbliebene Projekt in `omnidesk-work` umbenannt; die App läuft final unter `https://omnidesk-work.vercel.app`. Die alte Adresse `omnidesk-v2-beta.vercel.app` ist ersatzlos weg, eine Weiterleitung gibt es nicht. Der Zeitpunkt war bewusst gewählt: vor dem Eintragen der produktiven Google-Rückleitung, damit diese nur einmal gesetzt werden muss.
+
+Im Code war der Ursprung nur an einer Art Stelle fest verdrahtet, nämlich in der Browser-Erweiterung, dort aber sechsfach: `host_permissions`, `externally_connectable`, Inhaltssicherheitsrichtlinie, `background.js`, `panel.js` und `panel.html`. Alle umgestellt, Erweiterungsversion 1.4.0, Paket neu erzeugt. Nachgezogen wurden außerdem die drei Testdateien mit festem Ursprung, `.env.example`, docs/ONEDRIVE-SETUP.md, docs/NEON-MONITORING.md, docs/GESAMTTEST-AUFFAELLIGKEITEN.md, docs/BROWSER-KOMMANDOEBENE.md, TESTANLEITUNG-CLAUDE-CODE.txt und GOOGLE-ANMELDUNG-UMSTELLEN.txt. Die Anwendung selbst bildet Rückleitungen aus dem Ursprung der jeweiligen Anfrage; dort war nichts zu ändern.
+
+177 Tests bestanden, Typprüfung sauber, Build erfolgreich. **Offen beim Nutzer:** Erweiterung neu herunterladen und in Chrome neu laden, sonst erreicht das Panel die App nicht mehr; danach die Google-Umstellung nach GOOGLE-ANMELDUNG-UMSTELLEN.txt mit der neuen Adresse; außerdem prüfen, ob Clerk die neue Domain als erlaubten Ursprung führt und ob ein Uptime-Monitor noch die alte Adresse überwacht.

@@ -30,7 +30,7 @@ Ist der Shortcut belegt, kann er unter `chrome://extensions/shortcuts` angepasst
 
 Die App verwendet weiterhin Clerk. Es wird kein Clerk-Sessiontoken in die Erweiterung kopiert. Die Erweiterung startet eine Anfrage mit einem zufälligen, nur lokal gehaltenen Verifier und einem SHA-256-Challenge. Nach ausdrücklicher Freigabe gibt die angemeldete App einen einmaligen Verbindungscode über Chromes Nachrichtenkanal an die anfragende Erweiterung weiter. Der Code ist fünf Minuten gültig und an den Verifier gebunden. Die Einlösung konsumiert ihn atomar. Codes und Gerätezugänge werden auf dem Server nur als Hash gespeichert.
 
-Der resultierende Gerätezugang gilt 30 Tage. Er berechtigt ausschließlich zu Browser-Anmerkungen und der eigenen Projektliste unter `/api/browser-extension/data`; er ist kein allgemeiner OMNIDESK-Zugang und funktioniert nicht für Vault, Aufgaben, Integrationen oder andere Clerk-APIs. Der Hintergrundprozess nimmt externe Verbindungsnachrichten nur vom exakten Produktionsursprung `https://omnidesk-v2-beta.vercel.app` an. Interne Aktionen stammen ausschließlich aus dem eigenen Panel. Authentifizierte API-Anfragen gehen nur an diesen festen App-Ursprung und folgen keinen Weiterleitungen. Für diesen ersten Download sind beliebige alternative App-/Preview-Domains nicht konfigurierbar.
+Der resultierende Gerätezugang gilt 30 Tage. Er berechtigt ausschließlich zu Browser-Anmerkungen und der eigenen Projektliste unter `/api/browser-extension/data`; er ist kein allgemeiner OMNIDESK-Zugang und funktioniert nicht für Vault, Aufgaben, Integrationen oder andere Clerk-APIs. Der Hintergrundprozess nimmt externe Verbindungsnachrichten nur vom exakten Produktionsursprung `https://omnidesk-work.vercel.app` an. Interne Aktionen stammen ausschließlich aus dem eigenen Panel. Authentifizierte API-Anfragen gehen nur an diesen festen App-Ursprung und folgen keinen Weiterleitungen. Für diesen ersten Download sind beliebige alternative App-/Preview-Domains nicht konfigurierbar.
 
 Das Gerätegeheimnis liegt ausschließlich im vertrauenswürdigen lokalen Erweiterungsspeicher und wird weder an Webseiten noch an den App-Renderer zurückgegeben. Abgelaufene oder widerrufene Verbindungen und zugehörige Entwürfe werden beim nächsten Zugriff entfernt. Unter **Verbundene Erweiterungen** kann der Benutzer einen Zugang widerrufen, ohne Anmerkungen zu löschen. **Verbindung trennen** im Panel widerruft den aktuellen Zugang und entfernt die lokale Verbindung. Ist der Server dabei nicht erreichbar, weist das Panel auf den noch nötigen serverseitigen Widerruf in der App hin.
 
@@ -155,3 +155,19 @@ Das Projekt-Board zeigt den Text unter dem Titel der Aufgabe. Ein Editor für Pr
 existiert dort weiterhin nicht: Der Text ist lesbar, aber in der App noch nicht änderbar. Das ist
 bewusst offen und kein übersehener Fall.
 
+
+## Adressänderung · 29.10.2026
+
+Das Vercel-Projekt heißt jetzt `omnidesk-work`, die App ist unter
+`https://omnidesk-work.vercel.app` erreichbar. Die alte Adresse ist ersatzlos
+weg; Vercel leitet nicht weiter.
+
+Die Erweiterung hält diesen Ursprung bewusst fest verdrahtet: in
+`host_permissions`, in `externally_connectable`, in der Inhaltssicherheits-
+richtlinie und in `background.js`, `panel.js` und `panel.html`. Alle sechs
+Stellen sind umgestellt, die Version steht auf 1.4.0. Ohne neu geladene
+Erweiterung erreicht das Panel OMNIDESK nicht mehr.
+
+Ebenfalls nachgezogen: die Beispieladressen in `.env.example`, in
+docs/ONEDRIVE-SETUP.md und docs/NEON-MONITORING.md sowie die Testdateien, die
+den festen Ursprung prüfen.

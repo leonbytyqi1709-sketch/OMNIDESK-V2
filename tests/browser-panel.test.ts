@@ -173,12 +173,12 @@ test('panel storage is additive, owner-scoped, version protected and never inven
 
     const view = await store.browserPanelView(
       'owner',
-      'https://omnidesk-v2-beta.vercel.app',
+      'https://omnidesk-work.vercel.app',
     )
     assert.deepEqual(
       view.quickAccess.map((item) => [item.label, item.url, item.available]),
       [
-        ['Aufgaben', 'https://omnidesk-v2-beta.vercel.app/tasks', true],
+        ['Aufgaben', 'https://omnidesk-work.vercel.app/tasks', true],
         ['Proxmox', 'https://proxmox.example.com/', true],
         // Fremder Link: sichtbar, aber ausdrücklich nicht auflösbar.
         ['Entfernter Link', null, false],
@@ -194,7 +194,7 @@ test('panel storage is additive, owner-scoped, version protected and never inven
     // Andere Benutzer sehen weder Konfiguration noch Befehle.
     const foreign = await store.browserPanelView(
       'other',
-      'https://omnidesk-v2-beta.vercel.app',
+      'https://omnidesk-work.vercel.app',
     )
     assert.deepEqual(foreign.entries, [])
     assert.deepEqual(foreign.quickAccess, [])
@@ -212,7 +212,7 @@ test('panel storage is additive, owner-scoped, version protected and never inven
     })
     assert.deepEqual(
       (
-        await store.browserPanelView('owner', 'https://omnidesk-v2-beta.vercel.app')
+        await store.browserPanelView('owner', 'https://omnidesk-work.vercel.app')
       ).commands.map((command) => command.title),
       ['Dienste auflisten'],
     )
@@ -224,7 +224,7 @@ test('panel storage is additive, owner-scoped, version protected and never inven
     })
     assert.deepEqual(
       (
-        await store.browserPanelView('owner', 'https://omnidesk-v2-beta.vercel.app')
+        await store.browserPanelView('owner', 'https://omnidesk-work.vercel.app')
       ).commands,
       [],
     )
@@ -233,7 +233,7 @@ test('panel storage is additive, owner-scoped, version protected and never inven
     await pg.query('DELETE FROM links WHERE id=$1', [linkId])
     const afterDelete = await store.browserPanelView(
       'owner',
-      'https://omnidesk-v2-beta.vercel.app',
+      'https://omnidesk-work.vercel.app',
     )
     assert.equal(afterDelete.quickAccess[1].available, false)
     assert.equal(afterDelete.quickAccess[1].label, 'Entfernter Link')
