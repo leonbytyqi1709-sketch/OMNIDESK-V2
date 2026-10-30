@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useClerk, useUser } from '@clerk/clerk-react'
 import { Download, ExternalLink, Upload } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,6 +29,16 @@ interface BackupFile {
 
 export function GeneralTab() {
   const { data: quota } = useAttachmentQuota()
+  // Baustand des Servers, bewusst ohne Zwischenspeicher geholt.
+  const [serverBuild, setServerBuild] = useState<string | null>(null)
+  useEffect(() => {
+    void fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { build?: unknown } | null) => {
+        if (typeof data?.build === 'string') setServerBuild(data.build)
+      })
+      .catch(() => {})
+  }, [])
   const { user } = useUser()
   const { openUserProfile } = useClerk()
   const apiFetch = useApiFetch()
@@ -146,6 +156,36 @@ export function GeneralTab() {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Fassung</CardTitle>
+          <CardDescription>
+            Welcher Baustand gerade in diesem Browser läuft. Wichtig, wenn etwas
+            nicht so aussieht wie beschrieben: Weicht die Fassung vom Server ab,
+            liegt noch eine alte Kopie im Zwischenspeicher.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">In diesem Browser</span>
+            <code className="rounded bg-secondary px-2 py-0.5 font-mono text-xs">
+              {__APP_BUILD__}
+            </code>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Auf dem Server</span>
+            <code className="rounded bg-secondary px-2 py-0.5 font-mono text-xs">
+              {serverBuild ?? '…'}
+            </code>
+          </div>
+          {serverBuild && serverBuild !== __APP_BUILD__ && (
+            <p className="pt-1 text-xs text-amber-400">
+              Dieser Browser läuft auf einer veralteten Fassung.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Speicher für Anhänge</CardTitle>

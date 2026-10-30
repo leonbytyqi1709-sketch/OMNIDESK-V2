@@ -540,6 +540,37 @@ test('Omni planner sends selected context only and validates model output withou
     )
     assert.equal(response.type, 'plan')
     assert.equal(calls, 1)
+
+    // Der produktive Anbieter verpackt sein JSON gern in Fließtext und einen
+    // Code-Zaun. Auch dann muss ein Vorschlag entstehen.
+    globalThis.fetch = async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: [
+                'Aktion vorschlagen:',
+                '',
+                '```json',
+                JSON.stringify({ type: 'plan', operations: [createTask] }),
+                '```',
+                '',
+                'Bitte bestätige, damit ich die Aufgabe anlegen kann.',
+              ].join('\n'),
+            },
+          },
+        ],
+      })
+    const verpackt = await planOmniWithAI('Neue Aufgabe', empty, zone, new Date('2026-10-20T22:30:00Z'))
+    assert.equal(verpackt.type, 'plan', 'Umschließender Text darf den Vorschlag nicht verhindern')
+
+    // Antwortet das Modell ohne JSON, muss die Meldung das benennen.
+    globalThis.fetch = async () =>
+      Response.json({ choices: [{ message: { content: 'Das kann ich nicht.' } }] })
+    await assert.rejects(
+      () => planOmniWithAI('Neue Aufgabe', empty, zone, new Date('2026-10-20T22:30:00Z')),
+      /kein gültiger Vorschlag/,
+    )
     globalThis.fetch = async () =>
       Response.json({
         choices: [
@@ -553,9 +584,11 @@ test('Omni planner sends selected context only and validates model output withou
           },
         ],
       })
+    // Eine Operation, die es nicht gibt (hier: Löschen), fällt am Schema
+    // durch und gilt wie jede unlesbare Antwort als kein gültiger Vorschlag.
     await assert.rejects(
       planOmniWithAI('Löschen', empty, zone),
-      /keinen gültigen Vorschlag/,
+      /kein gültiger Vorschlag/,
     )
   } finally {
     globalThis.fetch = oldFetch

@@ -750,3 +750,19 @@ Der Nutzer meldet, dass Omni-Aktionen wieder nicht gehen und der Termin-Dialog w
 **Einmalig noch nötig:** Der Browser des Nutzers läuft weiter auf der alten Fassung und kann sich nicht selbst befreien; die Selbstheilung steckt ja in der neuen. Ein bis zwei Neuladungen holen sie, danach greift sie dauerhaft.
 
 **Offen:** Was genau bei den Omni-Aktionen nicht geht, ist noch ungeklärt — die Vermutung ist dieselbe veraltete Fassung.
+
+### Omni-Aktionen scheiterten an der Verpackung der Modellantwort · 30.10.2026
+
+Nach dem Neuladen bestätigt der Nutzer: Der Termin-Dialog scrollt wieder, Omni-Aktionen gehen weiterhin nicht. Damit war die Zwischenspeicher-Spur erledigt und der Blick frei auf die eigentliche Ursache.
+
+**Befund.** Produktiv läuft Groq mit `openai/gpt-oss-120b` — ein Modell, das seine JSON-Antwort gern in Fließtext und einen Code-Zaun verpackt (genau so, wie es der Nutzer am 29.10.2026 im Chat-Screenshot sah: „Aktion vorschlagen:", JSON-Block, „Bitte bestätige …"). Der Planer entfernte bisher nur einen Zaun **am Anfang und am Ende** der gesamten Antwort. Stand irgendetwas davor, schlug `JSON.parse` fehl, der Versuch galt als gescheitert, und am Ende kam „Omni konnte keinen gültigen Vorschlag erstellen" — obwohl ein brauchbarer Vorschlag in der Antwort stand. Dass es am 29.10. einmal funktionierte, war Glück: Da antwortete das Modell ohne Beiwerk.
+
+**Behoben.** `server/omni-actions-parse.ts` löst das JSON-Objekt heraus, egal wie es verpackt ist: bevorzugt aus einem Code-Zaun, sonst das erste vollständige Objekt im Text — mit Beachtung von Zeichenketten, damit eine geschweifte Klammer in einer Rückfrage nicht mitzählt. Geprüft wird danach unverändert streng gegen das Schema; an den erlaubten Operationen ändert sich nichts.
+
+Zusätzlich sind die Fehlermeldungen jetzt unterscheidbar: „Der KI-Anbieter hat nicht geantwortet" gegenüber „Antwort erhalten, die kein gültiger Vorschlag war". Beim nächsten Mal ist ohne Rückfrage klar, woran es liegt. Die Anweisung an das Modell verlangt außerdem ausdrücklich ein Objekt ohne Text und ohne Code-Zaun.
+
+**Neu sichtbar:** Einstellungen → Allgemein zeigt jetzt die Fassung dieses Browsers und die des Servers. Weichen sie ab, steht es dort in Klartext. Das beendet das Rätselraten darüber, ob eine Korrektur angekommen ist.
+
+**Geprüft.** Acht neue Tests für das Auslesen (reines JSON, Zaun mit und ohne Sprache, der Praxisfall mit Text davor und danach, Klammern im Text, Verschachtelung, abgeschnittene Antwort) und zwei ergänzte im bestehenden Planer-Test, die den ganzen Weg abdecken — mit Verpackung entsteht ein Vorschlag, ohne JSON die passende Meldung. 266 Tests bestanden.
+
+**Nicht geprüft:** der Ablauf mit dem echten Anbieter in der angemeldeten Sitzung.
