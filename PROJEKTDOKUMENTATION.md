@@ -1,6 +1,6 @@
 # OMNIDESK – Projektdokumentation
 
-**Stand: 29. Oktober 2026 · Live: https://omnidesk-work.vercel.app**
+**Stand: 30. Oktober 2026 · Live: https://omnidesk-work.vercel.app**
 
 Dieses Dokument beschreibt OMNIDESK so, wie die Anwendung heute ist. Es ist das
 aktuelle Hauptdokument; alles andere im Projekt ist entweder ein Tagebuch
@@ -287,7 +287,7 @@ jede weitere Warnung ist neu.
 
 ## Offene Punkte
 
-Stand 29.10.2026, keiner davon dringend:
+Stand 30.10.2026, keiner davon dringend:
 
 **Entscheidungen aus der Codeprüfung** (`docs/CODEPRUEFUNG-28-10-2026.md`):
 Google-Tokens liegen im Klartext in der Datenbank, während Microsoft sie
@@ -301,7 +301,12 @@ ist nicht eingerichtet; die Anmeldemaske schreibt „OmniDesk", was sich nur im
 Clerk-Konto ändern lässt.
 
 **Unbestätigt:** Die Vorschau für Anhänge ist ausgeliefert, aber in der
-angemeldeten Sitzung noch nicht gesehen worden.
+angemeldeten Sitzung noch nicht gesehen worden. Der Nutzer hat das am
+30.10.2026 ausdrücklich zurückgestellt.
+
+**Live bestätigt am 30.10.2026:** Omni-Aktionen aus dem Chat. Der Nutzer
+führt einen Auftrag im Chat aus, sieht die Vorschlagskarte und bestätigt sie
+("Ja, geht").
 
 ## Entschiedenes, das nicht zurückkommt
 
@@ -317,6 +322,7 @@ Omni-Gedächtnis und das Omni-Briefing sind davon ausdrücklich nicht betroffen.
 - `docs/*.md` — je ein Dokument zu Browser-Kommandoebene, gemeinsamen Räumen,
   Mission Control, Omni (Chat, Briefing, Gedächtnis, Aktionen), Kontenkarte,
   Kontosicherheit, Neon-, Vercel- und GitHub-Anbindung
+- `TESTPLAN-GESAMT.md` — abschließender Durchgang durch die ganze App
 - `TESTANLEITUNG-AUSBAUSTUFEN.txt` — Durchgang durch die sechs Ausbaustufen
 - `GOOGLE-ANMELDUNG-UMSTELLEN.txt` — erledigt, als Nachschlagewerk
 - `AGENTS.md` — verbindliche Arbeitsregeln für KI-Assistenten in diesem Projekt

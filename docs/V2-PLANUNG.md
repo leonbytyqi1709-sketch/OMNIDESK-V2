@@ -766,3 +766,14 @@ Zusätzlich sind die Fehlermeldungen jetzt unterscheidbar: „Der KI-Anbieter ha
 **Geprüft.** Acht neue Tests für das Auslesen (reines JSON, Zaun mit und ohne Sprache, der Praxisfall mit Text davor und danach, Klammern im Text, Verschachtelung, abgeschnittene Antwort) und zwei ergänzte im bestehenden Planer-Test, die den ganzen Weg abdecken — mit Verpackung entsteht ein Vorschlag, ohne JSON die passende Meldung. 266 Tests bestanden.
 
 **Nicht geprüft:** der Ablauf mit dem echten Anbieter in der angemeldeten Sitzung.
+
+**Live bestätigt am 30.10.2026.** Der Nutzer hat die Omni-Aktionen in seiner
+angemeldeten Sitzung ausgeführt und mit ‚Ja, geht‘ bestätigt. Damit ist die
+Verpackungs-Ursache erledigt; der Ablauf mit dem echten Anbieter gilt als
+geprüft. Die Vorschau für Anhänge bleibt unbestätigt — der Nutzer hat sie
+ausdrücklich zurückgestellt (‚ist auch egal‘).
+
+Damit liegen alle vereinbarten Änderungen vor. Nächster gemeinsamer Schritt
+nach `AGENTS.md`: der vollständige Test der gesamten App über alle Module,
+ihre Verbindungen und die zentralen Abläufe. Eine Modulliste als Reihenfolge
+steht in `TESTPLAN-GESAMT.md`.
