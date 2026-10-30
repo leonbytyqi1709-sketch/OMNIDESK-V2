@@ -9,12 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  type AttachmentDto,
-  MAX_TEXT_PREVIEW_BYTES,
-  formatBytes,
-  previewKind,
-} from '@/lib/attachments'
+import { type AttachmentDto, formatBytes } from '@/lib/attachments'
+import { MAX_TEXT_PREVIEW_BYTES, previewKind } from '@/lib/attachment-preview'
 import { useAttachmentContent, useDownloadAttachment } from '@/modules/attachments/api'
 
 interface AttachmentPreviewDialogProps {

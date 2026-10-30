@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { previewKind, safeFileName } from '../src/lib/attachments'
+import { previewKind } from '../src/lib/attachment-preview'
+import { safeFileName } from '../src/lib/attachments'
 
 /**
  * Die Vorschau zeigt Dateien im Fenster an. Entscheidend ist, was sie NICHT

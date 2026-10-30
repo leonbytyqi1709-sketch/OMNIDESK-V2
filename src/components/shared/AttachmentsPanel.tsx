@@ -7,8 +7,8 @@ import {
   type AttachmentKind,
   MAX_ATTACHMENT_BYTES,
   formatBytes,
-  previewKind,
 } from '@/lib/attachments'
+import { previewKind } from '@/lib/attachment-preview'
 import { cn } from '@/lib/utils'
 import { AttachmentPreviewDialog } from './AttachmentPreviewDialog'
 import {

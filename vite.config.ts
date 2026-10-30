@@ -5,19 +5,49 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+/**
+ * Kennung dieses Baustands. Produktiv der Commit, lokal die Bauzeit. Sie
+ * steht sowohl im Code (`__APP_BUILD__`) als auch in `/version.json`; weichen
+ * beide voneinander ab, läuft im Browser eine veraltete Fassung.
+ */
+const buildId = (
+  process.env.VERCEL_GIT_COMMIT_SHA ?? `lokal-${Date.now()}`
+).slice(0, 12)
+
+/** Schreibt die Kennung als eigene Datei neben die Anwendung. */
+const versionFile = {
+  name: 'omnidesk-version-file',
+  generateBundle(this: { emitFile: (file: Record<string, unknown>) => void }) {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'version.json',
+      source: JSON.stringify({ build: buildId }),
+    })
+  },
+}
+
 export default defineConfig({
+  define: { __APP_BUILD__: JSON.stringify(buildId) },
   plugins: [
+    versionFile,
     react(),
     tailwindcss(),
     VitePWA({
-      // 'prompt' statt 'autoUpdate': Die App meldet eine neue Fassung und
-      // lädt erst auf Klick neu. Registriert wird in src/lib/pwa-update.ts,
-      // deshalb kein eingefügtes Skript.
-      registerType: 'prompt',
+      // 'autoUpdate': Ein neuer Service Worker übernimmt sofort und wartet
+      // nie. 'prompt' hatte am 29.10.2026 eine Sackgasse erzeugt – der neue
+      // Worker wartete auf ein Signal, das nur die neue Oberfläche senden
+      // kann, die der Browser wegen des alten Workers gar nicht bekam.
+      // Ob neu geladen wird, entscheidet die Baustand-Prüfung in
+      // src/lib/pwa-update.ts; dort wird auch registriert.
+      registerType: 'autoUpdate',
       injectRegister: false,
       // App-Shell + Assets werden gecacht; API-Daten bewusst nicht
       // (Free-Tier-Strategie: offline reicht die Shell).
       workbox: {
+        // Ausdrücklich, nicht nur über registerType: Ein neuer Worker
+        // übernimmt sofort und wartet nicht auf das Schließen aller Tabs.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         navigateFallbackDenylist: [/^\/api\//, /^\/downloads\//],
       },

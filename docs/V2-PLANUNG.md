@@ -732,3 +732,21 @@ Neu: **`PROJEKTDOKUMENTATION.md`** im Projektstamm, das aktuelle Hauptdokument. 
 Die drei veralteten Dokumente tragen jetzt oben einen Hinweis „historisch“ mit Verweis auf das neue; gelöscht wurde nichts. `README.md` verweist ebenfalls darauf.
 
 Alle Zahlen im Dokument sind gegen den Code geprüft: 21 Module, 258 Tests in 31 Dateien, Advisory-Lock-Nummern bis 184730037, zwei Cron-Läufe um 06:00 und 06:05.
+
+## Sackgasse beim Aktualisieren behoben · 30.10.2026
+
+Der Nutzer meldet, dass Omni-Aktionen wieder nicht gehen und der Termin-Dialog weiterhin nicht scrollt. Geprüft: **Beide Korrekturen sind im ausgelieferten Code nachweisbar** (`max-h-[90dvh] … overflow-y-auto` am Dialog, die Aktualisierungs-Erkennung im Haupt-Bundle). Der Browser bekam sie nicht.
+
+**Ursache, und sie war selbst verschuldet.** Die Umstellung auf `registerType: 'prompt'` am 29.10.2026 hat eine Sackgasse erzeugt: Ein neuer Service Worker wartet in diesem Modus, bis die laufende Oberfläche ihm das Signal zum Übernehmen schickt. Genau diese Oberfläche bekam der Browser aber nicht, weil der alte Worker weiter die alte Fassung auslieferte. Der live abgerufene `sw.js` bestätigte es: nur ein `skipWaiting()` als Reaktion auf eine Nachricht, kein `clientsClaim`.
+
+**Behoben in drei Schritten:**
+
+1. Zurück auf `registerType: 'autoUpdate'`, zusätzlich ausdrücklich `skipWaiting: true` und `clientsClaim: true` in der Workbox-Konfiguration — die Einstellung über `registerType` allein hat im erzeugten Worker nachweislich nicht gegriffen. Ein neuer Worker übernimmt jetzt sofort und wartet nie.
+2. **Selbstheilung unabhängig vom Worker:** Jeder Build trägt eine Kennung (produktiv der Commit) sowohl im Code als auch in `/version.json`. Beim Start vergleicht die App beides. Weichen sie ab, läuft eine veraltete Fassung — dann werden Zwischenspeicher und Worker entfernt und die Seite genau einmal neu geladen (gesichert über `sessionStorage`, damit keine Schleife entsteht). Beim Zurückwechseln in den Tab wird erneut verglichen, dann aber nur mit Hinweis statt mit Neuladen.
+3. `version.json` wird bewusst nicht in den Zwischenspeicher des Workers aufgenommen und mit Zeitstempel sowie `cache: 'no-store'` abgerufen, damit weder Browser noch CDN eine alte Antwort liefern können.
+
+**Nebenbei aufgeräumt:** Die Vorschau-Hilfsfunktionen liegen jetzt in `src/lib/attachment-preview.ts` statt in `attachments.ts` — der Serverbau zog sie sonst mit und meldete eine ungenutzte Konstante.
+
+**Einmalig noch nötig:** Der Browser des Nutzers läuft weiter auf der alten Fassung und kann sich nicht selbst befreien; die Selbstheilung steckt ja in der neuen. Ein bis zwei Neuladungen holen sie, danach greift sie dauerhaft.
+
+**Offen:** Was genau bei den Omni-Aktionen nicht geht, ist noch ungeklärt — die Vermutung ist dieselbe veraltete Fassung.
